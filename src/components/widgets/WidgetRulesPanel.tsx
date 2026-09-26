@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { DarkSelect } from "@/components/ui/dark-select";
+import { ensureWidgetSubathon } from "@/lib/createWidget";
 import { supabase } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,36 @@ export function WidgetRulesPanel({
     min_amount: "",
     priority: 100,
   });
+  const [linkedSubathonId, setLinkedSubathonId] = useState<string | null>(subathonId);
+  const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    setLinkedSubathonId(subathonId);
+  }, [subathonId]);
+
+  useEffect(() => {
+    if (linkedSubathonId) return;
+    let cancelled = false;
+    setLinking(true);
+    void ensureWidgetSubathon(widgetId)
+      .then((id) => {
+        if (cancelled) return;
+        setLinkedSubathonId(id);
+        void queryClient.invalidateQueries({ queryKey: ["widget", widgetId] });
+        void queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message || "Could not link this widget to a subathon.");
+      })
+      .finally(() => {
+        if (!cancelled) setLinking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedSubathonId, queryClient, widgetId]);
+
+  const activeSubathonId = linkedSubathonId;
 
   const rulesQuery = useQuery({
     queryKey: ["widget-rules", widgetId],
@@ -124,10 +155,10 @@ export function WidgetRulesPanel({
       min_amount: number | null;
       priority: number;
     }) => {
-      if (!subathonId) throw new Error("Link this widget to a subathon first.");
+      if (!activeSubathonId) throw new Error("Link this widget to a subathon first.");
       const { error: writeError } = await supabase.from("rules").upsert(
         {
-          subathon_id: subathonId,
+          subathon_id: activeSubathonId,
           widget_id: widgetId,
           platform: input.platform,
           event_type: input.event_type,
@@ -207,9 +238,11 @@ export function WidgetRulesPanel({
         </p>
       ) : null}
 
-      {!subathonId ? (
+      {!activeSubathonId ? (
         <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          Link this widget to a subathon before adding rules.
+          {linking
+            ? "Linking this widget to your subathon…"
+            : "Link this widget to a subathon before adding rules."}
         </p>
       ) : null}
 
@@ -223,7 +256,7 @@ export function WidgetRulesPanel({
             <button
               key={preset.label}
               type="button"
-              disabled={saveRule.isPending || !subathonId}
+              disabled={saveRule.isPending || !activeSubathonId}
               onClick={() =>
                 saveRule.mutate({
                   platform: preset.platform,
@@ -344,7 +377,7 @@ export function WidgetRulesPanel({
           <div className={cn("flex items-end", compact && "pt-1")}>
             <button
               type="submit"
-              disabled={saveRule.isPending || !subathonId}
+              disabled={saveRule.isPending || !activeSubathonId}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary to-violet-500 px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <Plus className="size-4" aria-hidden />

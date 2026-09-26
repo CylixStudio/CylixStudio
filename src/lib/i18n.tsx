@@ -151,6 +151,8 @@ const DICT = {
   "settings.profile.heading": "الحساب والاشتراك",
   "settings.profile.name": "الاسم",
   "settings.profile.email": "البريد الإلكتروني",
+  "settings.profile.showEmail": "إظهار البريد",
+  "settings.profile.hideEmail": "إخفاء البريد",
   "settings.profile.login": "تسجيل الدخول",
   "settings.profile.loginHint": "حسابك مربوط عبر تسجيل الدخول بمنصة البث الخاصة بك.",
   "settings.profile.subscription": "الاشتراك",

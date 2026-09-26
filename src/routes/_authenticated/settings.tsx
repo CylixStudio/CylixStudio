@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -65,6 +66,7 @@ function SettingsPage() {
   const isAdmin = useIsAdmin(user.id);
   const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>(() => initialTab(search));
+  const [emailVisible, setEmailVisible] = useState(false);
 
   const tabs = isAdmin.data ? [...BASE_TABS, ...ADMIN_TABS] : [...BASE_TABS];
 
@@ -102,15 +104,26 @@ function SettingsPage() {
         <section className="max-w-2xl">
           <h2 className="text-[0.95rem] font-semibold">{t("settings.profile.heading")}</h2>
           <div className="mt-6 divide-y divide-white/5 border-y border-white/5">
-            <div className="flex flex-wrap items-baseline justify-between gap-3 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 py-4">
               <p className="text-[0.8rem] text-muted-foreground">{t("settings.profile.name")}</p>
-              <p className="text-sm font-medium" dir="auto">{data?.profile?.name ?? user.email}</p>
+              <p className="text-sm font-medium" dir="auto">{data?.profile?.name ?? "CylixStudio"}</p>
             </div>
-            <div className="flex flex-wrap items-baseline justify-between gap-3 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 py-4">
               <p className="text-[0.8rem] text-muted-foreground">{t("settings.profile.email")}</p>
-              <p className="text-sm" dir="ltr">
-                {user.email}
-              </p>
+              <div className="flex items-center gap-2" dir="ltr">
+                <p className="font-mono text-sm tracking-wide">
+                  {emailVisible ? (user.email ?? "—") : "••••••••••"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setEmailVisible((visible) => !visible)}
+                  className="grid size-8 place-items-center rounded-lg border border-white/10 text-muted-foreground hover:text-foreground"
+                  aria-pressed={emailVisible}
+                  aria-label={emailVisible ? t("settings.profile.hideEmail") : t("settings.profile.showEmail")}
+                >
+                  {emailVisible ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-3 py-4">
               <p className="text-[0.8rem] text-muted-foreground">{t("settings.profile.login")}</p>

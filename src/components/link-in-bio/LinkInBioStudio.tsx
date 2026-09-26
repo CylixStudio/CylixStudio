@@ -23,7 +23,7 @@ export function LinkInBioStudio({
   const draft = useLinkInBioDraft(userId);
   const navigate = useNavigate();
   const goDashboard = () => {
-    void navigate({ to: "/link-in-bio", search: {}, replace: true });
+    void navigate({ to: "/dashboard" });
   };
   const goSetup = (nextStep = 1) => {
     void navigate({ to: "/link-in-bio", search: { setup: true, step: nextStep }, replace: true });

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, startTransition, useContext, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -25,7 +25,7 @@ export type WizardDraft = ReturnType<typeof useLinkInBioDraft>;
 type WizardContextValue = {
   step: number;
   total: number;
-  goNext: () => Promise<void>;
+  goNext: () => void;
   goBack: () => void;
   jump: (next: number) => void;
   canProceed: boolean;
@@ -86,7 +86,9 @@ export function WizardProvider({
     } catch {
       /* ignore */
     }
-    void navigate({ to: "/link-in-bio", search: { setup: true, step: value }, replace: true });
+    startTransition(() => {
+      void navigate({ to: "/link-in-bio", search: { setup: true, step: value }, replace: true });
+    });
   };
 
   const applyHandles = (next: HandleMap) => {
@@ -109,12 +111,14 @@ export function WizardProvider({
   const canProceed =
     step !== 1 || (Boolean(sanitizeSlug(profile.slug)) && (slugLocked || slugStatus === "available"));
 
-  const goNext = async () => {
+  const goNext = () => {
     if (!canProceed) return;
     const nextLinks = step === 3 ? linksFromHandles(handles, links) : links;
     if (step === 3) setLinks(nextLinks);
-    await persist(profile, theme, nextLinks);
     if (step < WIZARD_STEPS) jump(step + 1);
+    void persist(profile, theme, nextLinks).catch((error: Error) => {
+      toast.error(error.message || "Could not save this step.");
+    });
   };
 
   const goBack = () => {

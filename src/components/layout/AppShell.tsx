@@ -139,7 +139,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
     navigate({ to: "/login", replace: true });
   };
 
-  const initials = (profile?.name ?? user.email ?? "?").slice(0, 2).toUpperCase();
+  const initials = (profile?.name?.trim() || "CY").slice(0, 2).toUpperCase();
   const menuItem =
     "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-start text-[0.8rem] transition-colors";
   const sidebarW = collapsed ? COLLAPSED_W : EXPANDED_W;
@@ -266,9 +266,6 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                       <span className="block truncate text-xs font-semibold">
                         {profile?.name ?? "CylixStudio"}
                       </span>
-                      <span className="block truncate text-[0.65rem] text-muted-foreground">
-                        {user.email ?? ""}
-                      </span>
                     </span>
                   )}
                 </button>
@@ -286,9 +283,6 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                 >
                   <div className="px-3 py-2.5 text-left" dir="ltr">
                     <p className="text-[0.82rem] font-semibold">{profile?.name ?? "CylixStudio"}</p>
-                    <p className="mt-0.5 truncate text-[0.72rem] text-muted-foreground">
-                      {user.email ?? "creovix0@gmail.com"}
-                    </p>
                   </div>
                   <div className="my-1 border-t border-[rgba(255,255,255,0.08)]" />
                   <button

@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { LinkInBioPage } from "@/components/link-in-bio/LinkInBioPage";
 import { useWizard } from "@/components/link-in-bio/wizard/WizardProvider";
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 export function WizardShell({ children }: { children: React.ReactNode }) {
   const { t } = useLanguage();
-  const { step, total, goBack, goNext, canProceed, canExit, onExit, finish, saving, draft, focusId, setFocusId } =
+  const { step, total, goBack, goNext, canProceed, onExit, finish, saving, draft, focusId, setFocusId } =
     useWizard();
   const wizardCopy = getWizardCopy(t);
   const meta = wizardCopy[step - 1];
@@ -27,11 +27,14 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
           <span className="text-sm tabular-nums text-white/40">
             {step} / {total}
           </span>
-          {canExit ? (
-            <button type="button" className="min-h-10 text-sm text-white/60 hover:text-white" onClick={onExit}>
-              {t("linkInBio.wizard.backToStudio")}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="grid size-10 place-items-center rounded-full border border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
+            onClick={onExit}
+            aria-label={t("linkInBio.wizard.backToStudio")}
+          >
+            <X className="size-4" aria-hidden />
+          </button>
         </div>
       </header>
 
@@ -126,12 +129,12 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
           )}
           <div className="flex gap-2 sm:gap-3">
             {step !== 1 && step !== 4 ? (
-              <Button type="button" variant="ghost" className={cn(wizardUi.ctaQuiet, "min-h-11")} onClick={() => void goNext()}>
+              <Button type="button" variant="ghost" className={cn(wizardUi.ctaQuiet, "min-h-11")} onClick={() => goNext()}>
                 {t("linkInBio.wizard.skip")}
               </Button>
             ) : null}
             {step < total ? (
-              <Button type="button" className={cn(wizardUi.ctaPrimary, "min-h-11")} onClick={() => void goNext()} disabled={!canProceed || saving}>
+              <Button type="button" className={cn(wizardUi.ctaPrimary, "min-h-11")} onClick={() => goNext()} disabled={!canProceed}>
                 {t("linkInBio.wizard.next")}
                 <ChevronRight className="size-4 rtl:rotate-180" />
               </Button>

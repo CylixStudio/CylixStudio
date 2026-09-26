@@ -25,8 +25,29 @@ type KickPayload = {
   livestream?: { is_live?: boolean; viewer_count?: number } | null;
 };
 
+/** Accepts a slug, @handle, or kick.com URL. */
+function kickSlug(raw: string): string {
+  const trimmed = raw.trim().replace(/^@/, "");
+  const fromUrl = trimmed.match(/kick\.com\/([A-Za-z0-9_]+)/i)?.[1];
+  const slug = (fromUrl ?? trimmed).toLowerCase();
+  return slug.replace(/[^a-z0-9_]/g, "");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function numField(source: Record<string, unknown> | null, ...keys: string[]): number | null {
+  if (!source) return null;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
 /** Kick blocks plain server requests, so mimic a normal browser request. */
-async function kickFetch(url: string): Promise<KickPayload | null> {
+async function kickFetch(url: string): Promise<unknown> {
   try {
     const response = await fetch(url, {
       headers: {
@@ -38,19 +59,17 @@ async function kickFetch(url: string): Promise<KickPayload | null> {
       },
     });
     if (!response.ok) return null;
-    return (await response.json()) as KickPayload;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("json")) return null;
+    return await response.json();
   } catch {
     return null;
   }
 }
 
-/** Kick exposes public channel data — followers, avatar and live state. */
-async function kickChannel(username: string): Promise<ChannelSnapshot | null> {
-  const slug = encodeURIComponent(username.toLowerCase());
-  const payload =
-    (await kickFetch(`https://kick.com/api/v2/channels/${slug}`)) ??
-    (await kickFetch(`https://kick.com/api/v1/channels/${slug}`));
-  if (!payload) return null;
+function snapshotFromKickV2(payload: KickPayload, fallback: string): ChannelSnapshot | null {
+  const slug = payload.slug ?? payload.user?.username;
+  if (!slug && !payload.user) return null;
   const followers =
     typeof payload.followers_count === "number"
       ? payload.followers_count
@@ -59,8 +78,8 @@ async function kickChannel(username: string): Promise<ChannelSnapshot | null> {
         : null;
   return {
     platform: "KICK",
-    username: payload.slug ?? username,
-    displayName: payload.user?.username ?? payload.slug ?? username,
+    username: payload.slug ?? fallback,
+    displayName: payload.user?.username ?? payload.slug ?? fallback,
     avatarUrl: payload.user?.profile_pic ?? null,
     followers,
     isLive: Boolean(payload.livestream?.is_live),
@@ -68,6 +87,63 @@ async function kickChannel(username: string): Promise<ChannelSnapshot | null> {
     note: followers === null ? "Kick did not return a follower total for this channel." : null,
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/** Official public channels endpoint — works when kick.com/api is blocked. */
+async function kickOfficialChannel(slug: string): Promise<ChannelSnapshot | null> {
+  const payload = await kickFetch(
+    `https://api.kick.com/public/v1/channels?slug=${encodeURIComponent(slug)}`,
+  );
+  const root = asRecord(payload);
+  const rows = Array.isArray(root?.["data"]) ? root["data"] : Array.isArray(payload) ? payload : [];
+  const row = asRecord(rows[0]);
+  if (!row) return null;
+  const channelSlug = typeof row["slug"] === "string" ? row["slug"] : slug;
+  const stream = asRecord(row["stream"]) ?? asRecord(row["livestream"]);
+  const user = asRecord(row["user"]);
+  const followers = numField(row, "followers_count", "follower_count", "followersCount");
+  const viewers = numField(stream, "viewer_count", "viewers");
+  const isLive =
+    stream?.["is_live"] === true ||
+    row["is_live"] === true ||
+    (typeof viewers === "number" && viewers > 0);
+  const avatar =
+    (typeof user?.["profile_pic"] === "string" && user["profile_pic"]) ||
+    (typeof row["profile_picture"] === "string" && row["profile_picture"]) ||
+    null;
+  const display =
+    (typeof user?.["username"] === "string" && user["username"]) ||
+    (typeof row["username"] === "string" && row["username"]) ||
+    channelSlug;
+  return {
+    platform: "KICK",
+    username: channelSlug,
+    displayName: display,
+    avatarUrl: avatar,
+    followers,
+    isLive,
+    viewers,
+    note: followers === null ? "Kick did not return a follower total for this channel." : null,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+/** Kick exposes public channel data — followers, avatar and live state. */
+async function kickChannel(username: string): Promise<ChannelSnapshot | null> {
+  const slug = kickSlug(username);
+  if (!slug) return null;
+  const encoded = encodeURIComponent(slug);
+  const legacy =
+    (await kickFetch(`https://kick.com/api/v2/channels/${encoded}`)) ??
+    (await kickFetch(`https://kick.com/api/v1/channels/${encoded}`));
+  const record = asRecord(legacy);
+  const nested = asRecord(record?.["data"]);
+  const v2 = (nested?.["slug"] || nested?.["user"] ? nested : record) as KickPayload | null;
+  if (v2) {
+    const mapped = snapshotFromKickV2(v2, slug);
+    if (mapped) return mapped;
+  }
+  return kickOfficialChannel(slug);
 }
 
 

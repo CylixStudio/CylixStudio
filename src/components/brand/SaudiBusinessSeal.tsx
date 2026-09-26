@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 
 /** Official SBC certificate page for CylixStudio (opens in a new tab). */
 const SBC_CERTIFICATE_URL =
-  "https://eauthenticate.saudibusiness.gov.sa/certificate-details/0000329636?vt=1.WGT.1790380260.PEkaNQfueoMy.iRoh7xOccTgALXLd82AveqZlqV3oGpxTl5dTGzFYkpE";
+  "https://eauthenticate.saudibusiness.gov.sa/certificate-details/0000329636/1.INQ.1790439654.0aINawUTKmNh.KSh4fqcmKCATvNnp4YZGd0GOjaDJouP-1vlQk3ePCh4";
 
 type SaudiBusinessSealProps = {
   className?: string;

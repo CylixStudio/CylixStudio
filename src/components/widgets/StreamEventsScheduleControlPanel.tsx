@@ -266,7 +266,7 @@ export function StreamEventsScheduleControlPanel({
               <li
                 key={event.id}
                 className={cn(
-                  "grid grid-cols-[auto_1fr_5.5rem_auto] items-center gap-2 rounded-lg border px-2 py-2",
+                  "grid gap-2 rounded-lg border px-2 py-2 sm:grid-cols-[auto_minmax(0,1fr)_5.5rem_auto] sm:items-center",
                   active ? "border-primary/40 bg-primary/10" : "border-border",
                 )}
               >
@@ -279,20 +279,25 @@ export function StreamEventsScheduleControlPanel({
                   className="h-8 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-primary/40"
                   dir="auto"
                 />
-                <input
-                  type="number"
-                  min={1}
-                  max={1440}
-                  value={Math.round(event.durationSeconds / 60)}
-                  onChange={(e) =>
-                    updateEvent(event.id, {
-                      durationSeconds: clampDurationSeconds(Number(e.target.value) * 60),
-                    })
-                  }
-                  className="h-8 rounded-md border border-border bg-background px-2 text-sm tabular-nums outline-none focus:border-primary/40"
-                  aria-label="Duration minutes"
-                  title="Minutes"
-                />
+                <label className="block min-w-0">
+                  <span className="mb-1 block text-[0.6rem] uppercase tracking-wide text-muted-foreground sm:sr-only">
+                    Minutes
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={Math.round(event.durationSeconds / 60)}
+                    onChange={(e) =>
+                      updateEvent(event.id, {
+                        durationSeconds: clampDurationSeconds(Number(e.target.value) * 60),
+                      })
+                    }
+                    className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm tabular-nums outline-none focus:border-primary/40"
+                    aria-label="Duration minutes"
+                    title="Minutes"
+                  />
+                </label>
                 <button
                   type="button"
                   disabled={draftEvents.length <= 1}
