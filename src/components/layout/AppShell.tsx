@@ -240,8 +240,14 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
           </nav>
 
           <div className="mt-auto space-y-2 border-t border-white/10 px-2 py-3">
-            <div className={cn("flex items-center", collapsed ? "flex-col gap-2" : "gap-1.5")}>
-            <div ref={profileRef} className="relative min-w-0 flex-1">
+            <div
+              dir="ltr"
+              className={cn(
+                "flex flex-row items-center",
+                collapsed ? "flex-col gap-2" : "gap-1.5",
+              )}
+            >
+            <div ref={profileRef} className="relative order-1 min-w-0 flex-1">
               <IconTip label={t("nav.profile")} collapsed={collapsed}>
                 <button
                   type="button"
@@ -314,7 +320,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                 </div>
               ) : null}
             </div>
-            <LanguageSwitcher collapsed={collapsed} />
+            <LanguageSwitcher collapsed={collapsed} className="order-2" />
             </div>
           </div>
         </aside>

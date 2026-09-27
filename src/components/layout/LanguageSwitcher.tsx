@@ -1,8 +1,14 @@
 import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-/** AR / EN control. Sits beside the sidebar profile. */
-export function LanguageSwitcher({ collapsed = false }: { collapsed?: boolean }) {
+/** AR / EN control. Stays on the physical end of the profile row in both directions. */
+export function LanguageSwitcher({
+  collapsed = false,
+  className,
+}: {
+  collapsed?: boolean;
+  className?: string;
+}) {
   const { lang, setLang, t } = useLanguage();
 
   return (
@@ -11,8 +17,9 @@ export function LanguageSwitcher({ collapsed = false }: { collapsed?: boolean })
       aria-label={t("lang.switch")}
       dir="ltr"
       className={cn(
-        "inline-flex shrink-0 items-center rounded-lg border border-white/10 bg-white/[0.04] p-0.5",
+        "inline-flex shrink-0 flex-row items-center rounded-lg border border-white/10 bg-white/[0.04] p-0.5",
         collapsed ? "w-full justify-center" : "",
+        className,
       )}
     >
       <LocaleButton active={lang === "ar"} label={t("lang.ar")} onClick={() => setLang("ar")} />
