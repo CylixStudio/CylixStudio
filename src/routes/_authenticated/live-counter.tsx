@@ -12,12 +12,12 @@ import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useLanguage } from "@/lib/i18n";
 import {
-  lookupChannel,
   searchTwitchChannels,
   type ChannelSearchHit,
   type ChannelSnapshot,
   type CounterPlatform,
 } from "@/lib/liveCounter.functions";
+import { supabase } from "@/lib/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/live-counter")({
   head: () => ({
@@ -41,6 +41,25 @@ export const Route = createFileRoute("/_authenticated/live-counter")({
 });
 
 type Target = { platform: CounterPlatform; username: string };
+
+/** Browser calls our origin only. Platform APIs are fetched by the server route. */
+async function lookupViaProxy(platform: CounterPlatform, username: string): Promise<ChannelSnapshot> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Sign in to look up a channel");
+  const response = await fetch("/api/live-counter/lookup", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ platform, username }),
+  });
+  const payload = (await response.json()) as ChannelSnapshot & { message?: string };
+  if (!response.ok) throw new Error(payload.message || "Channel Not Found");
+  return payload;
+}
+
 type Saved = { platform: string; username: string; displayName: string; avatarUrl: string | null };
 type SuggestionSource = "connected" | "favorite" | "recent" | "twitch";
 type ChannelSuggestion = {
@@ -167,7 +186,6 @@ function RollingCounter({ value, size = "text-7xl" }: { value: number | null; si
  * localStorage, so a failed or empty background poll never blanks the counter.
  */
 function useChannel(target: Target | null) {
-  const run = useServerFn(lookupChannel);
   const query = useQuery({
     queryKey: ["live-counter", target?.platform, target?.username?.toLowerCase()],
     enabled: Boolean(target?.username),
@@ -175,10 +193,7 @@ function useChannel(target: Target | null) {
     refetchIntervalInBackground: true,
     retry: 1,
     placeholderData: (previous: ChannelSnapshot | undefined) => previous,
-    queryFn: async () =>
-      (await run({ data: { platform: target!.platform, username: target!.username } })) as
-        | ChannelSnapshot
-        | undefined,
+    queryFn: () => lookupViaProxy(target!.platform, target!.username),
   });
 
   const key = target ? `${target.platform}:${target.username.trim().toLowerCase()}` : null;
@@ -755,7 +770,6 @@ function errorText(error: unknown, fallback: string): string | null {
 
 function SocialCounterSection() {
   const { t } = useLanguage();
-  const run = useServerFn(lookupChannel);
   const [accounts, setAccounts] = useState<Saved[]>([]);
   const [input, setInput] = useState("");
   const [platform, setPlatform] = useState<Exclude<CounterPlatform, "ALL">>("TWITCH");
@@ -788,13 +802,7 @@ function SocialCounterSection() {
       enabled: Boolean(account.username),
       refetchInterval: 15_000,
       retry: 0,
-      queryFn: async () =>
-        (await run({
-          data: {
-            platform: account.platform as CounterPlatform,
-            username: account.username,
-          },
-        })) as ChannelSnapshot,
+      queryFn: () => lookupViaProxy(account.platform as CounterPlatform, account.username),
     })),
   });
 

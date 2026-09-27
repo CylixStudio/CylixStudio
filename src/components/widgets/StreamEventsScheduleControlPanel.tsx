@@ -55,7 +55,15 @@ export function StreamEventsScheduleControlPanel({
   const queryClient = useQueryClient();
 
   const parsed = parseStreamEventsScheduleConfig(config);
-  const [draftEvents, setDraftEvents] = useState<StreamScheduleEvent[]>(parsed.events);
+  const serverKey = useMemo(() => {
+    const next = parseStreamEventsScheduleConfig(config);
+    return JSON.stringify({
+      title: next.title,
+      showUptime: next.showUptime,
+      events: next.events,
+    });
+  }, [config]);
+  const [draftEvents, setDraftEvents] = useState<StreamScheduleEvent[]>(() => parsed.events);
   const [title, setTitle] = useState(parsed.title);
   const [showUptime, setShowUptime] = useState(parsed.showUptime);
   const [busy, setBusy] = useState<string | null>(null);
@@ -64,10 +72,15 @@ export function StreamEventsScheduleControlPanel({
   const runtime = parseStreamEventsScheduleState(state);
 
   useEffect(() => {
-    setDraftEvents(parsed.events);
-    setTitle(parsed.title);
-    setShowUptime(parsed.showUptime);
-  }, [parsed.events, parsed.title, parsed.showUptime, runtime.revision]);
+    const next = JSON.parse(serverKey) as {
+      title: string;
+      showUptime: boolean;
+      events: StreamScheduleEvent[];
+    };
+    setDraftEvents(next.events);
+    setTitle(next.title);
+    setShowUptime(next.showUptime);
+  }, [serverKey]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 250);
@@ -95,16 +108,18 @@ export function StreamEventsScheduleControlPanel({
     void run("save", async () => {
       const cleaned = draftEvents
         .map((event) => ({
-          ...event,
+          id: event.id,
           title: event.title.trim().slice(0, 80),
           durationSeconds: clampDurationSeconds(event.durationSeconds),
         }))
         .filter((event) => event.title.length > 0);
-      if (cleaned.length === 0) throw new Error("Add at least one event");
+      if (cleaned.length === 0) throw new Error("Add at least one named event");
       await saveList({
-        data: { widgetId, events: cleaned, title, showUptime },
+        data: { widgetId, events: cleaned, title: title.trim(), showUptime },
       });
-      onConfigChange({ ...parsed, events: cleaned, title, showUptime });
+      const next = { ...parsed, events: cleaned, title: title.trim() || parsed.title, showUptime };
+      onConfigChange(next);
+      setDraftEvents(cleaned);
       toast.success("Schedule saved");
     });
 
@@ -260,6 +275,11 @@ export function StreamEventsScheduleControlPanel({
         </div>
 
         <ul className="space-y-2">
+          {draftEvents.length === 0 ? (
+            <li className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+              No events yet. Use Add to create a segment.
+            </li>
+          ) : null}
           {draftEvents.map((event, index) => {
             const active = snapshot.status === "active" && snapshot.current.id === event.id;
             return (
@@ -300,11 +320,10 @@ export function StreamEventsScheduleControlPanel({
                 </label>
                 <button
                   type="button"
-                  disabled={draftEvents.length <= 1}
                   onClick={() =>
                     setDraftEvents((prev) => prev.filter((row) => row.id !== event.id))
                   }
-                  className="rounded-md p-1.5 text-muted-foreground hover:text-rose-400 disabled:opacity-30"
+                  className="rounded-md p-1.5 text-muted-foreground hover:text-rose-400"
                   aria-label="Delete event"
                 >
                   <Trash2 className="size-3.5" aria-hidden />
