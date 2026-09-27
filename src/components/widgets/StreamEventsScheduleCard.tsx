@@ -92,7 +92,7 @@ export function StreamEventsScheduleCard({
         compact ? "p-3" : "p-4",
       )}
       dir="rtl"
-      style={{ fontFamily: style.fontFamily }}
+      style={{ fontFamily: style.fontFamily, fontSize: `${style.fontSize}px` }}
     >
       <div
         className={cn(
@@ -107,11 +107,8 @@ export function StreamEventsScheduleCard({
             aria-hidden
           />
           <span
-            className={cn(
-              "min-w-0 flex-1 truncate font-bold",
-              compact ? "text-[0.68rem]" : "text-[0.78rem]",
-            )}
-            style={{ color: style.accentColor }}
+            className="min-w-0 flex-1 truncate font-bold"
+            style={{ color: style.accentColor, fontSize: `${Math.max(12, Math.round(style.fontSize * 0.42))}px` }}
             dir="auto"
           >
             {eventTitle}
@@ -124,11 +121,11 @@ export function StreamEventsScheduleCard({
         <p
           className={cn(
             "mt-2 font-mono font-bold tabular-nums tracking-wide transition-colors",
-            compact ? "text-lg" : "text-2xl",
             urgency === "critical" && "animate-pulse text-rose-400",
             urgency === "warn" && "text-amber-300",
             urgency === "calm" && "text-zinc-50",
           )}
+          style={{ fontSize: `${Math.max(18, Math.round(style.fontSize * (compact ? 0.72 : 1)))}px` }}
         >
           {snapshot.status === "waiting" ? (
             <span className="inline-flex items-center gap-2 text-zinc-400">
@@ -151,7 +148,10 @@ export function StreamEventsScheduleCard({
           <Clock3 className="size-4 text-[#bee1fc]" aria-hidden />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-[0.9rem] font-medium tracking-tight text-zinc-50">
+          <p
+            className="truncate font-medium tracking-tight text-zinc-50"
+            style={{ fontSize: `${Math.max(13, Math.round(style.fontSize * 0.45))}px` }}
+          >
             {style.title}
           </p>
           <p className="mt-0.5 line-clamp-2 text-[0.72rem] leading-relaxed text-zinc-400">

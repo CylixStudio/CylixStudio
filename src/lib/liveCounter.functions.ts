@@ -82,17 +82,15 @@ export function channelHandle(raw: string): string {
 }
 
 /** Server-side Kick fetch. The browser never calls Kick (CORS and IP blocks). */
-async function kickFetch(url: string): Promise<unknown> {
+async function kickFetchOnce(url: string, userAgent: string): Promise<unknown> {
   try {
     const response = await fetch(url, {
       redirect: "follow",
       headers: {
         accept: "application/json, text/plain, */*",
         "accept-language": "en-US,en;q=0.9",
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "user-agent": userAgent,
         referer: "https://kick.com/",
-        origin: "https://kick.com",
       },
     });
     if (!response.ok) return null;
@@ -102,6 +100,18 @@ async function kickFetch(url: string): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+async function kickFetch(url: string): Promise<unknown> {
+  const agents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "okhttp/4.12.0",
+  ];
+  for (const agent of agents) {
+    const payload = await kickFetchOnce(url, agent);
+    if (payload) return payload;
+  }
+  return null;
 }
 
 function snapshotFromKickV2(payload: KickPayload, fallback: string): ChannelSnapshot | null {
@@ -184,7 +194,20 @@ async function kickChannel(username: string): Promise<ChannelSnapshot | null> {
     const mapped = snapshotFromKickV2(v2, slug);
     if (mapped) return mapped;
   }
-  return kickOfficialChannel(slug);
+  const official = await kickOfficialChannel(slug);
+  if (official) return official;
+
+  const search = asRecord(
+    await kickFetch(`https://kick.com/api/v2/search?searched_word=${encoded}`),
+  );
+  const channels = Array.isArray(search?.["channels"]) ? search["channels"] : [];
+  const match =
+    channels
+      .map((row) => asRecord(row))
+      .find((row) => String(row?.["slug"] ?? row?.["username"] ?? "").toLowerCase() === slug) ??
+    asRecord(channels[0]);
+  if (!match) return null;
+  return snapshotFromKickV2(match as KickPayload, slug);
 }
 
 

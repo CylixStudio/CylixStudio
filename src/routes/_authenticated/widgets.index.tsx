@@ -220,13 +220,6 @@ function WidgetHub() {
                   >
                     Edit
                   </Link>
-                  <Link
-                    to="/widgets/$widgetId/rules"
-                    params={{ widgetId: widget.id }}
-                    className="rounded-lg border border-border px-3 py-1.5 text-sm hover:border-primary hover:text-primary"
-                  >
-                    Rules
-                  </Link>
                   <button
                     type="button"
                     disabled={!widget.is_enabled}

@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, RefreshCw, Trash2 } from "lucide-react";
@@ -29,6 +29,7 @@ import {
   parseEmoteRainConfig,
   parseGoalConfig,
   parseSpinConfig,
+  parseStreamEventsScheduleConfig,
   parseTappersConfig,
   parseTapGoalConfig,
   TAPGOAL_DESIGNS,
@@ -292,8 +293,11 @@ function WidgetBuilder() {
   const set = (key: string, value: unknown) => setConfig((prev) => ({ ...prev, [key]: value }));
 
 
+  const scheduleStyle =
+    widget?.type === "STREAM_EVENTS_SCHEDULE" ? parseStreamEventsScheduleConfig(config) : null;
   const style =
-    widget?.type === "GOAL_BAR"
+    scheduleStyle ??
+    (widget?.type === "GOAL_BAR"
       ? parseGoalConfig(config)
       : widget?.type === "CHAT_BOX"
           ? parseChatConfig(config)
@@ -301,7 +305,7 @@ function WidgetBuilder() {
             ? parseSpinConfig(config)
             : widget?.type === "EMOTE_RAIN"
               ? parseEmoteRainConfig(config)
-              : parseOverlayTheme(config);
+              : parseOverlayTheme(config));
 
   return (
     <AppShell
@@ -313,17 +317,6 @@ function WidgetBuilder() {
       actions={
         widget ? (
           <div className="flex flex-wrap gap-2">
-            {widget.type !== "CHAT_BOX" &&
-            widget.type !== "GOAL_BAR" &&
-            widget.type !== "SUBATHON_TIMER" ? (
-              <Link
-                to="/widgets/$widgetId/rules"
-                params={{ widgetId }}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:border-primary hover:text-primary"
-              >
-                Rules & Logic
-              </Link>
-            ) : null}
             <button
               type="button"
               disabled={!widget.is_enabled || widget.type === "TIKTOK_TAPPERS" || widget.type === "TIKTOK_TAP_GOAL"}
@@ -928,7 +921,9 @@ function WidgetBuilder() {
               />
             ) : null}
 
-            <TestSimulatePanel widgetId={widget.id} type={widget.type} lang={"en"} />
+            {widget.type === "STREAM_EVENTS_SCHEDULE" ? null : (
+              <TestSimulatePanel widgetId={widget.id} type={widget.type} lang={"en"} />
+            )}
 
             <div className="rounded-xl border border-border bg-background p-4">
               <p className={labelClass}>OBS browser source</p>
