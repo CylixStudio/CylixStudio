@@ -135,10 +135,15 @@ function GoalControl() {
                 Progress
               </p>
               <p className="mt-2 font-mono text-4xl font-bold tabular-nums">
-                {goal.current_value.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                <span dir="ltr">
+                  {goal.current_value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                </span>
                 <span className="text-muted-foreground">
                   {" / "}
-                  {goal.target_value.toLocaleString(undefined, { maximumFractionDigits: 2 })}{" "}
+                  <span dir="ltr">
+                    {goal.target_value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                  </span>
+                  {" "}
                   {goal.unit}
                 </span>
               </p>

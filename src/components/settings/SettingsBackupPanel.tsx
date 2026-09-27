@@ -24,7 +24,7 @@ const quietBtn =
   "inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/5 px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground disabled:opacity-50";
 
 export function SettingsBackupPanel() {
-  const { t } = useLanguage();
+  const { t, setLang } = useLanguage();
   const queryClient = useQueryClient();
   const exportFn = useServerFn(exportSettingsBackup);
   const importFn = useServerFn(importSettingsBackup);
@@ -91,6 +91,7 @@ export function SettingsBackupPanel() {
     setApplying(true);
     try {
       writeLocalPrefs(pending.file.prefs);
+      if (pending.file.prefs.language) setLang(pending.file.prefs.language);
 
       if (isTestMode()) {
         applyTestCommandImport(pending.file, mode);

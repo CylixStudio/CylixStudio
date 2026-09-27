@@ -12,6 +12,7 @@ import {
   parseStreamEventsScheduleState,
 } from "@/lib/widgets";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * OBS / hub glass card for the smart broadcast events schedule.
@@ -33,6 +34,7 @@ export function StreamEventsScheduleCard({
   showNav?: boolean;
   compact?: boolean;
 }) {
+  const { t, dir } = useLanguage();
   const style = parseStreamEventsScheduleConfig(config);
   const [now, setNow] = useState(() => Date.now());
 
@@ -60,19 +62,19 @@ export function StreamEventsScheduleCard({
 
   const badge =
     snapshot.status === "waiting"
-      ? "STANDBY"
+      ? t("scheduleCard.standby")
       : snapshot.status === "finished"
-        ? "DONE"
+        ? t("scheduleCard.done")
         : snapshot.phase === "up_next"
-          ? "UP NEXT"
-          : "ON STREAM";
+          ? t("scheduleCard.upNext")
+          : t("scheduleCard.onStream");
 
   const eventTitle =
     snapshot.status === "active"
       ? snapshot.current.title
       : snapshot.status === "finished"
-        ? "Schedule complete"
-        : "Waiting for stream…";
+        ? t("scheduleCard.complete")
+        : t("scheduleCard.waiting");
 
   const countdown =
     snapshot.status === "active"
@@ -91,7 +93,7 @@ export function StreamEventsScheduleCard({
         "w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0c0e14]/78 shadow-[0_18px_60px_rgba(0,0,0,.4)] backdrop-blur-xl",
         compact ? "p-3" : "p-4",
       )}
-      dir="rtl"
+      dir={dir}
       style={{ fontFamily: style.fontFamily, fontSize: `${style.fontSize}px` }}
     >
       <div
@@ -118,7 +120,8 @@ export function StreamEventsScheduleCard({
           </span>
         </div>
 
-        <p
+          <p
+          dir="ltr"
           className={cn(
             "mt-2 font-mono font-bold tabular-nums tracking-wide transition-colors",
             urgency === "critical" && "animate-pulse text-rose-400",
@@ -130,7 +133,7 @@ export function StreamEventsScheduleCard({
           {snapshot.status === "waiting" ? (
             <span className="inline-flex items-center gap-2 text-zinc-400">
               <span className="size-3.5 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent" />
-              Loading
+              {t("scheduleCard.loading")}
             </span>
           ) : (
             countdown
@@ -138,7 +141,7 @@ export function StreamEventsScheduleCard({
         </p>
         {snapshot.status === "active" && snapshot.next ? (
           <p className="mt-1 truncate text-[0.65rem] text-zinc-500" dir="auto">
-            التالي: {snapshot.next.title}
+            {t("scheduleCard.next", { title: snapshot.next.title })}
           </p>
         ) : null}
       </div>
@@ -155,7 +158,7 @@ export function StreamEventsScheduleCard({
             {style.title}
           </p>
           <p className="mt-0.5 line-clamp-2 text-[0.72rem] leading-relaxed text-zinc-400">
-            فعاليات مجدولة على مدار البث مع عداد تنازلي مباشر.
+            {t("scheduleCard.hint")}
           </p>
         </div>
       </div>
@@ -170,7 +173,7 @@ export function StreamEventsScheduleCard({
               )}
               aria-hidden
             />
-            LIVE
+            {t("scheduleCard.live")}
           </span>
           {style.showUptime ? (
             <span className="font-mono normal-case tracking-normal text-zinc-500">

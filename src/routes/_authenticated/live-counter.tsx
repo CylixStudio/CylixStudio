@@ -166,7 +166,11 @@ function RollingCounter({ value, size = "text-7xl" }: { value: number | null; si
   }, [text]);
 
   return (
-    <div className={`flex font-mono font-bold tabular-nums ${size}`} aria-live="polite">
+    <div
+      dir="ltr"
+      className={`flex font-mono font-bold tabular-nums ${size}`}
+      aria-live="polite"
+    >
       {text.split("").map((char, index) => (
         <span
           key={`${index}-${char}`}
@@ -698,12 +702,8 @@ function ChannelCard({
     );
   }
 
-  const growthLabel =
-    growth === null
-      ? null
-      : t("counter.followersToday", {
-          n: `${growth >= 0 ? "+" : ""}${growth.toLocaleString()}`,
-        });
+  const growthCount =
+    growth === null ? null : `${growth >= 0 ? "+" : ""}${growth.toLocaleString("en-US")}`;
 
   return (
     <div className="flex flex-col items-center gap-4 rounded-2xl border border-white/5 p-8 text-center">
@@ -739,20 +739,33 @@ function ChannelCard({
           <span className="size-2 animate-pulse rounded-full bg-primary" aria-hidden />
           {t("counter.livePollingActive")}
         </span>
-        {snapshot.isLive ? (
+            {snapshot.isLive ? (
           <span className="rounded-full bg-destructive/20 px-3 py-1 font-semibold text-destructive">
             {t("counter.onAir")}
-            {snapshot.viewers !== null
-              ? ` ${t("counter.viewersSuffix", { n: snapshot.viewers.toLocaleString() })}`
-              : ""}
+            {snapshot.viewers !== null ? (
+              <>
+                {" · "}
+                <span dir="ltr" className="tabular-nums">
+                  {snapshot.viewers.toLocaleString("en-US")}
+                </span>
+                {" "}
+                {t("counter.viewersSuffix")}
+              </>
+            ) : null}
           </span>
         ) : (
           <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground">
             {t("counter.offline")}
           </span>
         )}
-        {growthLabel ? (
-          <span className="rounded-full border border-[oklch(1_0_0/0.1)] px-3 py-1">{growthLabel}</span>
+        {growthCount !== null ? (
+          <span className="rounded-full border border-[oklch(1_0_0/0.1)] px-3 py-1">
+            <span dir="ltr" className="tabular-nums">
+              {growthCount}
+            </span>
+            {" "}
+            {t("counter.followersToday")}
+          </span>
         ) : null}
       </div>
 
@@ -935,7 +948,9 @@ function SocialCounterSection() {
                 </div>
                 <div className="text-end">
                   {followers !== null ? (
-                    <p className="text-sm font-semibold tabular-nums">{followers.toLocaleString()}</p>
+                    <p dir="ltr" className="text-sm font-semibold tabular-nums">
+                      {followers.toLocaleString("en-US")}
+                    </p>
                   ) : (
                     <p className="max-w-[12rem] text-[0.68rem] leading-snug text-muted-foreground">
                       {queries[index]?.isFetching
@@ -1313,12 +1328,18 @@ function LiveCounterPage() {
                           <RollingCounter value={Math.abs(gap)} size="text-5xl" />
                         </div>
                         <p className="mt-2 text-sm font-semibold">
-                          {t("counter.leadsBy", {
-                            name:
-                              (gap > 0 ? sideA.data?.displayName : sideB.data?.displayName) ??
-                              t("counter.channelFallback"),
-                            n: Math.abs(gap).toLocaleString(),
-                          })}
+                          <span dir="auto">
+                            {(gap > 0 ? sideA.data?.displayName : sideB.data?.displayName) ??
+                              t("counter.channelFallback")}
+                          </span>
+                          {" "}
+                          {t("counter.leadsBy")}
+                          {" "}
+                          <span dir="ltr" className="tabular-nums">
+                            {Math.abs(gap).toLocaleString("en-US")}
+                          </span>
+                          {" "}
+                          {t("counter.leadsByUnit")}
                         </p>
                         {(() => {
                           const a = sideA.data?.followers ?? 0;
@@ -1336,10 +1357,18 @@ function LiveCounterPage() {
                               </div>
                               <div className="mt-2 flex justify-between text-xs text-muted-foreground">
                                 <span>
-                                  {sideA.data?.displayName} · {a.toLocaleString()}
+                                  <span dir="auto">{sideA.data?.displayName}</span>
+                                  {" · "}
+                                  <span dir="ltr" className="tabular-nums">
+                                    {a.toLocaleString("en-US")}
+                                  </span>
                                 </span>
                                 <span>
-                                  {sideB.data?.displayName} · {b.toLocaleString()}
+                                  <span dir="auto">{sideB.data?.displayName}</span>
+                                  {" · "}
+                                  <span dir="ltr" className="tabular-nums">
+                                    {b.toLocaleString("en-US")}
+                                  </span>
                                 </span>
                               </div>
                             </div>

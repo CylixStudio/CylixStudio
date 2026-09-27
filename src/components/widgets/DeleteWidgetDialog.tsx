@@ -17,7 +17,7 @@ export function DeleteWidgetDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, dir, lang } = useLanguage();
   const title = t("home.delete.title");
 
   return (
@@ -25,8 +25,8 @@ export function DeleteWidgetDialog({
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      dir="rtl"
-      lang="ar"
+      dir={dir}
+      lang={lang}
       className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
       onClick={onCancel}
     >

@@ -251,6 +251,9 @@ export function readLocalPrefs(): SettingsBackupPrefs {
 
 export function writeLocalPrefs(prefs: SettingsBackupPrefs) {
   if (typeof window === "undefined") return;
+  if (prefs.language === "ar" || prefs.language === "en") {
+    window.localStorage.setItem(SETTINGS_BACKUP_LANG_KEY, prefs.language);
+  }
   if (typeof prefs.sidebarCollapsed === "boolean") {
     window.localStorage.setItem(SETTINGS_BACKUP_SIDEBAR_KEY, prefs.sidebarCollapsed ? "1" : "0");
   }

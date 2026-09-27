@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { useLanguage } from "@/lib/i18n";
+
 const HUB_LOOP_MS = 10_000;
 const HUB_STAGGER_MS = 500;
 const HUB_SHIFT_MS = 550;
@@ -359,6 +361,7 @@ const HUB_SCHEDULE_EVENTS = [
 ] as const;
 
 export function StreamEventsSchedulePreview() {
+  const { t } = useLanguage();
   const reduced = useReducedMotion();
   const [index, setIndex] = useState(0);
   const [seconds, setSeconds] = useState(HUB_SCHEDULE_EVENTS[0]!.remaining);
@@ -396,7 +399,7 @@ export function StreamEventsSchedulePreview() {
   const warn = seconds <= 120;
 
   return (
-    <div className="grid h-full place-items-center overflow-hidden px-3" dir="rtl">
+    <div className="grid h-full place-items-center overflow-hidden px-3">
       <div
         className="hub-spotlight-card w-full rounded-xl border border-[oklch(1_0_0/0.1)] bg-[oklch(1_0_0/0.05)] px-3 py-2.5 backdrop-blur-sm"
         data-motion={motion}
@@ -405,10 +408,11 @@ export function StreamEventsSchedulePreview() {
           <span className="size-2 rounded-full bg-primary" />
           <span className="truncate text-[0.68rem] font-bold text-primary">{event.title}</span>
           <span className="ms-auto text-[0.5rem] font-bold uppercase tracking-[0.24em] text-muted-foreground">
-            {index === 0 ? "ON STREAM" : "UP NEXT"}
+            {index === 0 ? t("scheduleCard.onStream") : t("scheduleCard.upNext")}
           </span>
         </div>
         <p
+          dir="ltr"
           className={`mt-1.5 font-mono text-[0.95rem] font-bold tabular-nums ${
             urgent ? "animate-pulse text-rose-400" : warn ? "text-amber-300" : "text-zinc-100"
           }`}

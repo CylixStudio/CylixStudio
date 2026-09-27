@@ -95,10 +95,16 @@ export function GoalBarView({
           lineHeight: 1.05,
         }}
       >
-        {current.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        <span dir="ltr">
+          {current.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+        </span>
         <span style={{ opacity: 0.55 }}>
           {" / "}
-          {target.toLocaleString(undefined, { maximumFractionDigits: 2 })} {unit}
+          <span dir="ltr">
+            {target.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+          </span>
+          {" "}
+          {unit}
         </span>
       </span>
 

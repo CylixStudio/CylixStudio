@@ -1,8 +1,12 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 
-export type Lang = "ar";
+import { EN } from "@/lib/i18n.en";
 
-/** Legacy storage key. UI language is Arabic (RTL). */
+export type Lang = "ar" | "en";
+
+export const DEFAULT_LOCALE: Lang = "ar";
+
+/** Persisted UI language. Arabic is the default. */
 export const LANG_STORAGE_KEY = "creovix.lang";
 
 const DICT = {
@@ -831,15 +835,16 @@ const DICT = {
   "counter.followers": "متابعون",
   "counter.livePollingActive": "التتبع المباشر نشط",
   "counter.onAir": "● على الهواء",
-  "counter.viewersSuffix": "· {n} مشاهد",
+  "counter.viewersSuffix": "مشاهد",
   "counter.offline": "أوفلاين",
-  "counter.followersToday": "{n} متابع اليوم",
+  "counter.followersToday": "متابع اليوم",
   "counter.couldNotLoad": "تعذّر تحميل هذه القناة",
   "counter.favorited": "في المفضلة",
   "counter.favorite": "إضافة للمفضلة",
   "counter.deadHeat": "تعادل — القناتان على نفس المستوى.",
   "counter.liveDifference": "الفرق المباشر",
-  "counter.leadsBy": "{name} يتقدّم بـ {n} متابع",
+  "counter.leadsBy": "يتقدّم بـ",
+  "counter.leadsByUnit": "متابع",
   "counter.channelFallback": "قناة",
   "counter.source.connected": "متصل",
   "counter.source.favorite": "مفضلة",
@@ -1037,12 +1042,30 @@ const DICT = {
   "linkInBio.wizard.arrange.clickToSelect": "انقر بلاطة على الصفحة لاختيارها.",
   "linkInBio.wizard.arrange.noPlatforms":
     "لا منصات بعد. ارجع لإضافتها، أو انشر صفحة فارغة من الشريط السفلي.",
+  "lang.switch": "اللغة",
+  "lang.ar": "AR",
+  "lang.en": "EN",
+  "scheduleCard.standby": "استعداد",
+  "scheduleCard.done": "انتهى",
+  "scheduleCard.upNext": "التالي",
+  "scheduleCard.onStream": "على البث",
+  "scheduleCard.loading": "جارٍ التحميل",
+  "scheduleCard.next": "التالي: {title}",
+  "scheduleCard.hint": "فعاليات مجدولة على مدار البث مع عداد تنازلي مباشر.",
+  "scheduleCard.complete": "اكتمل الجدول",
+  "scheduleCard.waiting": "بانتظار البث…",
+  "scheduleCard.live": "مباشر",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;
 
-export function t(key: TranslationKey, vars?: Record<string, string | number>): string {
-  let value = DICT[key] ?? key;
+const CATALOGS: Record<Lang, Record<TranslationKey, string>> = {
+  ar: DICT,
+  en: EN,
+};
+
+export function t(key: TranslationKey, vars?: Record<string, string | number>, lang: Lang = DEFAULT_LOCALE): string {
+  let value = CATALOGS[lang][key] ?? CATALOGS.ar[key] ?? key;
   if (vars) {
     for (const [name, raw] of Object.entries(vars)) {
       value = value.replaceAll(`{${name}}`, String(raw));
@@ -1051,26 +1074,76 @@ export function t(key: TranslationKey, vars?: Record<string, string | number>): 
   return value;
 }
 
+export function localeDir(lang: Lang): "rtl" | "ltr" {
+  return lang === "ar" ? "rtl" : "ltr";
+}
+
+export function readStoredLocale(): Lang {
+  if (typeof window === "undefined") return DEFAULT_LOCALE;
+  return window.localStorage.getItem(LANG_STORAGE_KEY) === "en" ? "en" : DEFAULT_LOCALE;
+}
+
+export function applyDocumentLocale(lang: Lang) {
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = lang;
+  document.documentElement.dir = localeDir(lang);
+}
+
 type LanguageContextValue = {
   lang: Lang;
-  dir: "rtl";
+  dir: "rtl" | "ltr";
   setLang: (lang: string) => void;
   toggleLang: () => void;
-  t: typeof t;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 };
 
-const ARABIC: LanguageContextValue = {
-  lang: "ar",
+const LanguageContext = createContext<LanguageContextValue>({
+  lang: DEFAULT_LOCALE,
   dir: "rtl",
   setLang: () => {},
   toggleLang: () => {},
-  t,
-};
+  t: (key, vars) => t(key, vars, DEFAULT_LOCALE),
+});
 
-const LanguageContext = createContext<LanguageContextValue>(ARABIC);
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  return <LanguageContext.Provider value={ARABIC}>{children}</LanguageContext.Provider>;
+  const [lang, setLangState] = useState<Lang>(DEFAULT_LOCALE);
+
+  useIsoLayoutEffect(() => {
+    const stored = readStoredLocale();
+    setLangState(stored);
+    applyDocumentLocale(stored);
+  }, []);
+
+  const setLang = useCallback((value: string) => {
+    const next: Lang = value === "en" ? "en" : DEFAULT_LOCALE;
+    setLangState(next);
+    window.localStorage.setItem(LANG_STORAGE_KEY, next);
+    applyDocumentLocale(next);
+  }, []);
+
+  const toggleLang = useCallback(() => {
+    setLang(lang === "ar" ? "en" : "ar");
+  }, [lang, setLang]);
+
+  const translate = useCallback(
+    (key: TranslationKey, vars?: Record<string, string | number>) => t(key, vars, lang),
+    [lang],
+  );
+
+  const value = useMemo<LanguageContextValue>(
+    () => ({
+      lang,
+      dir: localeDir(lang),
+      setLang,
+      toggleLang,
+      t: translate,
+    }),
+    [lang, setLang, toggleLang, translate],
+  );
+
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() {

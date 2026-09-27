@@ -499,10 +499,12 @@ function WidgetBuilder() {
                 ) : (
                   <div className="space-y-3 rounded-xl border border-border bg-background p-4">
                     <p className="font-mono text-2xl font-bold tabular-nums">
-                      {goalDraft.current.toLocaleString()}
+                      <span dir="ltr">{goalDraft.current.toLocaleString("en-US")}</span>
                       <span className="text-sm text-muted-foreground">
                         {" / "}
-                        {goalDraft.target.toLocaleString()} {goalDraft.unit}
+                        <span dir="ltr">{goalDraft.target.toLocaleString("en-US")}</span>
+                        {" "}
+                        {goalDraft.unit}
                       </span>
                     </p>
                     <div className="flex flex-wrap gap-2">

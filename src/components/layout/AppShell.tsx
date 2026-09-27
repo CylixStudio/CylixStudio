@@ -25,6 +25,7 @@ import { supabase } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { disableTestMode, isTestMode } from "@/lib/testMode";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import type { Subathon } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 
@@ -104,7 +105,7 @@ function IconTip({
 export function AppShell({ children, title, subtitle, actions, user, profile }: AppShellProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { t } = useLanguage();
+  const { t, dir } = useLanguage();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const [collapsed, setCollapsed] = useState(false);
@@ -239,7 +240,8 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
           </nav>
 
           <div className="mt-auto space-y-2 border-t border-white/10 px-2 py-3">
-            <div ref={profileRef} className="relative">
+            <div className={cn("flex items-center", collapsed ? "flex-col gap-2" : "gap-1.5")}>
+            <div ref={profileRef} className="relative min-w-0 flex-1">
               <IconTip label={t("nav.profile")} collapsed={collapsed}>
                 <button
                   type="button"
@@ -288,7 +290,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                   <button
                     type="button"
                     role="menuitem"
-                    dir="rtl"
+                    dir={dir}
                     onClick={() => {
                       setProfileOpen(false);
                       navigate({ to: "/settings" });
@@ -302,7 +304,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                   <button
                     type="button"
                     role="menuitem"
-                    dir="rtl"
+                    dir={dir}
                     onClick={() => void signOut()}
                     className={`${menuItem} flex-row text-red-500 hover:bg-[rgba(239,68,68,0.15)]`}
                   >
@@ -311,6 +313,8 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                   </button>
                 </div>
               ) : null}
+            </div>
+            <LanguageSwitcher collapsed={collapsed} />
             </div>
           </div>
         </aside>

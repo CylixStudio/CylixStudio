@@ -7,11 +7,11 @@ import { useLanguage } from "@/lib/i18n";
 
 /** Full-page lock shown when a Free account opens a Pro-only feature. */
 export function ProLockedScreen() {
-  const { t } = useLanguage();
+  const { t, dir, lang } = useLanguage();
   const navigate = useNavigate();
 
   return (
-    <div className="ambient-field min-h-screen bg-background px-4 py-24 text-foreground" dir="rtl" lang="ar">
+    <div className="ambient-field min-h-screen bg-background px-4 py-24 text-foreground" dir={dir} lang={lang}>
       <div className="glass-3d mx-auto max-w-md rounded-2xl p-8 text-center">
         <span className="mx-auto grid size-12 place-items-center rounded-xl bg-primary/15 text-primary">
           <Lock className="size-5" aria-hidden />
