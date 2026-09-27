@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ type CreatedBill = {
   billId: number;
 };
 
+type GatewayState = "checking" | "ready" | "missing" | "auth_failed";
+
 export function TuwaiqCheckoutDialog({
   open,
   onOpenChange,
@@ -36,8 +38,45 @@ export function TuwaiqCheckoutDialog({
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [bill, setBill] = useState<CreatedBill | null>(null);
+  const [gateway, setGateway] = useState<GatewayState>("checking");
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setGateway("checking");
+
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) {
+          if (!cancelled) setGateway("missing");
+          return;
+        }
+        const response = await fetch("/api/tuwaiqpay/status", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | { ready?: boolean; reason?: string }
+          | null;
+        if (cancelled) return;
+        if (response.ok && payload?.ready) {
+          setGateway("ready");
+          return;
+        }
+        setGateway(payload?.reason === "auth_failed" ? "auth_failed" : "missing");
+      } catch {
+        if (!cancelled) setGateway("missing");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const submit = async () => {
+    if (gateway !== "ready") return;
     setBusy(true);
     try {
       const { data } = await supabase.auth.getSession();
@@ -63,10 +102,17 @@ export function TuwaiqCheckoutDialog({
         | (CreatedBill & { error?: string })
         | null;
       if (!response.ok || !payload?.link || !payload.billId) {
+        if (payload?.error === "tuwaiqpay_not_configured") {
+          setGateway("missing");
+        } else if (payload?.error === "tuwaiqpay_auth_failed") {
+          setGateway("auth_failed");
+        }
         toast.error(
           payload?.error === "tuwaiqpay_not_configured"
             ? t("gateway.tuwaiq.notConfigured")
-            : t("gateway.tuwaiq.error"),
+            : payload?.error === "tuwaiqpay_auth_failed"
+              ? t("gateway.tuwaiq.authFailed")
+              : t("gateway.tuwaiq.error"),
         );
         return;
       }
@@ -77,6 +123,8 @@ export function TuwaiqCheckoutDialog({
       setBusy(false);
     }
   };
+
+  const gatewayReady = gateway === "ready";
 
   return (
     <Dialog
@@ -123,6 +171,16 @@ export function TuwaiqCheckoutDialog({
               void submit();
             }}
           >
+            {gateway === "checking" ? (
+              <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-muted-foreground">
+                {t("gateway.tuwaiq.checking")}
+              </p>
+            ) : null}
+            {gateway === "missing" || gateway === "auth_failed" ? (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                {gateway === "auth_failed" ? t("gateway.tuwaiq.authFailed") : t("gateway.tuwaiq.notConfigured")}
+              </p>
+            ) : null}
             <label className="block text-sm">
               <span className="text-muted-foreground">{t("gateway.tuwaiq.name")}</span>
               <input
@@ -132,6 +190,7 @@ export function TuwaiqCheckoutDialog({
                 onChange={(event) => setName(event.target.value)}
                 className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2"
                 dir="auto"
+                disabled={!gatewayReady || busy}
               />
             </label>
             <label className="block text-sm">
@@ -145,12 +204,13 @@ export function TuwaiqCheckoutDialog({
                 placeholder="+9665xxxxxxxx"
                 className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2"
                 dir="ltr"
+                disabled={!gatewayReady || busy}
               />
               <span className="mt-1 block text-[0.7rem] text-muted-foreground">
                 {t("gateway.tuwaiq.phoneHint")}
               </span>
             </label>
-            <Button type="submit" disabled={busy} className="w-full">
+            <Button type="submit" disabled={!gatewayReady || busy} className="w-full">
               {busy ? t("gateway.tuwaiq.submitting") : t("gateway.tuwaiq.submit")}
             </Button>
           </form>

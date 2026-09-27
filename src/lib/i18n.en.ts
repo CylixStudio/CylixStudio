@@ -409,6 +409,8 @@ export const EN = {
   "gateway.tuwaiq.qr": "Payment QR",
   "gateway.tuwaiq.error": "Couldn't create the bill. Try again.",
   "gateway.tuwaiq.notConfigured": "The payment gateway is not configured yet.",
+  "gateway.tuwaiq.checking": "Checking the payment gateway…",
+  "gateway.tuwaiq.authFailed": "Couldn't sign in to the payment gateway. Check the merchant credentials.",
   "gateway.billing.selectorLabel": "Billing period",
   "gateway.purchaseType.label": "How do you want Pro?",
   "gateway.purchaseType.direct": "Activate on my account",

@@ -451,6 +451,8 @@ const DICT = {
   "gateway.tuwaiq.qr": "رمز الدفع",
   "gateway.tuwaiq.error": "تعذّر إنشاء الفاتورة. حاول مرة أخرى.",
   "gateway.tuwaiq.notConfigured": "بوابة الدفع غير مهيأة بعد.",
+  "gateway.tuwaiq.checking": "جارٍ التحقق من بوابة الدفع…",
+  "gateway.tuwaiq.authFailed": "تعذّر تسجيل الدخول إلى بوابة الدفع. تحقق من بيانات التاجر.",
   "gateway.billing.selectorLabel": "مدة الفوترة",
   "gateway.purchaseType.label": "كيف تريد Pro؟",
   "gateway.purchaseType.direct": "تفعيل على حسابي",

@@ -51,6 +51,29 @@ export function tuwaiqConfigured(): boolean {
   return Boolean(process.env["TUWAIQPAY_USERNAME"]?.trim() && process.env["TUWAIQPAY_PASSWORD"]?.trim());
 }
 
+export type TuwaiqReadiness = {
+  ready: boolean;
+  reason: "ok" | "missing_credentials" | "auth_failed";
+};
+
+/** Confirms merchant env vars are set and that TuwaiqPay will issue an access token. */
+export async function probeTuwaiqGateway(): Promise<TuwaiqReadiness> {
+  if (!tuwaiqConfigured()) {
+    return { ready: false, reason: "missing_credentials" };
+  }
+  try {
+    const token = await getTuwaiqAccessToken();
+    if (!token) return { ready: false, reason: "auth_failed" };
+    return { ready: true, reason: "ok" };
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "tuwaiqpay_not_configured") {
+      return { ready: false, reason: "missing_credentials" };
+    }
+    return { ready: false, reason: "auth_failed" };
+  }
+}
+
 function languageHeader(): "ar" | "en" {
   return process.env["TUWAIQPAY_LANGUAGE"]?.trim().toLowerCase() === "en" ? "en" : "ar";
 }
