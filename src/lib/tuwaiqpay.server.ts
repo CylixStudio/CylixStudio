@@ -367,10 +367,18 @@ export async function applyTuwaiqWebhook(
     return { matched: true, fulfilled: false };
   }
 
+  const { data: profile } = await admin
+    .from("users")
+    .select("email")
+    .eq("id", row.user_id)
+    .maybeSingle();
+  const profileEmail = profile?.email?.trim().toLowerCase() ?? "";
+  const buyerEmail = profileEmail.includes("@") ? profileEmail : row.buyer_email;
+
   const { fulfillProPurchase } = await import("@/lib/proPurchase.server");
   const amount = typeof bill?.amount === "number" ? bill.amount : Number(row.amount);
   const result = await fulfillProPurchase(admin, {
-    email: row.buyer_email,
+    email: buyerEmail,
     userId: row.user_id,
     interval,
     amountCents: Number.isFinite(amount) ? Math.round(amount * 100) : null,
@@ -380,9 +388,8 @@ export async function applyTuwaiqWebhook(
     phone: row.customer_mobile_phone,
     siteUrl,
     locale: languageHeader(),
-    purchaseType: row.purchase_type === "gift" ? "gift" : "direct",
-    giftRecipientEmail: row.gift_recipient_email,
-    giftMessage: row.gift_message,
+    purchaseType: "direct",
+    emailActivationCode: true,
     buyerName: row.customer_name,
     metadata: {
       billId,

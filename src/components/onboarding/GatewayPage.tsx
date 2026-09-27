@@ -413,6 +413,7 @@ function ProPlanCard({
           <span className="truncate">{t("gateway.purchaseType.gift")}</span>
         </Button>
       </div>
+      <p className="mt-2 text-[0.72rem] leading-relaxed text-zinc-500">{t("gateway.purchaseType.directHint")}</p>
     </article>
   );
 }

@@ -157,6 +157,9 @@ export function TuwaiqCheckoutDialog({
               <span className="text-muted-foreground">{t("gateway.tuwaiq.link")}: </span>
               {bill.link}
             </p>
+            <p className="text-center text-sm text-muted-foreground">
+              {t("gateway.tuwaiq.codeByEmail")}
+            </p>
             <Button asChild className="w-full">
               <a href={bill.link} target="_blank" rel="noreferrer">
                 {t("gateway.tuwaiq.open")}
@@ -176,6 +179,7 @@ export function TuwaiqCheckoutDialog({
                 {t("gateway.tuwaiq.checking")}
               </p>
             ) : null}
+            <p className="text-sm text-muted-foreground">{t("gateway.tuwaiq.codeByEmail")}</p>
             {gateway === "missing" || gateway === "auth_failed" ? (
               <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
                 {gateway === "auth_failed" ? t("gateway.tuwaiq.authFailed") : t("gateway.tuwaiq.notConfigured")}

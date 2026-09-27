@@ -29,6 +29,11 @@ export type FulfillProPurchaseInput = {
   giftRecipientEmail?: string | null;
   giftMessage?: string | null;
   buyerName?: string | null;
+  /**
+   * Paid checkout that must not turn Pro on. A unique code is stored on the
+   * purchase and emailed to the buyer account address for later redemption.
+   */
+  emailActivationCode?: boolean;
 };
 
 export type FulfillProPurchaseResult =
@@ -148,6 +153,45 @@ async function activateProDirectly(
   return { ok: true, expiresAt, isLifetime: lifetime };
 }
 
+async function deliverSelfActivationEmail(args: {
+  toEmail: string;
+  code: string;
+  interval: FulfillProPurchaseInput["interval"];
+  durationDays: number;
+  siteUrl: string;
+  locale: "ar" | "en";
+  purchaseId: string;
+}): Promise<{ delivered: boolean; error?: string }> {
+  const result = await sendTemplateEmail(
+    args.toEmail,
+    {
+      template: "pro_activation",
+      data: {
+        siteUrl: args.siteUrl,
+        code: args.code,
+        interval: args.interval,
+        durationDays: args.durationDays,
+        locale: args.locale,
+      },
+    },
+    {
+      tags: [
+        { name: "template", value: "pro_activation" },
+        { name: "purchase_id", value: args.purchaseId.slice(0, 48) },
+      ],
+    },
+  );
+
+  if (result.ok) return { delivered: true };
+  console.error("[pro-purchase] activation code email failed", {
+    purchaseId: args.purchaseId,
+    email: args.toEmail,
+    error: result.error,
+    skipped: result.skipped,
+  });
+  return { delivered: false, error: result.error };
+}
+
 async function deliverGiftEmail(args: {
   toEmail: string;
   code: string;
@@ -251,6 +295,7 @@ async function resolveBuyerUserId(
 
 /**
  * After a successful Pro payment:
+ * - emailActivationCode → unique code emailed to the buyer; Pro stays off until redeem
  * - purchaseType=direct → activate Pro on the buyer account (no activation code email)
  * - purchaseType=gift → generate a code and email it (recipient email or buyer)
  */
@@ -266,6 +311,7 @@ export async function fulfillProPurchase(
   if (!providerPaymentId) return { ok: false, error: "missing_payment_id" };
 
   const purchaseType: ProPurchaseType = input.purchaseType === "direct" ? "direct" : "gift";
+  const emailActivationCode = input.emailActivationCode === true;
   const giftRecipientEmail = normalizeEmail(input.giftRecipientEmail);
   const giftMessage = input.giftMessage?.trim().slice(0, 500) || null;
   const durationDays = durationDaysForInterval(input.interval, input.durationDays);
@@ -289,6 +335,53 @@ export async function fulfillProPurchase(
   if (existing) {
     const existingType: ProPurchaseType =
       existing.purchase_type === "direct" ? "direct" : "gift";
+
+    if (existing.activation_code_id && existingType === "direct" && !existing.activated_at) {
+      const { data: codeRow, error: codeError } = await admin
+        .from("activation_codes")
+        .select("code, duration_days")
+        .eq("id", existing.activation_code_id)
+        .maybeSingle();
+
+      if (codeError) {
+        console.error("[pro-purchase] code lookup failed", codeError);
+        return { ok: false, error: "code_lookup_failed" };
+      }
+
+      if (codeRow?.code) {
+        let emailStatus: { delivered: boolean; error?: string } = {
+          delivered: Boolean(existing.code_delivered_at),
+        };
+        if (!existing.code_delivered_at) {
+          emailStatus = await deliverSelfActivationEmail({
+            toEmail: email,
+            code: codeRow.code,
+            interval: input.interval,
+            durationDays: codeRow.duration_days,
+            siteUrl: input.siteUrl,
+            locale,
+            purchaseId: existing.id,
+          });
+          if (emailStatus.delivered) {
+            await admin
+              .from("pro_purchases")
+              .update({ code_delivered_at: new Date().toISOString() })
+              .eq("id", existing.id);
+          }
+        }
+        return {
+          ok: true,
+          purchaseId: existing.id,
+          purchaseType: "direct",
+          code: codeRow.code,
+          durationDays: codeRow.duration_days,
+          email: emailStatus,
+          sms: { delivered: false, error: "skipped_idempotent" },
+          idempotent: true,
+          activation: "pending_manual_redeem",
+        };
+      }
+    }
 
     if (existingType === "direct") {
       let emailStatus: { delivered: boolean; error?: string } = {
@@ -382,6 +475,92 @@ export async function fulfillProPurchase(
   }
 
   const userId = await resolveBuyerUserId(admin, input, email);
+
+  if (emailActivationCode) {
+    const codeExpiresAt = new Date(Date.now() + 365 * 86_400_000).toISOString();
+    const notes = `purchase:email-code:${provider}:${providerPaymentId}`;
+    const inserted = await insertUniqueCode(admin, {
+      durationDays,
+      purchaserUserId: userId,
+      notes,
+      codeExpiresAt,
+    });
+    if (!inserted) return { ok: false, error: "code_generation_failed" };
+
+    const { data: purchase, error: purchaseError } = await admin
+      .from("pro_purchases")
+      .insert({
+        user_id: userId,
+        email,
+        billing_interval: input.interval === "custom" ? "custom" : input.interval,
+        duration_days: durationDays,
+        amount_cents: input.amountCents ?? null,
+        currency,
+        provider,
+        provider_payment_id: providerPaymentId,
+        status: "paid",
+        purchase_type: "direct",
+        activated_at: null,
+        gift_recipient_email: null,
+        gift_message: null,
+        activation_code_id: inserted.id,
+        metadata: (input.metadata ?? {}) as Json,
+      })
+      .select("id")
+      .single();
+
+    if (purchaseError || !purchase) {
+      console.error("[pro-purchase] insert activation-code purchase failed", purchaseError);
+      return { ok: false, error: purchaseError?.message ?? "purchase_insert_failed" };
+    }
+
+    const { error: linkError } = await admin
+      .from("activation_codes")
+      .update({ purchase_id: purchase.id })
+      .eq("id", inserted.id);
+    if (linkError) {
+      console.error("[pro-purchase] link code→purchase failed", linkError);
+    }
+
+    const emailStatus = await deliverSelfActivationEmail({
+      toEmail: email,
+      code: inserted.code,
+      interval: input.interval,
+      durationDays,
+      siteUrl: input.siteUrl,
+      locale,
+      purchaseId: purchase.id,
+    });
+
+    if (emailStatus.delivered) {
+      const { error: markError } = await admin
+        .from("pro_purchases")
+        .update({ code_delivered_at: new Date().toISOString() })
+        .eq("id", purchase.id);
+      if (markError) {
+        console.error("[pro-purchase] mark delivered failed", markError);
+      }
+    }
+
+    console.info("[pro-purchase] fulfilled (activation code emailed)", {
+      purchaseId: purchase.id,
+      email,
+      durationDays,
+      emailDelivered: emailStatus.delivered,
+    });
+
+    return {
+      ok: true,
+      purchaseId: purchase.id,
+      purchaseType: "direct",
+      code: inserted.code,
+      durationDays,
+      email: emailStatus,
+      sms: { delivered: false },
+      idempotent: false,
+      activation: "pending_manual_redeem",
+    };
+  }
 
   if (purchaseType === "direct") {
     if (!userId) return { ok: false, error: "direct_requires_user" };

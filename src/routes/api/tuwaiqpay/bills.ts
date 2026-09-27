@@ -73,16 +73,14 @@ export const Route = createFileRoute("/api/tuwaiqpay/bills")({
         }
 
         const emailFromToken = user.email?.trim().toLowerCase() ?? "";
-        let email = emailFromToken;
         const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-        if (!email.includes("@")) {
-          const { data: profile } = await supabaseAdmin
-            .from("users")
-            .select("email")
-            .eq("id", user.id)
-            .maybeSingle();
-          email = profile?.email?.trim().toLowerCase() ?? "";
-        }
+        const { data: profile } = await supabaseAdmin
+          .from("users")
+          .select("email")
+          .eq("id", user.id)
+          .maybeSingle();
+        const profileEmail = profile?.email?.trim().toLowerCase() ?? "";
+        const email = profileEmail.includes("@") ? profileEmail : emailFromToken;
         if (!email.includes("@")) {
           return Response.json({ error: "missing_email" }, { status: 400 });
         }
