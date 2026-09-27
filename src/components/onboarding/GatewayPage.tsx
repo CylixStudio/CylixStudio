@@ -12,10 +12,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 
 import { PlanCompareDialog } from "@/components/onboarding/PlanCompareDialog";
 import { RedeemCodeSection } from "@/components/onboarding/RedeemCodeSection";
+import { TuwaiqCheckoutDialog } from "@/components/subscription/TuwaiqCheckoutDialog";
 import { PlatformAsset } from "@/components/icons/platformAssets";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
@@ -428,6 +428,7 @@ export function GatewayPlansPanel({
   const { user } = useRouteContext({ from: "/_authenticated" });
   const navigate = useNavigate();
   const [compareOpen, setCompareOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [proBilling, setProBilling] = useState<ProBillingInterval>(DEFAULT_PRO_BILLING);
 
   const goDashboard = () => {
@@ -438,14 +439,12 @@ export function GatewayPlansPanel({
   const continueFree = onContinueFree ?? goDashboard;
 
   const activateOnAccount = () => {
-    const payload = prepareProCheckout(proBilling, {
+    prepareProCheckout(proBilling, {
       purchaseType: "direct",
       userId: user.id,
       buyerEmail: user.email ?? null,
     });
-    toast.message(
-      t("gateway.billing.checkoutDirectReady").replace("{amount}", payload.label),
-    );
+    setCheckoutOpen(true);
   };
 
   const openGiftOrCode = () => {
@@ -505,6 +504,13 @@ export function GatewayPlansPanel({
         />
 
         <PlanCompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
+        <TuwaiqCheckoutDialog
+          open={checkoutOpen}
+          onOpenChange={setCheckoutOpen}
+          interval={proBilling}
+          purchaseType="direct"
+          defaultName={user.email?.split("@")[0] ?? ""}
+        />
       </div>
     </TooltipProvider>
   );

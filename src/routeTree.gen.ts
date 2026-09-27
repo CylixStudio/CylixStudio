@@ -57,6 +57,8 @@ import { Route as ApiAuthProviderStartRouteImport } from './routes/api/auth/$pro
 import { Route as ApiAuthCallbackTiktokRouteImport } from './routes/api/auth/callback/tiktok'
 import { Route as ApiAuthSessionFinishRouteImport } from './routes/api/auth/session/finish'
 import { Route as ApiLiveCounterLookupRouteImport } from './routes/api/live-counter/lookup'
+import { Route as ApiTuwaiqpayBillsRouteImport } from './routes/api/tuwaiqpay/bills'
+import { Route as ApiWebhooksTuwaiqpayPaymentRouteImport } from './routes/api/webhooks/tuwaiqpay-payment'
 import { Route as ApiPublicClipIdRouteImport } from './routes/api/public/clip/$id'
 import { Route as ApiPublicWebhooksKickRouteImport } from './routes/api/public/webhooks/kick'
 import { Route as ApiPublicWebhooksProCheckoutRouteImport } from './routes/api/public/webhooks/pro-checkout'
@@ -336,6 +338,16 @@ const ApiLiveCounterLookupRoute = ApiLiveCounterLookupRouteImport.update({
   path: '/api/live-counter/lookup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTuwaiqpayBillsRoute = ApiTuwaiqpayBillsRouteImport.update({
+  id: '/api/tuwaiqpay/bills',
+  path: '/api/tuwaiqpay/bills',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksTuwaiqpayPaymentRoute = ApiWebhooksTuwaiqpayPaymentRouteImport.update({
+  id: '/api/webhooks/tuwaiqpay-payment',
+  path: '/api/webhooks/tuwaiqpay-payment',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicClipIdRoute = ApiPublicClipIdRouteImport.update({
   id: '/api/public/clip/$id',
   path: '/api/public/clip/$id',
@@ -523,6 +535,8 @@ export interface FileRoutesByFullPath {
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
   '/api/auth/session/finish': typeof ApiAuthSessionFinishRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
+  '/api/tuwaiqpay/bills': typeof ApiTuwaiqpayBillsRoute
+  '/api/webhooks/tuwaiqpay-payment': typeof ApiWebhooksTuwaiqpayPaymentRoute
   '/api/public/clip/$id': typeof ApiPublicClipIdRoute
   '/api/public/webhooks/kick': typeof ApiPublicWebhooksKickRoute
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
@@ -595,6 +609,8 @@ export interface FileRoutesByTo {
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
   '/api/auth/session/finish': typeof ApiAuthSessionFinishRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
+  '/api/tuwaiqpay/bills': typeof ApiTuwaiqpayBillsRoute
+  '/api/webhooks/tuwaiqpay-payment': typeof ApiWebhooksTuwaiqpayPaymentRoute
   '/api/public/clip/$id': typeof ApiPublicClipIdRoute
   '/api/public/webhooks/kick': typeof ApiPublicWebhooksKickRoute
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
@@ -670,6 +686,8 @@ export interface FileRoutesById {
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
   '/api/auth/session/finish': typeof ApiAuthSessionFinishRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
+  '/api/tuwaiqpay/bills': typeof ApiTuwaiqpayBillsRoute
+  '/api/webhooks/tuwaiqpay-payment': typeof ApiWebhooksTuwaiqpayPaymentRoute
   '/api/public/clip/$id': typeof ApiPublicClipIdRoute
   '/api/public/webhooks/kick': typeof ApiPublicWebhooksKickRoute
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
@@ -745,6 +763,8 @@ export interface FileRouteTypes {
     | '/api/auth/callback/tiktok'
     | '/api/auth/session/finish'
     | '/api/live-counter/lookup'
+    | '/api/tuwaiqpay/bills'
+    | '/api/webhooks/tuwaiqpay-payment'
     | '/api/public/clip/$id'
     | '/api/public/webhooks/kick'
     | '/api/public/webhooks/pro-checkout'
@@ -817,6 +837,8 @@ export interface FileRouteTypes {
     | '/api/auth/callback/tiktok'
     | '/api/auth/session/finish'
     | '/api/live-counter/lookup'
+    | '/api/tuwaiqpay/bills'
+    | '/api/webhooks/tuwaiqpay-payment'
     | '/api/public/clip/$id'
     | '/api/public/webhooks/kick'
     | '/api/public/webhooks/pro-checkout'
@@ -891,6 +913,8 @@ export interface FileRouteTypes {
     | '/api/auth/callback/tiktok'
     | '/api/auth/session/finish'
     | '/api/live-counter/lookup'
+    | '/api/tuwaiqpay/bills'
+    | '/api/webhooks/tuwaiqpay-payment'
     | '/api/public/clip/$id'
     | '/api/public/webhooks/kick'
     | '/api/public/webhooks/pro-checkout'
@@ -942,6 +966,8 @@ export interface RootRouteChildren {
   ApiAuthCallbackTiktokRoute: typeof ApiAuthCallbackTiktokRoute
   ApiAuthSessionFinishRoute: typeof ApiAuthSessionFinishRoute
   ApiLiveCounterLookupRoute: typeof ApiLiveCounterLookupRoute
+  ApiTuwaiqpayBillsRoute: typeof ApiTuwaiqpayBillsRoute
+  ApiWebhooksTuwaiqpayPaymentRoute: typeof ApiWebhooksTuwaiqpayPaymentRoute
   ApiPublicClipIdRoute: typeof ApiPublicClipIdRoute
   ApiPublicWebhooksKickRoute: typeof ApiPublicWebhooksKickRoute
   ApiPublicWebhooksProCheckoutRoute: typeof ApiPublicWebhooksProCheckoutRoute
@@ -1306,6 +1332,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLiveCounterLookupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tuwaiqpay/bills': {
+      id: '/api/tuwaiqpay/bills'
+      path: '/api/tuwaiqpay/bills'
+      fullPath: '/api/tuwaiqpay/bills'
+      preLoaderRoute: typeof ApiTuwaiqpayBillsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/tuwaiqpay-payment': {
+      id: '/api/webhooks/tuwaiqpay-payment'
+      path: '/api/webhooks/tuwaiqpay-payment'
+      fullPath: '/api/webhooks/tuwaiqpay-payment'
+      preLoaderRoute: typeof ApiWebhooksTuwaiqpayPaymentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/clip/$id': {
       id: '/api/public/clip/$id'
       path: '/api/public/clip/$id'
@@ -1587,6 +1627,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthCallbackTiktokRoute: ApiAuthCallbackTiktokRoute,
   ApiAuthSessionFinishRoute: ApiAuthSessionFinishRoute,
   ApiLiveCounterLookupRoute: ApiLiveCounterLookupRoute,
+  ApiTuwaiqpayBillsRoute: ApiTuwaiqpayBillsRoute,
+  ApiWebhooksTuwaiqpayPaymentRoute: ApiWebhooksTuwaiqpayPaymentRoute,
   ApiPublicClipIdRoute: ApiPublicClipIdRoute,
   ApiPublicWebhooksKickRoute: ApiPublicWebhooksKickRoute,
   ApiPublicWebhooksProCheckoutRoute: ApiPublicWebhooksProCheckoutRoute,
