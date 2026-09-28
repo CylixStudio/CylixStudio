@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ProBillingInterval, ProPurchaseType } from "@/lib/plans";
 import { PRO_BILLING_OPTIONS } from "@/lib/plans";
+import { normalizeCustomerPhone } from "@/lib/phone";
 import type { Database, Json } from "@/lib/supabase/types";
 
 export const TUWAIQPAY_PRODUCTION_URL = "https://onboarding-prod.tuwaiqpay.com.sa";
@@ -247,18 +248,6 @@ function pickText(...values: unknown[]): string {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
-}
-
-/** E.164 phone from an auth profile value. */
-export function normalizeCustomerPhone(raw: string): string | null {
-  let value = raw.replace(/[\s()-]/g, "");
-  if (!value) return null;
-  if (value.startsWith("00")) value = `+${value.slice(2)}`;
-  if (/^05\d{8}$/.test(value)) value = `+966${value.slice(1)}`;
-  if (/^9665\d{8}$/.test(value)) value = `+${value}`;
-  if (/^5\d{8}$/.test(value)) value = `+966${value}`;
-  if (!value.startsWith("+") && /^\d{8,15}$/.test(value)) value = `+${value}`;
-  return /^\+[1-9]\d{7,14}$/.test(value) ? value : null;
 }
 
 /** Name, mobile, and email from the account profile and auth session. */

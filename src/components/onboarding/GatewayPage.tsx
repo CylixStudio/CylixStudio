@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { PhoneOnboardingBanner } from "@/components/account/PhoneOnboardingBanner";
 import { PlanCompareDialog } from "@/components/onboarding/PlanCompareDialog";
 import { RedeemCodeSection } from "@/components/onboarding/RedeemCodeSection";
 import { TuwaiqCheckoutDialog } from "@/components/subscription/TuwaiqCheckoutDialog";
@@ -524,6 +525,7 @@ export function GatewayPlansPanel({
 export function GatewayPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const { user } = useRouteContext({ from: "/_authenticated" });
 
   const goDashboard = () => {
     markGatewayCompleted();
@@ -543,6 +545,7 @@ export function GatewayPage() {
       />
 
       <div className="relative mx-auto flex w-full max-w-5xl flex-col px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+        <PhoneOnboardingBanner userId={user.id} />
         <header className="mx-auto w-full max-w-2xl shrink-0 text-center">
           <div className="mb-4 flex justify-center">
             <BrandLogo markOnly size="lg" className="sm:hidden" />
