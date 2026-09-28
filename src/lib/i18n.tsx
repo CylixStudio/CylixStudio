@@ -434,11 +434,11 @@ const DICT = {
   "gateway.billing.yearly": "سنوي",
   "gateway.billing.save": "وفّر ~{percent}%",
   "gateway.billing.checkoutReady":
-    "تم تجهيز الدفع بمبلغ {amount}. بعد الدفع يُرسل رمز التفعيل إلى بريد حسابك، وتفعّله متى شئت.",
+    "تم تجهيز الدفع بمبلغ {amount}. التفعيل على الحساب يفتح Pro بعد الدفع، وهدية / رمز تفعيل يرسل الرمز إلى بريدك.",
   "gateway.billing.checkoutDirectReady":
-    "تم تجهيز الدفع بمبلغ {amount}. بعد الدفع يُرسل رمز التفعيل إلى بريد حسابك — لن يُفعَّل Pro تلقائياً.",
+    "تم تجهيز الدفع بمبلغ {amount}. بعد الدفع يُفعَّل Pro على حسابك.",
   "gateway.billing.checkoutGiftReady":
-    "تم تجهيز الدفع بمبلغ {amount}. بعد الدفع يُرسل رمز تفعيل هدية بالبريد{recipient}.",
+    "تم تجهيز الدفع بمبلغ {amount}. بعد الدفع يُرسل رمز التفعيل إلى بريد حسابك.",
   "gateway.tuwaiq.title": "الدفع عبر TuwaiqPay",
   "gateway.tuwaiq.name": "اسم العميل",
   "gateway.tuwaiq.phone": "رقم الجوال",
@@ -454,14 +454,15 @@ const DICT = {
   "gateway.tuwaiq.checking": "جارٍ التحقق من بوابة الدفع…",
   "gateway.tuwaiq.authFailed": "تعذّر تسجيل الدخول إلى بوابة الدفع. تحقق من بيانات التاجر.",
   "gateway.tuwaiq.codeByEmail":
-    "بعد اكتمال الدفع نرسل رمز تفعيل فريداً إلى بريد حسابك. لن يُفعَّل Pro تلقائياً — استخدم «هدية / رمز تفعيل» لإدخال الرمز متى شئت.",
+    "بعد اكتمال الدفع نرسل رمز تفعيل فريداً إلى بريد حسابك. لن يُفعَّل Pro تلقائياً — يمكنك إدخاله لاحقاً أو إهداؤه.",
+  "gateway.tuwaiq.directActivates": "بعد اكتمال الدفع يُفعَّل Pro على حسابك تلقائياً.",
+  "gateway.tuwaiq.missingPhone": "لا يوجد رقم جوال على الحساب. أضفه في ملفك ثم أعد المحاولة.",
   "gateway.billing.selectorLabel": "مدة الفوترة",
   "gateway.purchaseType.label": "كيف تريد Pro؟",
   "gateway.purchaseType.direct": "تفعيل على حسابي",
-  "gateway.purchaseType.directHint":
-    "بعد الدفع نرسل رمز التفعيل إلى بريد حسابك. يبقى Pro غير مفعّل حتى تستخدم الرمز.",
+  "gateway.purchaseType.directHint": "يفتح بوابة الدفع فوراً، ويُفعَّل Pro على حسابك بعد نجاح الدفع.",
   "gateway.purchaseType.gift": "هدية / رمز تفعيل",
-  "gateway.purchaseType.giftHint": "لديك رمز؟ أدخله من هنا لتفعيل Pro متى شئت.",
+  "gateway.purchaseType.giftHint": "يرسل رمز تفعيل فريداً إلى بريدك بعد الدفع، دون تفعيل تلقائي.",
   "gateway.gift.recipientLabel": "بريد المستلم (اختياري)",
   "gateway.gift.recipientPlaceholder": "friend@email.com",
   "gateway.gift.recipientHint": "اتركه فارغاً لإرسال الرمز إلى بريدك.",
@@ -517,7 +518,7 @@ const DICT = {
   "gateway.compare.subtitle": "كل إمكانات CylixStudio جنباً إلى جنب.",
   "gateway.compare.feature": "الميزة",
   "gateway.compare.note":
-    "بعد الدفع يُرسل رمز تفعيل إلى بريد الحساب، وتفعّله متى شئت. حدود Free تنطبق على الأوامر والمؤقتات والأدوات المتقدمة.",
+    "التفعيل المباشر يفتح Pro بعد الدفع. هدية / رمز تفعيل يرسل رمزاً إلى بريد الحساب. حدود Free تنطبق على الأوامر والمؤقتات والأدوات المتقدمة.",
   "gateway.feature.platforms": "ربط متعدد المنصات (Twitch و Kick و YouTube و TikTok)",
   "gateway.feature.commands": "أوامر شات مخصصة",
   "gateway.feature.timers": "مؤقتات الرسائل",

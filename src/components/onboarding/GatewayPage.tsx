@@ -413,7 +413,9 @@ function ProPlanCard({
           <span className="truncate">{t("gateway.purchaseType.gift")}</span>
         </Button>
       </div>
-      <p className="mt-2 text-[0.72rem] leading-relaxed text-zinc-500">{t("gateway.purchaseType.directHint")}</p>
+      <p className="mt-2 text-[0.72rem] leading-relaxed text-zinc-500">
+        {t("gateway.purchaseType.directHint")} {t("gateway.purchaseType.giftHint")}
+      </p>
     </article>
   );
 }
@@ -430,6 +432,7 @@ export function GatewayPlansPanel({
   const navigate = useNavigate();
   const [compareOpen, setCompareOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [purchaseType, setPurchaseType] = useState<"direct" | "gift">("direct");
   const [proBilling, setProBilling] = useState<ProBillingInterval>(DEFAULT_PRO_BILLING);
 
   const goDashboard = () => {
@@ -445,16 +448,18 @@ export function GatewayPlansPanel({
       userId: user.id,
       buyerEmail: user.email ?? null,
     });
+    setPurchaseType("direct");
     setCheckoutOpen(true);
   };
 
   const openGiftOrCode = () => {
-    const section = document.getElementById("gateway-redeem");
-    section?.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.setTimeout(() => {
-      const input = section?.querySelector<HTMLInputElement>("input");
-      input?.focus();
-    }, 320);
+    prepareProCheckout(proBilling, {
+      purchaseType: "gift",
+      userId: user.id,
+      buyerEmail: user.email ?? null,
+    });
+    setPurchaseType("gift");
+    setCheckoutOpen(true);
   };
 
   return (
@@ -509,8 +514,7 @@ export function GatewayPlansPanel({
           open={checkoutOpen}
           onOpenChange={setCheckoutOpen}
           interval={proBilling}
-          purchaseType="direct"
-          defaultName={user.email?.split("@")[0] ?? ""}
+          purchaseType={purchaseType}
         />
       </div>
     </TooltipProvider>

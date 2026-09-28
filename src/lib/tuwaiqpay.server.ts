@@ -89,8 +89,17 @@ function paymentMethods(): string[] {
 }
 
 export function currencyId(): number {
-  const parsed = Number(process.env["TUWAIQPAY_CURRENCY_ID"] ?? "1");
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  const parsed = Number(process.env["TUWAIQPAY_CURRENCY_ID"]);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  // TuwaiqPay catalog: 1 = SAR. Pro list prices are USD.
+  return 2;
+}
+
+export const BILL_CURRENCY = "USD" as const;
+
+/** Plan prices are USD with two decimal places. */
+export function formatUsdAmount(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
 }
 
 /** Merchant access token, cached in process memory and refreshed before expiry. */
@@ -220,7 +229,7 @@ export function buildProBillRequest(args: {
   const days = Number(process.env["TUWAIQPAY_BILL_DAYS"] ?? "1");
   return {
     actionDateInDays: Number.isFinite(days) && days >= 1 ? Math.min(Math.round(days), 30) : 1,
-    amount: option.amount,
+    amount: formatUsdAmount(option.amount),
     currencyId: currencyId(),
     supportedPaymentMethods: paymentMethods(),
     description: `CylixStudio Pro (${option.id})`,
@@ -232,6 +241,55 @@ export function buildProBillRequest(args: {
 }
 
 type Admin = SupabaseClient<Database>;
+
+function pickText(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+/** E.164 phone from an auth profile value. */
+export function normalizeCustomerPhone(raw: string): string | null {
+  let value = raw.replace(/[\s()-]/g, "");
+  if (!value) return null;
+  if (value.startsWith("00")) value = `+${value.slice(2)}`;
+  if (/^05\d{8}$/.test(value)) value = `+966${value.slice(1)}`;
+  if (/^9665\d{8}$/.test(value)) value = `+${value}`;
+  if (/^5\d{8}$/.test(value)) value = `+966${value}`;
+  if (!value.startsWith("+") && /^\d{8,15}$/.test(value)) value = `+${value}`;
+  return /^\+[1-9]\d{7,14}$/.test(value) ? value : null;
+}
+
+/** Name, mobile, and email from the account profile and auth session. */
+export async function resolveBuyerContact(
+  admin: Admin,
+  userId: string,
+  claimEmail: string | null,
+): Promise<{ name: string; phone: string | null; email: string | null }> {
+  const { data: profile } = await admin.from("users").select("name, email").eq("id", userId).maybeSingle();
+  const { data: authData } = await admin.auth.admin.getUserById(userId);
+  const authUser = authData.user;
+  const meta = (authUser?.user_metadata ?? {}) as Record<string, unknown>;
+  const emailRaw = pickText(profile?.email, authUser?.email, claimEmail).toLowerCase();
+  const email = emailRaw.includes("@") ? emailRaw : null;
+  const localName = email?.split("@")[0] ?? "";
+  const name = pickText(
+    profile?.name,
+    meta["full_name"],
+    meta["name"],
+    meta["preferred_username"],
+    localName,
+  ).slice(0, 100);
+  const phone = normalizeCustomerPhone(
+    pickText(authUser?.phone, meta["phone"], meta["mobile"], meta["phone_number"], meta["mobile_phone"]),
+  );
+  return {
+    name: name.length >= 2 ? name : "CylixStudio",
+    phone,
+    email,
+  };
+}
 
 export async function saveTuwaiqBill(
   admin: Admin,
@@ -267,6 +325,7 @@ export async function saveTuwaiqBill(
     gift_message: args.giftMessage ?? null,
     metadata: {
       expireDate: args.bill.expireDate,
+      currency: BILL_CURRENCY,
     } as Json,
   });
   if (error) {
@@ -377,19 +436,19 @@ export async function applyTuwaiqWebhook(
 
   const { fulfillProPurchase } = await import("@/lib/proPurchase.server");
   const amount = typeof bill?.amount === "number" ? bill.amount : Number(row.amount);
+  const purchaseType = row.purchase_type === "gift" ? "gift" : "direct";
   const result = await fulfillProPurchase(admin, {
     email: buyerEmail,
     userId: row.user_id,
     interval,
     amountCents: Number.isFinite(amount) ? Math.round(amount * 100) : null,
-    currency: "SAR",
+    currency: BILL_CURRENCY,
     provider: "tuwaiqpay",
     providerPaymentId: `bill:${billId}`,
     phone: row.customer_mobile_phone,
     siteUrl,
     locale: languageHeader(),
-    purchaseType: "direct",
-    emailActivationCode: true,
+    purchaseType,
     buyerName: row.customer_name,
     metadata: {
       billId,

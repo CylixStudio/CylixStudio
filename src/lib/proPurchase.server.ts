@@ -437,17 +437,28 @@ export async function fulfillProPurchase(
           normalizeEmail(existing.gift_recipient_email) ?? email;
 
         if (!existing.code_delivered_at) {
-          emailStatus = await deliverGiftEmail({
-            toEmail: deliverTo,
-            code: codeRow.code,
-            interval: input.interval,
-            durationDays: codeRow.duration_days,
-            siteUrl: input.siteUrl,
-            locale,
-            purchaseId: existing.id,
-            ...(existing.gift_message ? { giftMessage: existing.gift_message } : {}),
-            ...(input.buyerName ? { fromName: input.buyerName } : {}),
-          });
+          const selfAddressed = !normalizeEmail(existing.gift_recipient_email);
+          emailStatus = selfAddressed
+            ? await deliverSelfActivationEmail({
+                toEmail: email,
+                code: codeRow.code,
+                interval: input.interval,
+                durationDays: codeRow.duration_days,
+                siteUrl: input.siteUrl,
+                locale,
+                purchaseId: existing.id,
+              })
+            : await deliverGiftEmail({
+                toEmail: deliverTo,
+                code: codeRow.code,
+                interval: input.interval,
+                durationDays: codeRow.duration_days,
+                siteUrl: input.siteUrl,
+                locale,
+                purchaseId: existing.id,
+                ...(existing.gift_message ? { giftMessage: existing.gift_message } : {}),
+                ...(input.buyerName ? { fromName: input.buyerName } : {}),
+              });
           if (emailStatus.delivered) {
             const { error: markError } = await admin
               .from("pro_purchases")
@@ -686,17 +697,27 @@ export async function fulfillProPurchase(
     console.error("[pro-purchase] link code→purchase failed", linkError);
   }
 
-  const emailStatus = await deliverGiftEmail({
-    toEmail: deliverTo,
-    code: inserted.code,
-    interval: input.interval,
-    durationDays,
-    siteUrl: input.siteUrl,
-    locale,
-    purchaseId: purchase.id,
-    ...(giftMessage ? { giftMessage } : {}),
-    ...(input.buyerName || email ? { fromName: input.buyerName ?? email } : {}),
-  });
+  const emailStatus = giftRecipientEmail
+    ? await deliverGiftEmail({
+        toEmail: deliverTo,
+        code: inserted.code,
+        interval: input.interval,
+        durationDays,
+        siteUrl: input.siteUrl,
+        locale,
+        purchaseId: purchase.id,
+        ...(giftMessage ? { giftMessage } : {}),
+        ...(input.buyerName || email ? { fromName: input.buyerName ?? email } : {}),
+      })
+    : await deliverSelfActivationEmail({
+        toEmail: email,
+        code: inserted.code,
+        interval: input.interval,
+        durationDays,
+        siteUrl: input.siteUrl,
+        locale,
+        purchaseId: purchase.id,
+      });
 
   if (emailStatus.delivered) {
     const { error: markError } = await admin

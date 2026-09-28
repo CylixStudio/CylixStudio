@@ -18,113 +18,93 @@ type CreatedBill = {
   billId: number;
 };
 
-type GatewayState = "checking" | "ready" | "missing" | "auth_failed";
+type Phase = "opening" | "ready" | "missing" | "auth_failed" | "error";
 
 export function TuwaiqCheckoutDialog({
   open,
   onOpenChange,
   interval,
   purchaseType,
-  defaultName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   interval: ProBillingInterval;
   purchaseType: "direct" | "gift";
-  defaultName?: string | null;
 }) {
   const { t } = useLanguage();
-  const [name, setName] = useState(defaultName?.trim() ?? "");
-  const [phone, setPhone] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>("opening");
   const [bill, setBill] = useState<CreatedBill | null>(null);
-  const [gateway, setGateway] = useState<GatewayState>("checking");
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setGateway("checking");
+    setBill(null);
+    setPhase("opening");
 
     void (async () => {
       try {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
         if (!token) {
-          if (!cancelled) setGateway("missing");
+          if (!cancelled) setPhase("error");
           return;
         }
-        const response = await fetch("/api/tuwaiqpay/status", {
+
+        const statusResponse = await fetch("/api/tuwaiqpay/status", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const payload = (await response.json().catch(() => null)) as
+        const statusPayload = (await statusResponse.json().catch(() => null)) as
           | { ready?: boolean; reason?: string }
           | null;
         if (cancelled) return;
-        if (response.ok && payload?.ready) {
-          setGateway("ready");
+        if (!statusResponse.ok || !statusPayload?.ready) {
+          setPhase(statusPayload?.reason === "auth_failed" ? "auth_failed" : "missing");
           return;
         }
-        setGateway(payload?.reason === "auth_failed" ? "auth_failed" : "missing");
+
+        const response = await fetch("/api/tuwaiqpay/bills", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ interval, purchaseType }),
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | (CreatedBill & { error?: string })
+          | null;
+        if (cancelled) return;
+        if (!response.ok || !payload?.link || !payload.billId) {
+          if (payload?.error === "tuwaiqpay_not_configured") setPhase("missing");
+          else if (payload?.error === "tuwaiqpay_auth_failed") setPhase("auth_failed");
+          else setPhase("error");
+          toast.error(
+            payload?.error === "tuwaiqpay_not_configured"
+              ? t("gateway.tuwaiq.notConfigured")
+              : payload?.error === "tuwaiqpay_auth_failed"
+                ? t("gateway.tuwaiq.authFailed")
+                : payload?.error === "missing_phone"
+                  ? t("gateway.tuwaiq.missingPhone")
+                  : t("gateway.tuwaiq.error"),
+          );
+          return;
+        }
+
+        setBill({ link: payload.link, qrCode: payload.qrCode, billId: payload.billId });
+        setPhase("ready");
+        window.open(payload.link, "_blank", "noopener,noreferrer");
       } catch {
-        if (!cancelled) setGateway("missing");
+        if (!cancelled) {
+          setPhase("error");
+          toast.error(t("gateway.tuwaiq.error"));
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [open]);
-
-  const submit = async () => {
-    if (gateway !== "ready") return;
-    setBusy(true);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        toast.error(t("gateway.tuwaiq.error"));
-        return;
-      }
-      const response = await fetch("/api/tuwaiqpay/bills", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          interval,
-          purchaseType,
-          customerName: name.trim(),
-          customerMobilePhone: phone.trim(),
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | (CreatedBill & { error?: string })
-        | null;
-      if (!response.ok || !payload?.link || !payload.billId) {
-        if (payload?.error === "tuwaiqpay_not_configured") {
-          setGateway("missing");
-        } else if (payload?.error === "tuwaiqpay_auth_failed") {
-          setGateway("auth_failed");
-        }
-        toast.error(
-          payload?.error === "tuwaiqpay_not_configured"
-            ? t("gateway.tuwaiq.notConfigured")
-            : payload?.error === "tuwaiqpay_auth_failed"
-              ? t("gateway.tuwaiq.authFailed")
-              : t("gateway.tuwaiq.error"),
-        );
-        return;
-      }
-      setBill({ link: payload.link, qrCode: payload.qrCode, billId: payload.billId });
-    } catch {
-      toast.error(t("gateway.tuwaiq.error"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const gatewayReady = gateway === "ready";
+  }, [open, interval, purchaseType]);
 
   return (
     <Dialog
@@ -138,6 +118,17 @@ export function TuwaiqCheckoutDialog({
         <DialogHeader>
           <DialogTitle>{t("gateway.tuwaiq.title")}</DialogTitle>
         </DialogHeader>
+        {phase === "opening" ? (
+          <p className="text-sm text-muted-foreground">{t("gateway.tuwaiq.submitting")}</p>
+        ) : null}
+        {phase === "missing" || phase === "auth_failed" ? (
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            {phase === "auth_failed" ? t("gateway.tuwaiq.authFailed") : t("gateway.tuwaiq.notConfigured")}
+          </p>
+        ) : null}
+        {phase === "error" && !bill ? (
+          <p className="text-sm text-muted-foreground">{t("gateway.tuwaiq.error")}</p>
+        ) : null}
         {bill ? (
           <div className="space-y-4">
             {bill.qrCode ? (
@@ -158,7 +149,7 @@ export function TuwaiqCheckoutDialog({
               {bill.link}
             </p>
             <p className="text-center text-sm text-muted-foreground">
-              {t("gateway.tuwaiq.codeByEmail")}
+              {purchaseType === "gift" ? t("gateway.tuwaiq.codeByEmail") : t("gateway.tuwaiq.directActivates")}
             </p>
             <Button asChild className="w-full">
               <a href={bill.link} target="_blank" rel="noreferrer">
@@ -166,59 +157,7 @@ export function TuwaiqCheckoutDialog({
               </a>
             </Button>
           </div>
-        ) : (
-          <form
-            className="space-y-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
-            }}
-          >
-            {gateway === "checking" ? (
-              <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-muted-foreground">
-                {t("gateway.tuwaiq.checking")}
-              </p>
-            ) : null}
-            <p className="text-sm text-muted-foreground">{t("gateway.tuwaiq.codeByEmail")}</p>
-            {gateway === "missing" || gateway === "auth_failed" ? (
-              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                {gateway === "auth_failed" ? t("gateway.tuwaiq.authFailed") : t("gateway.tuwaiq.notConfigured")}
-              </p>
-            ) : null}
-            <label className="block text-sm">
-              <span className="text-muted-foreground">{t("gateway.tuwaiq.name")}</span>
-              <input
-                required
-                maxLength={100}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2"
-                dir="auto"
-                disabled={!gatewayReady || busy}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-muted-foreground">{t("gateway.tuwaiq.phone")}</span>
-              <input
-                required
-                inputMode="tel"
-                maxLength={100}
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                placeholder="+9665xxxxxxxx"
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2"
-                dir="ltr"
-                disabled={!gatewayReady || busy}
-              />
-              <span className="mt-1 block text-[0.7rem] text-muted-foreground">
-                {t("gateway.tuwaiq.phoneHint")}
-              </span>
-            </label>
-            <Button type="submit" disabled={!gatewayReady || busy} className="w-full">
-              {busy ? t("gateway.tuwaiq.submitting") : t("gateway.tuwaiq.submit")}
-            </Button>
-          </form>
-        )}
+        ) : null}
       </DialogContent>
     </Dialog>
   );

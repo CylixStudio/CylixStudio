@@ -7,10 +7,6 @@ import type { Database } from "@/lib/supabase/types";
 const BodySchema = z.object({
   interval: z.enum(["monthly", "six_months", "yearly"]),
   purchaseType: z.enum(["direct", "gift"]).default("direct"),
-  customerName: z.string().trim().min(2).max(100),
-  customerMobilePhone: z.string().trim().min(8).max(100),
-  giftRecipientEmail: z.string().email().optional().nullable(),
-  giftMessage: z.string().max(500).optional().nullable(),
 });
 
 async function userFromBearer(request: Request): Promise<{ id: string; email: string | null } | null> {
@@ -56,14 +52,10 @@ export const Route = createFileRoute("/api/tuwaiqpay/bills")({
           return Response.json({ error: "invalid_payload", details: parsed.error.flatten() }, { status: 400 });
         }
 
-        const phone = parsed.data.customerMobilePhone.replace(/\s/g, "");
-        if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
-          return Response.json({ error: "invalid_phone", message: "Mobile must include a country code." }, { status: 400 });
-        }
-
         const {
           buildProBillRequest,
           createTuwaiqBill,
+          resolveBuyerContact,
           saveTuwaiqBill,
           tuwaiqConfigured,
         } = await import("@/lib/tuwaiqpay.server");
@@ -72,36 +64,30 @@ export const Route = createFileRoute("/api/tuwaiqpay/bills")({
           return Response.json({ error: "tuwaiqpay_not_configured" }, { status: 503 });
         }
 
-        const emailFromToken = user.email?.trim().toLowerCase() ?? "";
         const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-        const { data: profile } = await supabaseAdmin
-          .from("users")
-          .select("email")
-          .eq("id", user.id)
-          .maybeSingle();
-        const profileEmail = profile?.email?.trim().toLowerCase() ?? "";
-        const email = profileEmail.includes("@") ? profileEmail : emailFromToken;
-        if (!email.includes("@")) {
+        const contact = await resolveBuyerContact(supabaseAdmin, user.id, user.email);
+        if (!contact.email) {
           return Response.json({ error: "missing_email" }, { status: 400 });
+        }
+        if (!contact.phone) {
+          return Response.json({ error: "missing_phone" }, { status: 400 });
         }
 
         try {
           const bill = await createTuwaiqBill(
             buildProBillRequest({
               interval: parsed.data.interval,
-              customerName: parsed.data.customerName,
-              customerMobilePhone: phone,
+              customerName: contact.name,
+              customerMobilePhone: contact.phone,
             }),
           );
           await saveTuwaiqBill(supabaseAdmin, {
             userId: user.id,
-            email,
+            email: contact.email,
             interval: parsed.data.interval,
             purchaseType: parsed.data.purchaseType,
-            customerName: parsed.data.customerName,
-            customerMobilePhone: phone,
-            giftRecipientEmail: parsed.data.giftRecipientEmail ?? null,
-            giftMessage: parsed.data.giftMessage ?? null,
+            customerName: contact.name,
+            customerMobilePhone: contact.phone,
             bill,
           });
 
