@@ -153,6 +153,45 @@ async function activateProDirectly(
   return { ok: true, expiresAt, isLifetime: lifetime };
 }
 
+async function pause(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Sends an activation-code email, retrying transient provider failures. */
+async function deliverActivationEmail(
+  send: () => ReturnType<typeof sendTemplateEmail>,
+  context: { purchaseId: string; toEmail: string; template: string },
+): Promise<{ delivered: boolean; error?: string }> {
+  const maxAttempts = 3;
+  let lastError = "email_failed";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await send();
+    if (result.ok) {
+      console.info("[pro-purchase] activation email sent", {
+        purchaseId: context.purchaseId,
+        toEmail: context.toEmail,
+        template: context.template,
+        attempt,
+        id: result.id,
+      });
+      return { delivered: true };
+    }
+    lastError = result.error;
+    console.error("[pro-purchase] activation email attempt failed", {
+      purchaseId: context.purchaseId,
+      toEmail: context.toEmail,
+      template: context.template,
+      attempt,
+      maxAttempts,
+      error: result.error,
+      skipped: result.skipped ?? false,
+    });
+    if (result.skipped || attempt === maxAttempts) break;
+    await pause(400 * attempt);
+  }
+  return { delivered: false, error: lastError };
+}
+
 async function deliverSelfActivationEmail(args: {
   toEmail: string;
   code: string;
@@ -162,34 +201,29 @@ async function deliverSelfActivationEmail(args: {
   locale: "ar" | "en";
   purchaseId: string;
 }): Promise<{ delivered: boolean; error?: string }> {
-  const result = await sendTemplateEmail(
-    args.toEmail,
-    {
-      template: "pro_activation",
-      data: {
-        siteUrl: args.siteUrl,
-        code: args.code,
-        interval: args.interval,
-        durationDays: args.durationDays,
-        locale: args.locale,
-      },
-    },
-    {
-      tags: [
-        { name: "template", value: "pro_activation" },
-        { name: "purchase_id", value: args.purchaseId.slice(0, 48) },
-      ],
-    },
+  return deliverActivationEmail(
+    () =>
+      sendTemplateEmail(
+        args.toEmail,
+        {
+          template: "pro_activation",
+          data: {
+            siteUrl: args.siteUrl,
+            code: args.code,
+            interval: args.interval,
+            durationDays: args.durationDays,
+            locale: args.locale,
+          },
+        },
+        {
+          tags: [
+            { name: "template", value: "pro_activation" },
+            { name: "purchase_id", value: args.purchaseId.slice(0, 48) },
+          ],
+        },
+      ),
+    { purchaseId: args.purchaseId, toEmail: args.toEmail, template: "pro_activation" },
   );
-
-  if (result.ok) return { delivered: true };
-  console.error("[pro-purchase] activation code email failed", {
-    purchaseId: args.purchaseId,
-    email: args.toEmail,
-    error: result.error,
-    skipped: result.skipped,
-  });
-  return { delivered: false, error: result.error };
 }
 
 async function deliverGiftEmail(args: {
@@ -203,36 +237,31 @@ async function deliverGiftEmail(args: {
   giftMessage?: string | null;
   fromName?: string | null;
 }): Promise<{ delivered: boolean; error?: string }> {
-  const result = await sendTemplateEmail(
-    args.toEmail,
-    {
-      template: "gift_activation",
-      data: {
-        siteUrl: args.siteUrl,
-        code: args.code,
-        interval: args.interval,
-        durationDays: args.durationDays,
-        locale: args.locale,
-        ...(args.giftMessage ? { giftMessage: args.giftMessage } : {}),
-        ...(args.fromName ? { fromName: args.fromName } : {}),
-      },
-    },
-    {
-      tags: [
-        { name: "template", value: "gift_activation" },
-        { name: "purchase_id", value: args.purchaseId.slice(0, 48) },
-      ],
-    },
+  return deliverActivationEmail(
+    () =>
+      sendTemplateEmail(
+        args.toEmail,
+        {
+          template: "gift_activation",
+          data: {
+            siteUrl: args.siteUrl,
+            code: args.code,
+            interval: args.interval,
+            durationDays: args.durationDays,
+            locale: args.locale,
+            ...(args.giftMessage ? { giftMessage: args.giftMessage } : {}),
+            ...(args.fromName ? { fromName: args.fromName } : {}),
+          },
+        },
+        {
+          tags: [
+            { name: "template", value: "gift_activation" },
+            { name: "purchase_id", value: args.purchaseId.slice(0, 48) },
+          ],
+        },
+      ),
+    { purchaseId: args.purchaseId, toEmail: args.toEmail, template: "gift_activation" },
   );
-
-  if (result.ok) return { delivered: true };
-  console.error("[pro-purchase] gift email failed", {
-    purchaseId: args.purchaseId,
-    email: args.toEmail,
-    error: result.error,
-    skipped: result.skipped,
-  });
-  return { delivered: false, error: result.error };
 }
 
 async function deliverDirectConfirmation(args: {

@@ -358,7 +358,15 @@ export async function applyTuwaiqWebhook(
   admin: Admin,
   payload: TuwaiqWebhookPayload,
   siteUrl: string,
-): Promise<{ matched: boolean; fulfilled: boolean }> {
+): Promise<{
+  matched: boolean;
+  fulfilled: boolean;
+  activation?: "direct" | "pending_manual_redeem";
+  emailDelivered?: boolean;
+  emailError?: string;
+  /** Paid work is not required for this notification (for example a pending bill). */
+  pending?: boolean;
+}> {
   const details = payload.transactionDetails;
   const bill = details?.bill;
   const billId = typeof bill?.id === "number" ? bill.id : Number(bill?.id);
@@ -406,13 +414,18 @@ export async function applyTuwaiqWebhook(
     throw new Error("tuwaiqpay_update_failed");
   }
 
-  if (!PAID_STATUSES.has(status) || !row.user_id || !row.buyer_email) {
+  if (!PAID_STATUSES.has(status)) {
+    return { matched: true, fulfilled: false, pending: true };
+  }
+  if (!row.user_id || !row.buyer_email) {
+    console.error("[tuwaiqpay] paid bill is missing buyer", { billId, status });
     return { matched: true, fulfilled: false };
   }
 
   const interval = row.billing_interval;
   if (interval !== "monthly" && interval !== "six_months" && interval !== "yearly") {
-    return { matched: true, fulfilled: false };
+    console.error("[tuwaiqpay] unsupported billing interval", { billId, interval });
+    return { matched: true, fulfilled: false, pending: true };
   }
 
   const { data: profile } = await admin
@@ -450,5 +463,18 @@ export async function applyTuwaiqWebhook(
     console.error("[tuwaiqpay] fulfill failed", { billId, error: result.error });
     return { matched: true, fulfilled: false };
   }
-  return { matched: true, fulfilled: true };
+  if (result.activation === "pending_manual_redeem" && !result.email.delivered) {
+    console.error("[tuwaiqpay] activation code email undelivered", {
+      billId,
+      purchaseId: result.purchaseId,
+      error: result.email.error ?? "email_failed",
+    });
+  }
+  return {
+    matched: true,
+    fulfilled: true,
+    activation: result.activation,
+    emailDelivered: result.email.delivered,
+    ...(result.email.error ? { emailError: result.email.error } : {}),
+  };
 }
