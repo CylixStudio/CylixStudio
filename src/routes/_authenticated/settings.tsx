@@ -3,7 +3,6 @@ import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { ProfilePhoneEditor } from "@/components/account/ProfilePhoneEditor";
 import { AdminCodesPanel } from "@/components/settings/AdminCodesPanel";
 import { ConnectionsPanel } from "@/components/settings/ConnectionsPanel";
 import { EventTestPanel } from "@/components/settings/EventTestPanel";
@@ -126,7 +125,6 @@ function SettingsPage() {
                 </button>
               </div>
             </div>
-            <ProfilePhoneEditor autoFocus={search.setup === "phone"} />
             <div className="flex flex-wrap items-baseline justify-between gap-3 py-4">
               <p className="text-[0.8rem] text-muted-foreground">{t("settings.profile.login")}</p>
               <p className="max-w-sm text-end text-[0.8rem] text-muted-foreground">

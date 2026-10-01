@@ -19,7 +19,6 @@ import {
 
 import { StreamlabsBridge } from "@/components/layout/StreamlabsBridge";
 import { StreamElementsBridge } from "@/components/layout/StreamElementsBridge";
-import { PhoneOnboardingBanner } from "@/components/account/PhoneOnboardingBanner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/lib/supabase/client";
@@ -331,7 +330,6 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
           style={{ paddingInlineStart: sidebarW }}
         >
           <div className="mx-auto w-full max-w-[1800px] px-4 pb-16 pt-8 md:px-8">
-            <PhoneOnboardingBanner userId={user.id} />
             <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0 text-start">
                 <h1 className="text-[1.6rem] font-semibold tracking-tight">{title}</h1>

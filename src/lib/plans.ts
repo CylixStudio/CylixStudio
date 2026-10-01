@@ -19,7 +19,7 @@ export const PLAN_PRICES = {
   pro: { amount: 9.99, label: "$9.99", period: "/month" },
 } as const;
 
-/** Pro billing intervals for the welcome gateway + future Tuwaiq Pay checkout. */
+/** Pro billing intervals shown on the welcome plan card. */
 export type ProBillingInterval = "monthly" | "six_months" | "yearly";
 
 export type ProBillingOption = {
@@ -77,7 +77,7 @@ export const PRO_BILLING_ORDER: ProBillingInterval[] = ["monthly", "six_months",
 
 export const DEFAULT_PRO_BILLING: ProBillingInterval = "monthly";
 
-/** Payload handed to Tuwaiq Pay (or any checkout adapter) when Unlock Pro is pressed. */
+/** Selected Pro plan stored for a later checkout adapter. */
 export type ProPurchaseType = "direct" | "gift";
 
 export type ProCheckoutPayload = {
@@ -135,8 +135,8 @@ export function buildProCheckoutPayload(
 }
 
 /**
- * Persists the selected Pro checkout so a future Tuwaiq Pay redirect/handler
- * can read the exact total. Returns the payload for immediate use.
+ * Persists the selected Pro plan so a later checkout adapter can read the exact total.
+ * Returns the payload for immediate use.
  */
 export function prepareProCheckout(
   interval: ProBillingInterval,

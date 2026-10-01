@@ -45,9 +45,6 @@ import { Route as USlugRouteImport } from './routes/u.$slug'
 import { Route as AuthenticatedWidgetsIndexRouteImport } from './routes/_authenticated/widgets.index'
 import { Route as AuthenticatedWidgetsWidgetIdRouteImport } from './routes/_authenticated/widgets.$widgetId'
 import { Route as ApiLiveCounterLookupRouteImport } from './routes/api/live-counter/lookup'
-import { Route as ApiTuwaiqpayBillsRouteImport } from './routes/api/tuwaiqpay/bills'
-import { Route as ApiTuwaiqpayStatusRouteImport } from './routes/api/tuwaiqpay/status'
-import { Route as ApiWebhooksTuwaiqpayPaymentRouteImport } from './routes/api/webhooks/tuwaiqpay-payment'
 import { Route as MarksTokenMarkIdRouteImport } from './routes/marks.$token.$markId'
 import { Route as AuthenticatedSubathonsIdControlRouteImport } from './routes/_authenticated/subathons.$id.control'
 import { Route as AuthenticatedSubathonsIdOverlayRouteImport } from './routes/_authenticated/subathons.$id.overlay'
@@ -272,22 +269,6 @@ const ApiLiveCounterLookupRoute = ApiLiveCounterLookupRouteImport.update({
   path: '/api/live-counter/lookup',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiTuwaiqpayBillsRoute = ApiTuwaiqpayBillsRouteImport.update({
-  id: '/api/tuwaiqpay/bills',
-  path: '/api/tuwaiqpay/bills',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiTuwaiqpayStatusRoute = ApiTuwaiqpayStatusRouteImport.update({
-  id: '/api/tuwaiqpay/status',
-  path: '/api/tuwaiqpay/status',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWebhooksTuwaiqpayPaymentRoute =
-  ApiWebhooksTuwaiqpayPaymentRouteImport.update({
-    id: '/api/webhooks/tuwaiqpay-payment',
-    path: '/api/webhooks/tuwaiqpay-payment',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const MarksTokenMarkIdRoute = MarksTokenMarkIdRouteImport.update({
   id: '/$markId',
   path: '/$markId',
@@ -530,9 +511,6 @@ export interface FileRoutesByFullPath {
   '/u/$slug': typeof USlugRoute
   '/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
-  '/api/tuwaiqpay/bills': typeof ApiTuwaiqpayBillsRoute
-  '/api/tuwaiqpay/status': typeof ApiTuwaiqpayStatusRoute
-  '/api/webhooks/tuwaiqpay-payment': typeof ApiWebhooksTuwaiqpayPaymentRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
   '/widgets/': typeof AuthenticatedWidgetsIndexRoute
   '/subathons/$id/control': typeof AuthenticatedSubathonsIdControlRoute
@@ -605,9 +583,6 @@ export interface FileRoutesByTo {
   '/overlay/tiktok-tappers': typeof OverlayTiktokTappersRoute
   '/u/$slug': typeof USlugRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
-  '/api/tuwaiqpay/bills': typeof ApiTuwaiqpayBillsRoute
-  '/api/tuwaiqpay/status': typeof ApiTuwaiqpayStatusRoute
-  '/api/webhooks/tuwaiqpay-payment': typeof ApiWebhooksTuwaiqpayPaymentRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
   '/widgets': typeof AuthenticatedWidgetsIndexRoute
   '/subathons/$id/control': typeof AuthenticatedSubathonsIdControlRoute
@@ -683,9 +658,6 @@ export interface FileRoutesById {
   '/u/$slug': typeof USlugRoute
   '/_authenticated/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
-  '/api/tuwaiqpay/bills': typeof ApiTuwaiqpayBillsRoute
-  '/api/tuwaiqpay/status': typeof ApiTuwaiqpayStatusRoute
-  '/api/webhooks/tuwaiqpay-payment': typeof ApiWebhooksTuwaiqpayPaymentRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
   '/_authenticated/widgets/': typeof AuthenticatedWidgetsIndexRoute
   '/_authenticated/subathons/$id/control': typeof AuthenticatedSubathonsIdControlRoute
@@ -761,9 +733,6 @@ export interface FileRouteTypes {
     | '/u/$slug'
     | '/widgets/$widgetId'
     | '/api/live-counter/lookup'
-    | '/api/tuwaiqpay/bills'
-    | '/api/tuwaiqpay/status'
-    | '/api/webhooks/tuwaiqpay-payment'
     | '/marks/$token/$markId'
     | '/widgets/'
     | '/subathons/$id/control'
@@ -836,9 +805,6 @@ export interface FileRouteTypes {
     | '/overlay/tiktok-tappers'
     | '/u/$slug'
     | '/api/live-counter/lookup'
-    | '/api/tuwaiqpay/bills'
-    | '/api/tuwaiqpay/status'
-    | '/api/webhooks/tuwaiqpay-payment'
     | '/marks/$token/$markId'
     | '/widgets'
     | '/subathons/$id/control'
@@ -913,9 +879,6 @@ export interface FileRouteTypes {
     | '/u/$slug'
     | '/_authenticated/widgets/$widgetId'
     | '/api/live-counter/lookup'
-    | '/api/tuwaiqpay/bills'
-    | '/api/tuwaiqpay/status'
-    | '/api/webhooks/tuwaiqpay-payment'
     | '/marks/$token/$markId'
     | '/_authenticated/widgets/'
     | '/_authenticated/subathons/$id/control'
@@ -975,9 +938,6 @@ export interface RootRouteChildren {
   OverlayTiktokTappersRoute: typeof OverlayTiktokTappersRoute
   USlugRoute: typeof USlugRoute
   ApiLiveCounterLookupRoute: typeof ApiLiveCounterLookupRoute
-  ApiTuwaiqpayBillsRoute: typeof ApiTuwaiqpayBillsRoute
-  ApiTuwaiqpayStatusRoute: typeof ApiTuwaiqpayStatusRoute
-  ApiWebhooksTuwaiqpayPaymentRoute: typeof ApiWebhooksTuwaiqpayPaymentRoute
   ApiAuthProviderCallbackRoute: typeof ApiAuthProviderCallbackRoute
   ApiAuthProviderStartRoute: typeof ApiAuthProviderStartRoute
   ApiAuthCallbackTiktokRoute: typeof ApiAuthCallbackTiktokRoute
@@ -1260,27 +1220,6 @@ declare module '@tanstack/react-router' {
       path: '/api/live-counter/lookup'
       fullPath: '/api/live-counter/lookup'
       preLoaderRoute: typeof ApiLiveCounterLookupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/tuwaiqpay/bills': {
-      id: '/api/tuwaiqpay/bills'
-      path: '/api/tuwaiqpay/bills'
-      fullPath: '/api/tuwaiqpay/bills'
-      preLoaderRoute: typeof ApiTuwaiqpayBillsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/tuwaiqpay/status': {
-      id: '/api/tuwaiqpay/status'
-      path: '/api/tuwaiqpay/status'
-      fullPath: '/api/tuwaiqpay/status'
-      preLoaderRoute: typeof ApiTuwaiqpayStatusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/webhooks/tuwaiqpay-payment': {
-      id: '/api/webhooks/tuwaiqpay-payment'
-      path: '/api/webhooks/tuwaiqpay-payment'
-      fullPath: '/api/webhooks/tuwaiqpay-payment'
-      preLoaderRoute: typeof ApiWebhooksTuwaiqpayPaymentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/marks/$token/$markId': {
@@ -1644,9 +1583,6 @@ const rootRouteChildren: RootRouteChildren = {
   OverlayTiktokTappersRoute: OverlayTiktokTappersRoute,
   USlugRoute: USlugRoute,
   ApiLiveCounterLookupRoute: ApiLiveCounterLookupRoute,
-  ApiTuwaiqpayBillsRoute: ApiTuwaiqpayBillsRoute,
-  ApiTuwaiqpayStatusRoute: ApiTuwaiqpayStatusRoute,
-  ApiWebhooksTuwaiqpayPaymentRoute: ApiWebhooksTuwaiqpayPaymentRoute,
   ApiAuthProviderCallbackRoute: ApiAuthProviderCallbackRoute,
   ApiAuthProviderStartRoute: ApiAuthProviderStartRoute,
   ApiAuthCallbackTiktokRoute: ApiAuthCallbackTiktokRoute,

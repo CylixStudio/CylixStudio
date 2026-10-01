@@ -13,10 +13,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { PhoneOnboardingBanner } from "@/components/account/PhoneOnboardingBanner";
 import { PlanCompareDialog } from "@/components/onboarding/PlanCompareDialog";
 import { RedeemCodeSection } from "@/components/onboarding/RedeemCodeSection";
-import { TuwaiqCheckoutDialog } from "@/components/subscription/TuwaiqCheckoutDialog";
 import { PlatformAsset } from "@/components/icons/platformAssets";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
@@ -432,8 +430,6 @@ export function GatewayPlansPanel({
   const { user } = useRouteContext({ from: "/_authenticated" });
   const navigate = useNavigate();
   const [compareOpen, setCompareOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [purchaseType, setPurchaseType] = useState<"direct" | "gift">("direct");
   const [proBilling, setProBilling] = useState<ProBillingInterval>(DEFAULT_PRO_BILLING);
 
   const goDashboard = () => {
@@ -449,18 +445,15 @@ export function GatewayPlansPanel({
       userId: user.id,
       buyerEmail: user.email ?? null,
     });
-    setPurchaseType("direct");
-    setCheckoutOpen(true);
   };
 
   const openGiftOrCode = () => {
-    prepareProCheckout(proBilling, {
-      purchaseType: "gift",
-      userId: user.id,
-      buyerEmail: user.email ?? null,
-    });
-    setPurchaseType("gift");
-    setCheckoutOpen(true);
+    const section = document.getElementById("gateway-redeem");
+    section?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => {
+      const input = section?.querySelector<HTMLInputElement>("input");
+      input?.focus();
+    }, 320);
   };
 
   return (
@@ -511,12 +504,6 @@ export function GatewayPlansPanel({
         />
 
         <PlanCompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
-        <TuwaiqCheckoutDialog
-          open={checkoutOpen}
-          onOpenChange={setCheckoutOpen}
-          interval={proBilling}
-          purchaseType={purchaseType}
-        />
       </div>
     </TooltipProvider>
   );
@@ -525,7 +512,6 @@ export function GatewayPlansPanel({
 export function GatewayPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const { user } = useRouteContext({ from: "/_authenticated" });
 
   const goDashboard = () => {
     markGatewayCompleted();
@@ -545,7 +531,6 @@ export function GatewayPage() {
       />
 
       <div className="relative mx-auto flex w-full max-w-5xl flex-col px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
-        <PhoneOnboardingBanner userId={user.id} />
         <header className="mx-auto w-full max-w-2xl shrink-0 text-center">
           <div className="mb-4 flex justify-center">
             <BrandLogo markOnly size="lg" className="sm:hidden" />
