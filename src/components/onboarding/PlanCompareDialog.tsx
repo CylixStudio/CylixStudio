@@ -39,15 +39,15 @@ export function PlanCompareDialog({ open, onOpenChange }: PlanCompareDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(88vh,720px)] w-[min(100%,42rem)] max-w-none overflow-hidden border-white/10 bg-zinc-950 p-0 sm:rounded-2xl">
-        <DialogHeader className="border-b border-white/8 px-5 py-4 text-start sm:px-6">
+      <DialogContent className="flex max-h-[85vh] w-[min(100%,42rem)] max-w-none flex-col overflow-hidden border-white/10 bg-zinc-950 p-0 sm:rounded-2xl">
+        <DialogHeader className="shrink-0 border-b border-white/8 px-5 py-4 text-start sm:px-6">
           <DialogTitle className="text-lg tracking-tight">{t("gateway.compare.title")}</DialogTitle>
           <DialogDescription className="text-[0.82rem] text-muted-foreground">
             {t("gateway.compare.subtitle")}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="overflow-auto px-2 pb-5 pt-1 sm:px-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-5 pt-1 sm:px-4">
           <table className="w-full min-w-[28rem] border-collapse text-start">
             <thead>
               <tr className="border-b border-white/8 text-[0.72rem] uppercase tracking-[0.14em] text-muted-foreground">

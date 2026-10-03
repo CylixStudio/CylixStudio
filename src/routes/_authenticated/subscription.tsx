@@ -11,7 +11,7 @@ export const Route = createFileRoute("/_authenticated/subscription")({
       { title: "CylixStudio — الاشتراك" },
       {
         name: "description",
-        content: "Choose Free or Pro, gift an activation code, or redeem a prepaid code.",
+        content: "Choose Free or Pro.",
       },
     ],
   }),

@@ -14,7 +14,6 @@ import {
 import { useState } from "react";
 
 import { PlanCompareDialog } from "@/components/onboarding/PlanCompareDialog";
-import { RedeemCodeSection } from "@/components/onboarding/RedeemCodeSection";
 import { PlatformAsset } from "@/components/icons/platformAssets";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
@@ -448,12 +447,7 @@ export function GatewayPlansPanel({
   };
 
   const openGiftOrCode = () => {
-    const section = document.getElementById("gateway-redeem");
-    section?.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.setTimeout(() => {
-      const input = section?.querySelector<HTMLInputElement>("input");
-      input?.focus();
-    }, 320);
+    void navigate({ to: "/settings", search: { setup: "subscription" } });
   };
 
   return (
@@ -496,12 +490,6 @@ export function GatewayPlansPanel({
           </button>
           <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
         </div>
-
-        <RedeemCodeSection
-          id="gateway-redeem"
-          className="mx-auto w-full max-w-xl shrink-0"
-          onActivated={goDashboard}
-        />
 
         <PlanCompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
       </div>

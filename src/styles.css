@@ -567,6 +567,12 @@ footer.saudi-identity-footer * {
   font-family: var(--font-saudi) !important;
 }
 
+/* Official SBC widget stays mounted so seal.js can emit its URL, but never paints. */
+.sbc-verify-seal,
+.sbc-seal-frame {
+  display: none !important;
+}
+
 [dir="auto"] {
   unicode-bidi: plaintext;
 }
