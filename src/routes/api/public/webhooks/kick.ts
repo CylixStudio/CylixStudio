@@ -123,13 +123,6 @@ function isKickChatEvent(type: string, chat: KickChatFields): boolean {
   if (normalized === "chat.message.sent" || normalized.includes("chat.message")) return true;
   return Boolean(chat.rawText && chat.username !== "Kick viewer");
 }
-  let cur: unknown = obj;
-  for (const key of path) {
-    if (!cur || typeof cur !== "object") return null;
-    cur = (cur as Record<string, unknown>)[key];
-  }
-  return typeof cur === "string" ? cur : typeof cur === "number" ? String(cur) : null;
-}
 
 function normalize(type: string, messageId: string, body: KickPayload): NormalizedEvent | null {
   const base = {
