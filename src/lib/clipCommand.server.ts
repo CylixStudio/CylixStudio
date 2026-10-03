@@ -64,31 +64,45 @@ export async function sendKickChatMessage(
   const body = content.normalize("NFC").trim().slice(0, 480);
   if (!body) return false;
   const broadcasterId = Number(broadcasterUserId);
-  const response = await fetch("https://api.kick.com/public/v1/chat", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json; charset=utf-8",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      // Kick's bot mode posts as the registered app bot to the channel attached
-      // to this broadcaster-authorized token. The broadcaster id is omitted
-      // because Kick explicitly ignores it for bot messages.
-      type: "bot",
+
+  const post = async (payload: Record<string, unknown>) => {
+    const response = await fetch("https://api.kick.com/public/v1/chat", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json; charset=utf-8",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const responseText = await response.text().catch(() => "");
+    return { response, responseText };
+  };
+
+  try {
+    const bot = await post({ type: "bot", content: body });
+    if (bot.response.ok) {
+      console.log("[chat-bot] kick chat response sent", { broadcasterId, mode: "bot", chars: [...body].length });
+      return true;
+    }
+    console.warn("[chat-bot] kick bot send failed", bot.response.status, bot.responseText);
+
+    if (!Number.isSafeInteger(broadcasterId) || broadcasterId <= 0) return false;
+    const user = await post({
+      type: "user",
       content: body,
-    }),
-  });
-  if (!response.ok) {
-    console.warn(
-      "[chat-bot] kick chat send failed",
-      response.status,
-      await response.text().catch(() => ""),
-    );
-  } else {
-    console.log("[chat-bot] kick chat response sent", { broadcasterId, chars: [...body].length });
+      broadcaster_user_id: broadcasterId,
+    });
+    if (!user.response.ok) {
+      console.warn("[chat-bot] kick user send failed", user.response.status, user.responseText);
+      return false;
+    }
+    console.log("[chat-bot] kick chat response sent", { broadcasterId, mode: "user", chars: [...body].length });
+    return true;
+  } catch (error) {
+    console.error("[chat-bot] kick chat send threw", error);
+    return false;
   }
-  return response.ok;
 }
 
 type CreatedClip = {

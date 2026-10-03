@@ -43,8 +43,8 @@ export async function getKickAccessToken(
   if (!data?.access_token) return null;
 
   const scopes = data.scopes ?? [];
-  if (opts?.requireScopes?.length) {
-    const missing = opts.requireScopes.filter((s) => !scopes.includes(s));
+  if (opts?.requireScopes?.length && scopes.length) {
+    const missing = opts.requireScopes.filter((scope) => !scopes.includes(scope));
     if (missing.length) {
       console.warn("[tokens] Kick connection missing scopes", { userId, missing });
       return null;

@@ -13,6 +13,124 @@ function pickString(obj: unknown, ...path: string[]): string | null {
   return typeof cur === "string" ? cur : typeof cur === "number" ? String(cur) : null;
 }
 
+function asRecord(value: unknown): KickPayload | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as KickPayload) : null;
+}
+
+function messageTextFrom(value: unknown, depth = 0): string | null {
+  if (depth > 4) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (typeof value === "number") return String(value);
+  const record = asRecord(value);
+  if (!record) return null;
+  return (
+    messageTextFrom(record["text"], depth + 1) ??
+    messageTextFrom(record["content"], depth + 1) ??
+    messageTextFrom(record["message"], depth + 1) ??
+    messageTextFrom(record["body"], depth + 1)
+  );
+}
+
+function firstString(source: KickPayload, paths: string[][]): string | null {
+  for (const path of paths) {
+    const value = pickString(source, ...path);
+    if (value) return value;
+  }
+  return null;
+}
+
+type KickChatFields = {
+  text: string;
+  rawText: string;
+  username: string;
+  broadcasterId: string | null;
+  senderId: string | null;
+  identityBadges: string[];
+};
+
+function readIdentityBadges(source: KickPayload): string[] {
+  const identity = (source["sender"] as KickPayload | undefined)?.["identity"] as KickPayload | undefined;
+  const badges = identity?.["badges"];
+  if (!Array.isArray(badges)) return [];
+  return badges.map((badge) => {
+    const record = asRecord(badge);
+    return String(record?.["type"] ?? record?.["text"] ?? badge ?? "");
+  });
+}
+
+/** Walks the shapes Kick has used for chat.message.sent, including wrapped `data`. */
+function extractKickChat(body: KickPayload): KickChatFields {
+  const sources = [body, asRecord(body["data"]), asRecord(body["payload"]), asRecord(body["event"])].filter(
+    (source): source is KickPayload => source != null,
+  );
+  let rawText = "";
+  let username = "";
+  let broadcasterId: string | null = null;
+  let senderId: string | null = null;
+  let identityBadges: string[] = [];
+
+  for (const source of sources) {
+    rawText ||=
+      messageTextFrom(source["content"]) ??
+      messageTextFrom(source["message"]) ??
+      messageTextFrom(source["text"]) ??
+      "";
+    username ||=
+      firstString(source, [
+        ["sender", "username"],
+        ["sender", "name"],
+        ["sender", "slug"],
+        ["user", "username"],
+        ["chatter", "username"],
+        ["author", "username"],
+      ]) ?? "";
+    broadcasterId ||= firstString(source, [
+      ["broadcaster", "user_id"],
+      ["broadcaster", "id"],
+      ["broadcaster_user_id"],
+      ["channel", "user_id"],
+      ["channel_id"],
+    ]);
+    senderId ||= firstString(source, [
+      ["sender", "user_id"],
+      ["sender", "id"],
+      ["user", "user_id"],
+      ["user_id"],
+    ]);
+    if (!identityBadges.length) identityBadges = readIdentityBadges(source);
+  }
+
+  const plain = rawText
+    .replace(/\[emote:\d+:[^\]]*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return {
+    text: plain || rawText.trim(),
+    rawText,
+    username: username || "Kick viewer",
+    broadcasterId,
+    senderId,
+    identityBadges,
+  };
+}
+
+function isKickChatEvent(type: string, chat: KickChatFields): boolean {
+  const normalized = type.toLowerCase().replace(/_/g, ".");
+  if (normalized === "chat.message.sent" || normalized.includes("chat.message")) return true;
+  return Boolean(chat.rawText && chat.username !== "Kick viewer");
+}
+  let cur: unknown = obj;
+  for (const key of path) {
+    if (!cur || typeof cur !== "object") return null;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return typeof cur === "string" ? cur : typeof cur === "number" ? String(cur) : null;
+}
+
 function normalize(type: string, messageId: string, body: KickPayload): NormalizedEvent | null {
   const base = {
     platform: "KICK" as const,
@@ -71,16 +189,25 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           headers: { "content-type": "application/json", "cache-control": "no-store" },
         }),
       POST: async ({ request }) => {
-
         const { jsonResponse, ingestEvent, resolveSubathonByPlatformUser } = await import(
           "@/lib/webhooks/ingest.server"
         );
         const { verifyKickSignature } = await import("@/lib/webhooks/verify.server");
 
+        try {
         const publicKeyPem = process.env["KICK_WEBHOOK_PUBLIC_KEY"];
         const hmacSecret = process.env["KICK_WEBHOOK_SECRET"];
         const rawBody = await request.text();
         const messageId = request.headers.get("kick-event-message-id");
+        const headerType = request.headers.get("kick-event-type");
+        console.log(
+          "[kick-webhook] incoming",
+          JSON.stringify({
+            messageId,
+            eventType: headerType,
+            body: rawBody.length > 20000 ? `${rawBody.slice(0, 20000)}…truncated` : rawBody,
+          }),
+        );
         const ok = verifyKickSignature({
           publicKeyPem,
           hmacSecret,
@@ -89,19 +216,38 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           signature: request.headers.get("kick-event-signature"),
           rawBody,
         });
-        if (!ok) return jsonResponse({ error: "invalid_signature" }, 403);
+        if (!ok) {
+          console.error("[kick-webhook] invalid signature", { messageId, eventType: headerType });
+          return jsonResponse({ error: "invalid_signature" }, 403);
+        }
 
         let body: KickPayload;
         try {
           body = JSON.parse(rawBody) as KickPayload;
-        } catch {
+        } catch (error) {
+          console.error("[kick-webhook] invalid json", error);
           return jsonResponse({ error: "invalid_json" }, 400);
         }
 
         const type =
-          request.headers.get("kick-event-type") ??
-          (typeof body["event"] === "string" ? (body["event"] as string) : "");
+          headerType ||
+          (typeof body["event"] === "string" ? body["event"] : "") ||
+          (typeof body["type"] === "string" ? body["type"] : "") ||
+          (typeof body["event_type"] === "string" ? body["event_type"] : "");
         const normalizedType = type.toLowerCase().replace(/_/g, ".");
+        const chat = extractKickChat(body);
+        console.log(
+          "[kick-webhook] parsed",
+          JSON.stringify({
+            messageId,
+            eventType: type || null,
+            normalizedType,
+            username: chat.username,
+            text: chat.text,
+            broadcasterId: chat.broadcasterId,
+            senderId: chat.senderId,
+          }),
+        );
         const looksLikeRewardRedemption =
           normalizedType.includes("reward") && normalizedType.includes("redemption");
         if (looksLikeRewardRedemption) {
@@ -110,28 +256,23 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           console.log("[kick-webhook] media request pipeline result", JSON.stringify({ type, messageId, result }));
           return jsonResponse(result);
         }
-        if (normalizedType === "chat.message.sent") {
-          const broadcasterId = pickString(body, "broadcaster", "user_id");
-          const text = pickString(body, "content") ?? "";
-          const username = pickString(body, "sender", "username") ?? "Kick viewer";
-          if (!broadcasterId) return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+        if (isKickChatEvent(type, chat)) {
+          const { broadcasterId, text, username, senderId, identityBadges } = chat;
+          if (!broadcasterId) {
+            console.warn("[kick-webhook] chat ignored — no broadcaster id", { messageId, eventType: type });
+            return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+          }
           const { supabaseAdmin } = await import("@/lib/supabase/client.server");
           const { data: connection } = await supabaseAdmin.from("platform_connections")
             .select("user_id").eq("platform", "KICK").eq("platform_user_id", broadcasterId)
             .eq("is_active", true).maybeSingle();
-          if (!connection) return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
+          if (!connection) {
+            console.warn("[kick-webhook] chat ignored — no Kick connection", { messageId, broadcasterId });
+            return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
+          }
 
           const { deferRequestWork } = await import("@/lib/requestContext.server");
           const { handleClipCommand, warmKickClipBuffer } = await import("@/lib/clipCommand.server");
-
-          const identity = (body["sender"] as Record<string, unknown> | undefined)?.["identity"] as
-            | Record<string, unknown>
-            | undefined;
-          const identityBadges = Array.isArray(identity?.["badges"])
-            ? (identity["badges"] as Array<Record<string, unknown>>).map((badge) =>
-                String(badge["type"] ?? badge["text"] ?? ""),
-              )
-            : [];
 
           if (/^!clip\b/i.test(text.trim())) {
             const command = handleClipCommand({
@@ -140,7 +281,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
               text,
               sender: {
                 username,
-                platformId: pickString(body, "sender", "user_id"),
+                platformId: senderId,
                 identityBadges,
               },
             });
@@ -173,7 +314,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                 text,
                 sender: {
                   username,
-                  platformId: pickString(body, "sender", "user_id"),
+                  platformId: senderId,
                   identityBadges,
                 },
               })
@@ -191,9 +332,12 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             return jsonResponse({ status: "accepted", command: markMatch.kind });
           }
 
-          deferRequestWork(
-            request,
-            (async () => {
+          let commandResult: { status: string; reason?: string; command?: string } = {
+            status: "ignored",
+            reason: "empty_text",
+          };
+          if (text) {
+            try {
               const { handleDefaultChatCommand } = await import("@/lib/defaultCommands.server");
               const defaultResult = await handleDefaultChatCommand({
                 userId: connection.user_id,
@@ -202,27 +346,30 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                 text,
                 sender: { username },
               });
-              if (defaultResult.status !== "ignored") {
-                console.log("[kick-webhook] default command", { messageId, ...defaultResult });
-                return;
+              commandResult = defaultResult;
+              if (defaultResult.status === "ignored" && defaultResult.reason !== "cooldown") {
+                const { handleCustomChatCommand } = await import("@/lib/customCommands.server");
+                commandResult = await handleCustomChatCommand({
+                  userId: connection.user_id,
+                  broadcasterUserId: broadcasterId,
+                  platform: "KICK",
+                  text,
+                  sender: { username, identityBadges },
+                });
               }
-              if (defaultResult.reason === "cooldown") return;
-
-              const { handleCustomChatCommand } = await import("@/lib/customCommands.server");
-              const result = await handleCustomChatCommand({
-                userId: connection.user_id,
-                broadcasterUserId: broadcasterId,
-                platform: "KICK",
-                text,
-                sender: { username, identityBadges },
-              });
-              console.log("[kick-webhook] custom command", {
+              console.log("[kick-webhook] chat command", {
                 messageId,
+                username,
                 text: text.slice(0, 80),
-                ...result,
+                ...commandResult,
               });
-            })().catch((error) => console.error("[kick-webhook] chat command failed", error)),
-          );
+            } catch (error) {
+              console.error("[kick-webhook] chat command failed", error);
+              commandResult = { status: "error", reason: "command_threw" };
+            }
+          } else {
+            console.warn("[kick-webhook] chat event had no message text", { messageId, eventType: type });
+          }
 
           // Giveaway keyword entries are captured server-side so they land
           // even when nobody has the dashboard open.
@@ -256,11 +403,14 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             username,
             text,
           });
-          return jsonResponse(result);
+          return jsonResponse({ ...result, command: commandResult });
         }
 
         const normalized = normalize(type, messageId ?? "", body);
-        if (!normalized) return jsonResponse({ status: "ignored", reason: "unsupported_type" });
+        if (!normalized) {
+          console.log("[kick-webhook] ignored unsupported event", { messageId, eventType: type || null });
+          return jsonResponse({ status: "ignored", reason: "unsupported_type" });
+        }
 
         const broadcasterId =
           pickString(body, "broadcaster", "user_id") ??
@@ -274,6 +424,10 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
 
         const result = await ingestEvent(supabaseAdmin, target, normalized);
         return jsonResponse(result);
+        } catch (error) {
+          console.error("[kick-webhook] unhandled failure", error);
+          return jsonResponse({ error: "webhook_failed" }, 500);
+        }
       },
     },
   },
