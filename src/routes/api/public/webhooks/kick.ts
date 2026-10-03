@@ -201,17 +201,19 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             body: rawBody.length > 20000 ? `${rawBody.slice(0, 20000)}…truncated` : rawBody,
           }),
         );
-        const ok = verifyKickSignature({
+        const signature = request.headers.get("kick-event-signature");
+        const timestamp = request.headers.get("kick-event-message-timestamp");
+        const verification = verifyKickSignature({
           publicKeyPem,
           hmacSecret,
           messageId,
-          timestamp: request.headers.get("kick-event-message-timestamp"),
-          signature: request.headers.get("kick-event-signature"),
+          timestamp,
+          signature,
           rawBody,
         });
-        if (!ok) {
-          console.error("[kick-webhook] invalid signature", { messageId, eventType: headerType });
-          return jsonResponse({ error: "invalid_signature" }, 403);
+        if (!verification.ok) {
+          console.error("[kick-webhook] invalid signature", JSON.stringify(verification));
+          return jsonResponse({ error: "invalid_signature", reason: verification.reason }, 403);
         }
 
         let body: KickPayload;
