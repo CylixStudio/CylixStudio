@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { resolveSbcCertificateUrl } from "@/lib/sbcSeal.functions";
 import { cn } from "@/lib/utils";
 
 const SBC_SEAL_SCRIPT = "https://eauthenticate.saudibusiness.gov.sa/EAuthSealApi/seal.js";
@@ -9,46 +10,97 @@ type SaudiBusinessSealProps = {
   className?: string;
 };
 
-function isOfficialSealUrl(value: string): boolean {
+function isCertificateUrl(value: string): boolean {
   try {
     const url = new URL(value, window.location.origin);
     return (
       url.protocol === "https:" &&
       url.hostname === "eauthenticate.saudibusiness.gov.sa" &&
-      (url.pathname.includes("/certificate-details/") || url.pathname.includes("/EAuthSealApi/seal"))
+      (url.pathname.includes("/certificate-details/") || url.pathname.includes("/request/"))
     );
   } catch {
     return false;
   }
 }
 
-/** Prefer a certificate page over the seal widget iframe when both exist. */
-function readSealHref(): string | null {
-  const nodes = document.querySelectorAll(
-    ".sbc-verify-seal a[href], .sbc-verify-seal iframe[src], .sbc-seal-frame[src]",
-  );
-  let widgetUrl: string | null = null;
-  for (const node of nodes) {
-    const value = node.getAttribute("href") ?? node.getAttribute("src");
-    if (!value || !isOfficialSealUrl(value)) continue;
-    if (value.includes("/certificate-details/")) return value;
-    widgetUrl = value;
+function absoluteCertificateHref(value: string, base?: string): string | null {
+  try {
+    const url = new URL(value, base);
+    return isCertificateUrl(url.href) ? url.href : null;
+  } catch {
+    return null;
   }
-  return widgetUrl;
+}
+
+/** Read a certificate anchor the seal script placed in the parent document. */
+function readDirectCertificateHref(): string | null {
+  const anchors = document.querySelectorAll<HTMLAnchorElement>(
+    ".sbc-verify-seal a[href], .sbc-seal-frame a[href]",
+  );
+  for (const anchor of anchors) {
+    const href = absoluteCertificateHref(anchor.getAttribute("href") ?? "", anchor.href);
+    if (href) return href;
+  }
+  return null;
+}
+
+/** The certificate link lives inside the seal iframe. Same-origin reads work; cross-origin throws. */
+function readFrameCertificateHref(frame: HTMLIFrameElement): string | null {
+  try {
+    const anchor = frame.contentDocument?.querySelector<HTMLAnchorElement>(
+      "a.sbc-link, a[href*='certificate-details'], a[href*='/request/']",
+    );
+    if (!anchor) return null;
+    return absoluteCertificateHref(anchor.getAttribute("href") ?? anchor.href, frame.src);
+  } catch {
+    return null;
+  }
+}
+
+function findSealFrame(): HTMLIFrameElement | null {
+  const frame = document.querySelector(".sbc-verify-seal iframe, iframe.sbc-seal-frame");
+  return frame instanceof HTMLIFrameElement ? frame : null;
 }
 
 /**
  * Dashboard footer identity. The official SBC seal stays in the DOM so seal.js
- * can build the verification URL, but it is not shown. The custom link stays
- * unavailable until that URL is copied onto it.
+ * can run, but it is not shown. The custom link stays hidden until the
+ * certificate page URL (not the seal frame) is known.
  */
 export function SaudiBusinessSeal({ className }: SaudiBusinessSealProps) {
   const [sealHref, setSealHref] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    let lookupStarted = false;
+
+    const publish = (href: string | null) => {
+      if (!cancelled && href) setSealHref(href);
+    };
+
     const apply = () => {
-      const href = readSealHref();
-      if (href) setSealHref(href);
+      const direct = readDirectCertificateHref();
+      if (direct) {
+        publish(direct);
+        return;
+      }
+
+      const frame = findSealFrame();
+      if (!frame?.src) return;
+
+      const fromFrame = readFrameCertificateHref(frame);
+      if (fromFrame) {
+        publish(fromFrame);
+        return;
+      }
+
+      if (lookupStarted) return;
+      lookupStarted = true;
+      void resolveSbcCertificateUrl({ data: { sealUrl: frame.src } })
+        .then((result) => publish(result.href))
+        .catch(() => {
+          lookupStarted = false;
+        });
     };
 
     const observer = new MutationObserver(apply);
@@ -72,7 +124,10 @@ export function SaudiBusinessSeal({ className }: SaudiBusinessSealProps) {
       document.body.appendChild(script);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
   }, []);
 
   return (
