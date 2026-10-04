@@ -31,17 +31,43 @@ export function customerDisplayName(input: {
   return "CylixStudio";
 }
 
-function configuredApiKey(): string | null {
-  const explicit = process.env["STREAMPAY_X_API_KEY"]?.trim();
-  if (explicit) return explicit;
-  return derivedApiKey();
+function cleanEnv(name: string): string {
+  let value = process.env[name]?.trim() ?? "";
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  return value;
 }
 
-function derivedApiKey(): string | null {
-  const key = process.env["STREAMPAY_API_KEY"]?.trim();
-  const secret = process.env["STREAMPAY_SECRET_KEY"]?.trim();
-  if (!key || !secret) return null;
-  return Buffer.from(`${key}:${secret}`, "utf8").toString("base64");
+/** StreamPay auth is `x-api-key: base64(api-key:api-secret)`, not a Bearer token. */
+function configuredApiKey(): { value: string; source: string } | null {
+  const apiKey = cleanEnv("STREAMPAY_API_KEY");
+  const secret = cleanEnv("STREAMPAY_SECRET_KEY");
+  if (apiKey && secret) {
+    return {
+      value: Buffer.from(`${apiKey}:${secret}`, "utf8").toString("base64"),
+      source: "STREAMPAY_API_KEY:STREAMPAY_SECRET_KEY",
+    };
+  }
+
+  const explicit = cleanEnv("STREAMPAY_X_API_KEY");
+  if (!explicit) return null;
+  const decoded = Buffer.from(explicit, "base64").toString("utf8");
+  const splitAt = decoded.indexOf(":");
+  const printable = /^[\x20-\x7e]+$/.test(decoded);
+  if (splitAt > 0 && printable) {
+    return {
+      value: Buffer.from(decoded, "utf8").toString("base64"),
+      source: "STREAMPAY_X_API_KEY",
+    };
+  }
+  console.error(
+    "[streampay] STREAMPAY_X_API_KEY is not base64(api-key:api-secret). Set STREAMPAY_API_KEY and STREAMPAY_SECRET_KEY.",
+  );
+  return null;
 }
 
 function webhookSecret(): string | null {
@@ -53,37 +79,74 @@ function webhookSecret(): string | null {
   return secret || null;
 }
 
+function streamPayErrorMessage(json: unknown): string {
+  const record = asRecord(json);
+  const error = asRecord(record?.["error"]);
+  const detail = record?.["detail"];
+  const detailText = Array.isArray(detail)
+    ? detail
+        .map((item) => {
+          const row = asRecord(item);
+          const loc = Array.isArray(row?.["loc"]) ? row["loc"].join(".") : "";
+          const msg = typeof row?.["msg"] === "string" ? row["msg"] : "";
+          return [loc, msg].filter(Boolean).join(": ");
+        })
+        .filter(Boolean)
+        .join("; ")
+    : typeof detail === "string"
+      ? detail
+      : "";
+  return (
+    (typeof error?.["additional_info"] === "string" && error["additional_info"]) ||
+    (typeof error?.["message"] === "string" && error["message"]) ||
+    detailText ||
+    (typeof record?.["message"] === "string" && record["message"]) ||
+    "streampay_request_failed"
+  );
+}
+
+function logStreamPayFailure(step: string, result: { status: number; json: unknown }) {
+  console.error("[streampay] request failed", {
+    step,
+    status: result.status,
+    keySource: configuredApiKey()?.source ?? "missing",
+    message: streamPayErrorMessage(result.json),
+  });
+}
+
 async function streampay(
   method: "GET" | "POST",
   path: string,
   body?: Json,
-  apiKey = configuredApiKey(),
 ): Promise<{ status: number; json: unknown }> {
-  if (!apiKey) return { status: 503, json: { error: "streampay_not_configured" } };
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(12000),
-  });
-  const text = await response.text();
-  let json: unknown = null;
-  if (text) {
-    try {
-      json = JSON.parse(text) as unknown;
-    } catch {
-      json = { raw: text.slice(0, 500) };
+  const key = configuredApiKey();
+  if (!key) return { status: 503, json: { error: { message: "streampay_not_configured" } } };
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "x-api-key": key.value,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(12000),
+    });
+    const text = await response.text();
+    let json: unknown = null;
+    if (text) {
+      try {
+        json = JSON.parse(text) as unknown;
+      } catch {
+        json = { message: text.slice(0, 500) };
+      }
     }
+    return { status: response.status, json };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "streampay_network_error";
+    console.error("[streampay] request threw", { step: `${method} ${path}`, message });
+    return { status: 502, json: { error: { message } } };
   }
-  if (response.status === 401) {
-    const fallback = derivedApiKey();
-    if (fallback && fallback !== apiKey) return streampay(method, path, body, fallback);
-  }
-  return { status: response.status, json };
 }
 
 function asRecord(value: unknown): Json | null {
@@ -98,7 +161,16 @@ function readId(value: unknown): string | null {
 
 function readUrl(value: unknown): string | null {
   const record = asRecord(value);
-  const url = record?.["url"] ?? record?.["checkout_url"] ?? record?.["payment_url"];
+  if (!record) return null;
+  const nested = asRecord(record["data"]) ?? asRecord(record["payment_link"]);
+  const url =
+    record["url"] ??
+    record["checkout_url"] ??
+    record["payment_url"] ??
+    record["link"] ??
+    nested?.["url"] ??
+    nested?.["checkout_url"] ??
+    nested?.["payment_url"];
   return typeof url === "string" && url.startsWith("https://") ? url : null;
 }
 
@@ -139,16 +211,12 @@ async function ensureProduct(interval: ProBillingInterval, name: string, amount:
   for (const body of attempts) {
     const created = await streampay("POST", "/products", body);
     const id = readId(created.json) ?? readId(asRecord(created.json)?.["data"]);
-    if (id) {
+    if (created.status >= 200 && created.status < 300 && id) {
       productIds.set(interval, id);
       return id;
     }
-    if (created.status !== 422 && created.status !== 400) {
-      console.error("[streampay] product create failed", { status: created.status, interval });
-      return null;
-    }
+    logStreamPayFailure("create_product", created);
   }
-  console.error("[streampay] product create rejected", { interval });
   return null;
 }
 
@@ -166,7 +234,8 @@ async function ensureConsumer(input: {
     communication_methods: ["EMAIL"],
   });
   const createdId = readId(created.json) ?? readId(asRecord(created.json)?.["data"]);
-  if (createdId) return createdId;
+  if (created.status >= 200 && created.status < 300 && createdId) return createdId;
+  logStreamPayFailure("create_consumer", created);
 
   const listed = await streampay("GET", `/consumers?external_id=${encodeURIComponent(input.userId)}`);
   const match = listOf(listed.json).find((row) => {
@@ -183,55 +252,78 @@ export async function createStreamPayCheckout(input: {
   purchaseType: ProPurchaseType;
   locale: "ar" | "en";
   origin: string;
-}): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  if (!configuredApiKey()) return { ok: false, error: "streampay_not_configured" };
-  const option = PRO_BILLING_OPTIONS[input.interval];
-  const payload = buildProCheckoutPayload(input.interval, {
-    purchaseType: input.purchaseType,
-    userId: input.userId,
-    buyerEmail: input.email,
-  });
-  const productId = await ensureProduct(input.interval, payload.productName, option.amount);
-  if (!productId) return { ok: false, error: "streampay_product_failed" };
-
-  const consumerId = await ensureConsumer({
-    name: input.name,
-    email: input.email,
-    userId: input.userId,
-    locale: input.locale,
-  });
-  if (!consumerId) return { ok: false, error: "streampay_consumer_failed" };
-
-  const origin = input.origin.replace(/\/+$/, "");
-  const created = await streampay("POST", "/payment_links", {
-    name: payload.productName,
-    description: payload.productName,
-    currency: "SAR",
-    items: [{ product_id: productId, quantity: 1 }],
-    contact_information_type: "EMAIL",
-    max_number_of_payments: 1,
-    organization_consumer_id: consumerId,
-    success_redirect_url: `${origin}/subscription?streampay=paid`,
-    failure_redirect_url: `${origin}/subscription?streampay=failed`,
-    custom_metadata: {
-      user_id: input.userId,
-      email: input.email,
+}): Promise<{ ok: true; url: string } | { ok: false; error: string; message: string }> {
+  try {
+    if (!configuredApiKey()) {
+      console.error("[streampay] missing STREAMPAY_API_KEY or STREAMPAY_SECRET_KEY");
+      return { ok: false, error: "streampay_not_configured", message: "StreamPay keys are missing" };
+    }
+    const option = PRO_BILLING_OPTIONS[input.interval];
+    const payload = buildProCheckoutPayload(input.interval, {
+      purchaseType: input.purchaseType,
+      userId: input.userId,
+      buyerEmail: input.email,
+    });
+    console.info("[streampay] create checkout", {
       interval: input.interval,
-      purchase_type: input.purchaseType,
-      amount: String(option.amount),
-      currency: "SAR",
-      buyer_name: input.name,
+      amount: option.amount,
+      currency: option.currency,
+      name: input.name,
+    });
+    const productId = await ensureProduct(input.interval, payload.productName, option.amount);
+    if (!productId) {
+      return { ok: false, error: "streampay_product_failed", message: "StreamPay rejected the product" };
+    }
+
+    const consumerId = await ensureConsumer({
+      name: input.name,
+      email: input.email,
+      userId: input.userId,
       locale: input.locale,
-    },
-  });
-  const url = readUrl(created.json) ?? readUrl(asRecord(created.json)?.["data"]);
-  if (!url) {
-    console.error("[streampay] payment link failed", { status: created.status });
-    return { ok: false, error: "streampay_link_failed" };
+    });
+    if (!consumerId) {
+      return { ok: false, error: "streampay_consumer_failed", message: "StreamPay rejected the customer name" };
+    }
+
+    const origin = input.origin.replace(/\/+$/, "");
+    const created = await streampay("POST", "/payment_links", {
+      name: input.name,
+      description: payload.productName,
+      currency: option.currency,
+      items: [{ product_id: productId, quantity: 1 }],
+      contact_information_type: "EMAIL",
+      max_number_of_payments: 1,
+      organization_consumer_id: consumerId,
+      success_redirect_url: `${origin}/subscription?streampay=paid`,
+      failure_redirect_url: `${origin}/subscription?streampay=failed`,
+      custom_metadata: {
+        user_id: input.userId,
+        email: input.email,
+        interval: input.interval,
+        purchase_type: input.purchaseType,
+        amount: String(option.amount),
+        currency: option.currency,
+        buyer_name: input.name,
+        locale: input.locale,
+      },
+    });
+    const url = readUrl(created.json);
+    if (created.status < 200 || created.status >= 300 || !url) {
+      logStreamPayFailure("create_payment_link", created);
+      return {
+        ok: false,
+        error: "streampay_link_failed",
+        message: streamPayErrorMessage(created.json),
+      };
+    }
+    const checkout = new URL(url);
+    checkout.searchParams.set("language", input.locale);
+    return { ok: true, url: checkout.toString() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "streampay_checkout_failed";
+    console.error("[streampay] checkout threw", { message });
+    return { ok: false, error: "streampay_checkout_failed", message };
   }
-  const checkout = new URL(url);
-  checkout.searchParams.set("language", input.locale);
-  return { ok: true, url: checkout.toString() };
 }
 
 export function verifyStreamPaySignature(rawBody: string, header: string | null): boolean {

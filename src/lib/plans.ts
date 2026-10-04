@@ -14,9 +14,9 @@ export type PlanFeatureRow = {
 };
 
 export const PLAN_PRICES = {
-  free: { amount: 0, label: "$0", period: "/month" },
-  /** Default Pro list price shown in comparison table (monthly). */
-  pro: { amount: 9.99, label: "$9.99", period: "/month" },
+  free: { amount: 0, currency: "SAR" as const },
+  /** Pro list price shown in the comparison table (monthly). */
+  pro: { amount: 39, currency: "SAR" as const },
 } as const;
 
 /** Pro billing intervals shown on the welcome plan card. */
@@ -24,58 +24,56 @@ export type ProBillingInterval = "monthly" | "six_months" | "yearly";
 
 export type ProBillingOption = {
   id: ProBillingInterval;
-  /** Total amount charged for this interval (USD). */
+  /** Total amount charged for this interval, in SAR. */
   amount: number;
-  currency: "USD";
-  /** Display for the large price figure. */
+  currency: "SAR";
+  /** Numeric amount shown next to the riyal mark. */
   label: string;
   /** Covered months in this purchase. */
   months: number;
-  /** Short period suffix next to the price (e.g. /month, /year). */
-  periodSuffix: string;
-  /** Effective monthly rate shown under the price. */
-  perMonthLabel: string;
-  /** Optional savings badge (e.g. yearly vs 12× monthly). */
+  /** Effective monthly rate, in SAR. */
+  perMonthAmount: number;
+  /** Optional savings badge versus 12× the monthly price. */
   savePercent: number | null;
+  /** Yearly is the highlighted best-value interval. */
+  bestValue?: boolean;
 };
 
 export const PRO_BILLING_OPTIONS: Record<ProBillingInterval, ProBillingOption> = {
   monthly: {
     id: "monthly",
-    amount: 9.99,
-    currency: "USD",
-    label: "$9.99",
+    amount: 39,
+    currency: "SAR",
+    label: "39",
     months: 1,
-    periodSuffix: "/month",
-    perMonthLabel: "$9.99/mo",
+    perMonthAmount: 39,
     savePercent: null,
   },
   six_months: {
     id: "six_months",
-    amount: 44.99,
-    currency: "USD",
-    label: "$44.99",
+    amount: 169,
+    currency: "SAR",
+    label: "169",
     months: 6,
-    periodSuffix: "/6 months",
-    perMonthLabel: "~$7.50/mo",
+    perMonthAmount: 28,
     savePercent: null,
   },
   yearly: {
     id: "yearly",
-    amount: 71.99,
-    currency: "USD",
-    label: "$71.99",
+    amount: 279,
+    currency: "SAR",
+    label: "279",
     months: 12,
-    periodSuffix: "/year",
-    perMonthLabel: "$6.00/mo",
-    /** vs 12 × $9.99 monthly (~$119.88). */
+    perMonthAmount: 23,
+    /** vs 12 × 39 SAR (468). */
     savePercent: 40,
+    bestValue: true,
   },
 };
 
 export const PRO_BILLING_ORDER: ProBillingInterval[] = ["monthly", "six_months", "yearly"];
 
-export const DEFAULT_PRO_BILLING: ProBillingInterval = "monthly";
+export const DEFAULT_PRO_BILLING: ProBillingInterval = "yearly";
 
 /** Selected Pro plan stored for a later checkout adapter. */
 export type ProPurchaseType = "direct" | "gift";
@@ -84,7 +82,7 @@ export type ProCheckoutPayload = {
   planId: "pro";
   interval: ProBillingInterval;
   amount: number;
-  currency: "USD";
+  currency: "SAR";
   months: number;
   label: string;
   productName: string;
@@ -121,7 +119,7 @@ export function buildProCheckoutPayload(
     currency: option.currency,
     months: option.months,
     label: option.label,
-    productName: `CylixStudio Pro (${option.months === 1 ? "Monthly" : option.months === 6 ? "6 Months" : "Yearly"})`,
+    productName: `CylixStudio Pro ${option.amount} SAR (${option.months === 1 ? "Monthly" : option.months === 6 ? "6 Months" : "Yearly"})`,
     purchaseType,
     userId: options?.userId ?? null,
     buyerEmail: options?.buyerEmail?.trim().toLowerCase() || null,

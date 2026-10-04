@@ -11,12 +11,13 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { PlanCompareDialog } from "@/components/onboarding/PlanCompareDialog";
 import { PlatformAsset } from "@/components/icons/platformAssets";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { SaudiRiyalAmount } from "@/components/brand/SaudiRiyalSymbol";
 import {
   ActivityPreview,
   ChatPreview,
@@ -93,6 +94,12 @@ const BILLING_LABEL_KEY: Record<ProBillingInterval, TranslationKey> = {
   monthly: "gateway.billing.monthly",
   six_months: "gateway.billing.sixMonths",
   yearly: "gateway.billing.yearly",
+};
+
+const BILLING_SUFFIX_KEY: Record<ProBillingInterval, TranslationKey> = {
+  monthly: "gateway.billing.suffix.monthly",
+  six_months: "gateway.billing.suffix.sixMonths",
+  yearly: "gateway.billing.suffix.yearly",
 };
 
 function FeaturePreviewThumb({ id }: { id: FeaturePreviewId }) {
@@ -240,7 +247,7 @@ function FreePlanCard({
   onCta,
 }: {
   title: string;
-  price: string;
+  price: ReactNode;
   period: string;
   description: string;
   features: Bullet[];
@@ -297,6 +304,7 @@ function ProBillingSelector({
       className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/80 p-1"
     >
       {PRO_BILLING_ORDER.map((interval) => {
+        const option = PRO_BILLING_OPTIONS[interval];
         const active = value === interval;
         return (
           <button
@@ -310,9 +318,15 @@ function ProBillingSelector({
               active
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100",
+              option.bestValue && !active && "text-emerald-200 ring-1 ring-emerald-400/40",
             )}
           >
             {t(BILLING_LABEL_KEY[interval])}
+            {option.bestValue ? (
+              <span className={cn("mt-0.5 block text-[0.55rem] font-medium", active ? "text-primary-foreground/80" : "text-emerald-300")}>
+                {t("gateway.billing.bestValue")}
+              </span>
+            ) : null}
           </button>
         );
       })}
@@ -358,17 +372,21 @@ function ProPlanCard({
         <div className="min-w-0">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-zinc-400">{title}</p>
           <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
-            <span className="text-3xl font-semibold tracking-tight text-zinc-50 sm:text-[2rem]">
-              {option.label}
-            </span>
-            <span className="text-xs text-zinc-500">{option.periodSuffix}</span>
+            <SaudiRiyalAmount
+              amount={option.amount}
+              className="text-3xl font-semibold tracking-tight text-zinc-50 sm:text-[2rem]"
+            />
+            <span className="text-xs text-zinc-500">{t(BILLING_SUFFIX_KEY[option.id])}</span>
             {option.savePercent != null ? (
               <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-0.5 text-[0.62rem] font-semibold text-emerald-300">
                 {t("gateway.billing.save").replace("{percent}", String(option.savePercent))}
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-[0.72rem] text-zinc-400">{option.perMonthLabel}</p>
+          <p className="mt-1 inline-flex items-baseline gap-1 text-[0.72rem] text-zinc-400">
+            <SaudiRiyalAmount amount={option.perMonthAmount} />
+            <span>{t("gateway.billing.perMonth")}</span>
+          </p>
         </div>
         <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-primary/40 bg-primary/15 text-primary">
           <Icon className="size-4" aria-hidden />
@@ -403,6 +421,7 @@ function ProPlanCard({
         >
           <UserRoundCheck className="size-3.5 shrink-0 opacity-90" aria-hidden />
           <span className="truncate">{t("gateway.purchaseType.direct")}</span>
+          <SaudiRiyalAmount amount={option.amount} className="shrink-0 text-[0.72rem]" />
         </Button>
         <Button
           type="button"
@@ -457,14 +476,16 @@ export function GatewayPlansPanel({
     })
       .then((result) => {
         if (!result.ok) {
-          toast.error(t("gateway.checkout.failed"));
+          console.error("[streampay] checkout failed", result);
+          toast.error(result.message || t("gateway.checkout.failed"));
           setCheckoutBusy(false);
           return;
         }
         window.location.assign(result.url);
       })
-      .catch(() => {
-        toast.error(t("gateway.checkout.failed"));
+      .catch((error: unknown) => {
+        console.error("[streampay] checkout failed", error);
+        toast.error(error instanceof Error ? error.message : t("gateway.checkout.failed"));
         setCheckoutBusy(false);
       });
   };
@@ -482,7 +503,7 @@ export function GatewayPlansPanel({
         >
           <FreePlanCard
             title={t("gateway.free.name")}
-            price={PLAN_PRICES.free.label}
+            price={<SaudiRiyalAmount amount={PLAN_PRICES.free.amount} />}
             period={t("gateway.price.period")}
             description={t("gateway.free.description")}
             features={FREE_FEATURES}

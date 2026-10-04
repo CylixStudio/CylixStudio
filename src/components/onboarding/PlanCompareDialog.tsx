@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { SaudiRiyalAmount } from "@/components/brand/SaudiRiyalSymbol";
 import { PLAN_FEATURES, PLAN_PRICES, type FeatureAvailability } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
@@ -54,16 +55,16 @@ export function PlanCompareDialog({ open, onOpenChange }: PlanCompareDialogProps
                 <th className="px-3 py-3 font-medium">{t("gateway.compare.feature")}</th>
                 <th className="px-3 py-3 text-center font-medium">
                   {t("gateway.free.name")}
-                  <span className="mt-0.5 block text-[0.65rem] normal-case tracking-normal text-muted-foreground/80">
-                    {PLAN_PRICES.free.label}
-                    {PLAN_PRICES.free.period}
+                  <span className="mt-0.5 flex items-baseline justify-center gap-1 text-[0.65rem] normal-case tracking-normal text-muted-foreground/80">
+                    <SaudiRiyalAmount amount={PLAN_PRICES.free.amount} />
+                    {t("gateway.price.period")}
                   </span>
                 </th>
                 <th className="px-3 py-3 text-center font-medium text-primary">
                   {t("gateway.pro.name")}
-                  <span className="mt-0.5 block text-[0.65rem] normal-case tracking-normal text-primary/80">
-                    {PLAN_PRICES.pro.label}
-                    {PLAN_PRICES.pro.period}
+                  <span className="mt-0.5 flex items-baseline justify-center gap-1 text-[0.65rem] normal-case tracking-normal text-primary/80">
+                    <SaudiRiyalAmount amount={PLAN_PRICES.pro.amount} />
+                    {t("gateway.price.period")}
                   </span>
                 </th>
               </tr>

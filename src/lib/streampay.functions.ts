@@ -18,35 +18,44 @@ export const startStreamPayCheckout = createServerFn({ method: "POST" })
     return { interval: interval as ProBillingInterval, purchaseType, locale: locale as "ar" | "en" };
   })
   .handler(async ({ data, context }) => {
-    const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-    const { createStreamPayCheckout } = await import("@/lib/streampay.server");
-    const { userId } = context;
-    const { data: userData, error } = await supabaseAdmin.auth.admin.getUserById(userId);
-    if (error || !userData.user?.email) return { ok: false as const, error: "email_required" };
+    try {
+      const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+      const { createStreamPayCheckout } = await import("@/lib/streampay.server");
+      const { userId } = context;
+      const { data: userData, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (error || !userData.user?.email) {
+        console.error("[streampay] checkout missing account email", { userId, message: error?.message ?? null });
+        return { ok: false as const, error: "email_required", message: "Account email is missing" };
+      }
 
-    const { data: profile } = await supabaseAdmin
-      .from("link_in_bio_profiles")
-      .select("display_name")
-      .eq("user_id", userId)
-      .maybeSingle();
+      const { data: profile } = await supabaseAdmin
+        .from("link_in_bio_profiles")
+        .select("display_name")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    const metadata =
-      userData.user.user_metadata && typeof userData.user.user_metadata === "object"
-        ? (userData.user.user_metadata as Record<string, unknown>)
-        : null;
-    const name = customerDisplayName({
-      email: userData.user.email,
-      metadata,
-      profileName: profile?.display_name?.trim() || null,
-    });
-    const request = getRequest();
-    return createStreamPayCheckout({
-      userId,
-      email: userData.user.email,
-      name,
-      interval: data.interval,
-      purchaseType: data.purchaseType,
-      locale: data.locale,
-      origin: publicSiteUrl(request),
-    });
+      const metadata =
+        userData.user.user_metadata && typeof userData.user.user_metadata === "object"
+          ? (userData.user.user_metadata as Record<string, unknown>)
+          : null;
+      const name = customerDisplayName({
+        email: userData.user.email,
+        metadata,
+        profileName: profile?.display_name?.trim() || null,
+      });
+      const request = getRequest();
+      return await createStreamPayCheckout({
+        userId,
+        email: userData.user.email,
+        name,
+        interval: data.interval,
+        purchaseType: data.purchaseType,
+        locale: data.locale,
+        origin: publicSiteUrl(request),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "streampay_checkout_failed";
+      console.error("[streampay] checkout handler threw", { message });
+      return { ok: false as const, error: "streampay_checkout_failed", message };
+    }
   });
