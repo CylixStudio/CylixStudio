@@ -636,7 +636,7 @@ const DICT = {
   "commands.vars.streamer.label": "المذيع",
   "commands.vars.streamer.description": "القناة التي شُغّل فيها الأمر.",
   "commands.vars.param.label": "مستخدم مُشار إليه / معامل",
-  "commands.vars.param.description": "المعامل بعد الأمر، أو مستخدم مذكور بـ @.",
+  "commands.vars.param.description": "المعامل بعد الأمر، أو مستخدم مذكور بـ @. إن لم يُذكر أحد، تُستخدم بيانات المرسل.",
   "commands.vars.stream.label": "الستريم",
   "commands.vars.stream.description": "معلومات البث المباشر عندما توفرها المنصة.",
   "commands.vars.random.label": "عشوائي",

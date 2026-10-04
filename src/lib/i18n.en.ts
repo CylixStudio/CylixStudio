@@ -591,7 +591,7 @@ export const EN = {
   "commands.vars.streamer.label": "Streamer",
   "commands.vars.streamer.description": "The channel where the command ran.",
   "commands.vars.param.label": "Mentioned user / argument",
-  "commands.vars.param.description": "The argument after the command, or a user mentioned with @.",
+  "commands.vars.param.description": "The argument after the command, or a user mentioned with @. If nobody is mentioned, the sender is used.",
   "commands.vars.stream.label": "Stream",
   "commands.vars.stream.description": "Live stream details when the platform provides them.",
   "commands.vars.random.label": "Random",

@@ -1,10 +1,14 @@
 import {
   blankCommandTemplate,
   commandArgument,
+  parseChannelPayload,
+  parseRequestPayload,
   profileUrl,
+  publicRequestUrl,
   renderCommandTemplate,
   taggedUsername,
   type CommandTemplateData,
+  type ParsedChannel,
 } from "@/lib/commandTemplate";
 import type { ChatCommandPlatform } from "@/lib/customCommands";
 import { formatFollowDuration } from "@/lib/defaultCommands";
@@ -40,6 +44,8 @@ function textField(source: Record<string, unknown> | null, ...keys: string[]): s
   return "";
 }
 
+const KICK_AGENTS = ["okhttp/4.12.0", "Mozilla/5.0"];
+
 async function readJson(url: string, headers?: HeadersInit): Promise<unknown> {
   try {
     const response = await fetch(url, {
@@ -53,30 +59,25 @@ async function readJson(url: string, headers?: HeadersInit): Promise<unknown> {
   }
 }
 
-type ChannelLive = {
-  followers: string;
-  title: string;
-  category: string;
-  viewers: string;
-};
+async function kickRead(url: string): Promise<unknown> {
+  for (const agent of KICK_AGENTS) {
+    const payload = await readJson(url, { accept: "application/json, text/plain, */*", "user-agent": agent });
+    if (payload) return payload;
+  }
+  return null;
+}
 
-async function kickChannel(slug: string): Promise<ChannelLive | null> {
+async function kickChannel(slug: string): Promise<ParsedChannel | null> {
   const name = slug.trim().replace(/^@+/, "");
   if (!name) return null;
-  const payload = await readJson(`https://kick.com/api/v2/channels/${encodeURIComponent(name)}`);
-  const record = asRecord(payload);
-  if (!record) return null;
-  const live = asRecord(record["livestream"]);
-  const categories = Array.isArray(live?.["categories"]) ? live["categories"] : [];
-  const category = asRecord(categories[0]);
-  const followers = numField(record, "followers_count", "followersCount", "follower_count");
-  const viewers = numField(live, "viewer_count", "viewers");
-  return {
-    followers: followers === null ? "" : String(followers),
-    title: textField(live, "session_title", "title"),
-    category: textField(category, "name", "category") || textField(live, "category"),
-    viewers: viewers === null ? "" : String(viewers),
-  };
+  const encoded = encodeURIComponent(name);
+  const legacy =
+    (await kickRead(`https://kick.com/api/v2/channels/${encoded}`)) ??
+    (await kickRead(`https://kick.com/api/v1/channels/${encoded}`));
+  const fromLegacy = parseChannelPayload(legacy);
+  if (fromLegacy && (fromLegacy.followers || fromLegacy.live)) return fromLegacy;
+  const official = await kickRead(`https://api.kick.com/public/v1/channels?slug=${encoded}`);
+  return parseChannelPayload(official) ?? fromLegacy;
 }
 
 async function kickFollowage(channel: string, viewer: string, arabic: boolean): Promise<string> {
@@ -85,6 +86,7 @@ async function kickFollowage(channel: string, viewer: string, arabic: boolean): 
   if (!slug || !name) return "";
   const payload = await readJson(
     `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/users/${encodeURIComponent(name)}`,
+    { accept: "application/json", "user-agent": KICK_AGENTS[0] },
   );
   const record = asRecord(payload);
   const raw = textField(record, "following_since", "followed_at", "follower_since");
@@ -111,7 +113,7 @@ async function twitchChannel(
   login: string,
   token: string,
   clientId: string,
-): Promise<(ChannelLive & { userId: string }) | null> {
+): Promise<(ParsedChannel & { userId: string }) | null> {
   const user = await twitchHelix(`users?login=${encodeURIComponent(login)}`, token, clientId);
   const userId = textField(user, "id");
   if (!userId) return null;
@@ -124,47 +126,19 @@ async function twitchChannel(
   ]);
   const total = numField(asRecord(followersPayload), "total");
   const viewers = numField(stream, "viewer_count");
+  const live = Boolean(stream);
   return {
     userId,
     followers: total === null ? "" : String(total),
-    title: textField(stream, "title"),
-    category: textField(stream, "game_name"),
-    viewers: viewers === null ? "" : String(viewers),
+    title: live ? textField(stream, "title") : "",
+    category: live ? textField(stream, "game_name") : "",
+    viewers: live && viewers !== null ? String(viewers) : "",
+    live,
   };
 }
 
-function isPublicHttps(raw: string): URL | null {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "https:") return null;
-  if (url.username || url.password) return null;
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (
-    host === "localhost" ||
-    host.endsWith(".local") ||
-    host.endsWith(".internal") ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    host === "metadata.google.internal"
-  ) {
-    return null;
-  }
-  if (
-    /^(127\.|10\.|192\.168\.|169\.254\.|0\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(
-      host,
-    )
-  ) {
-    return null;
-  }
-  return url;
-}
-
 async function requestValue(rawUrl: string): Promise<string> {
-  const url = isPublicHttps(rawUrl);
+  const url = publicRequestUrl(rawUrl);
   if (!url) return "";
   try {
     const response = await fetch(url, {
@@ -174,20 +148,7 @@ async function requestValue(rawUrl: string): Promise<string> {
     });
     if (response.status >= 300 && response.status < 400) return "";
     if (!response.ok) return "";
-    const text = (await response.text()).slice(0, 8000);
-    let value = "";
-    try {
-      const json = JSON.parse(text) as unknown;
-      if (json && typeof json === "object" && "value" in json) {
-        const inner = (json as { value: unknown }).value;
-        value = inner == null ? "" : typeof inner === "string" ? inner : JSON.stringify(inner);
-      } else if (typeof json === "string" || typeof json === "number") {
-        value = String(json);
-      }
-    } catch {
-      value = text;
-    }
-    return value.replace(/\s+/g, " ").trim().slice(0, 120);
+    return parseRequestPayload(await response.text());
   } catch {
     return "";
   }
@@ -254,12 +215,14 @@ export async function resolveCommandTemplate(input: {
     },
   });
 
-  const needSenderFollowers = wants(template, "sender.followers");
-  const needTaggedFollowers = wants(template, "taggedUser.followers") && Boolean(tagged);
+  const taggedIsSender = !tagged || tagged.toLowerCase() === senderName.toLowerCase();
+  const needTaggedFollowers = wants(template, "taggedUser.followers");
+  const needSenderFollowers = wants(template, "sender.followers") || (needTaggedFollowers && taggedIsSender);
   const needStreamerFollowers = wants(template, "streamer.followers");
   const needStream = wants(template, "stream.");
-  const needSenderFollowage = wants(template, "sender.followage") || wants(template, "{followage}");
-  const needTaggedFollowage = wants(template, "taggedUser.followage") && Boolean(tagged);
+  const needTaggedFollowage = wants(template, "taggedUser.followage");
+  const needSenderFollowage =
+    wants(template, "sender.followage") || wants(template, "{followage}") || (needTaggedFollowage && taggedIsSender);
 
   if (input.platform === "KICK") {
     const lookups: Promise<void>[] = [];
@@ -283,7 +246,7 @@ export async function resolveCommandTemplate(input: {
         }),
       );
     }
-    if (needTaggedFollowers) {
+    if (needTaggedFollowers && tagged && !taggedIsSender) {
       lookups.push(
         kickChannel(tagged).then((channel) => {
           if (channel) data.taggedUser.followers = channel.followers;
@@ -298,7 +261,7 @@ export async function resolveCommandTemplate(input: {
         }),
       );
     }
-    if (needTaggedFollowage && streamerName) {
+    if (needTaggedFollowage && tagged && !taggedIsSender && streamerName) {
       lookups.push(
         kickFollowage(streamerName, tagged, arabic).then((value) => {
           data.taggedUser.followage = value;
@@ -306,25 +269,41 @@ export async function resolveCommandTemplate(input: {
       );
     }
     await Promise.all(lookups);
-  } else if (input.platform === "TWITCH" && (needStreamerFollowers || needStream || needSenderFollowers)) {
+  } else if (
+    input.platform === "TWITCH" &&
+    (needStreamerFollowers || needStream || needSenderFollowers || (needTaggedFollowers && tagged && !taggedIsSender))
+  ) {
     const { getTwitchAccessToken } = await import("@/lib/platformTokens.server");
     const token = await getTwitchAccessToken(input.userId);
     const clientId = readOAuthEnv("TWITCH_CLIENT_ID");
-    if (token && clientId && streamerName) {
-      const channel = await twitchChannel(streamerName, token, clientId);
-      if (channel) {
-        data.streamer.followers = channel.followers;
-        data.stream = {
-          title: channel.title,
-          category: channel.category,
-          viewers: channel.viewers,
-        };
-        if (senderName && senderName.toLowerCase() === streamerName.toLowerCase()) {
-          data.sender.followers = channel.followers;
+    if (token && clientId) {
+      const senderIsStreamer = Boolean(
+        senderName && streamerName && senderName.toLowerCase() === streamerName.toLowerCase(),
+      );
+      const taggedIsStreamer = Boolean(tagged && streamerName && tagged.toLowerCase() === streamerName.toLowerCase());
+      if (
+        streamerName &&
+        (needStreamerFollowers || needStream || (needSenderFollowers && senderIsStreamer) || (needTaggedFollowers && taggedIsStreamer))
+      ) {
+        const channel = await twitchChannel(streamerName, token, clientId);
+        if (channel) {
+          data.streamer.followers = channel.followers;
+          data.stream = {
+            title: channel.title,
+            category: channel.category,
+            viewers: channel.viewers,
+          };
+          if (senderIsStreamer) data.sender.followers = channel.followers;
+          if (taggedIsStreamer) data.taggedUser.followers = channel.followers;
         }
-        if (tagged && tagged.toLowerCase() === streamerName.toLowerCase()) {
-          data.taggedUser.followers = channel.followers;
-        }
+      }
+      if (needSenderFollowers && senderName && !senderIsStreamer) {
+        const channel = await twitchChannel(senderName, token, clientId);
+        if (channel) data.sender.followers = channel.followers;
+      }
+      if (needTaggedFollowers && tagged && !taggedIsSender && !taggedIsStreamer) {
+        const channel = await twitchChannel(tagged, token, clientId);
+        if (channel) data.taggedUser.followers = channel.followers;
       }
     }
   }
