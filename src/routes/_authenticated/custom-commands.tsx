@@ -795,6 +795,7 @@ function CustomCommandsPage() {
                     {formatCommandReply(sampleHit.response, {
                       user: "viewer",
                       command: commandTrigger(sampleHit, prefixValue),
+                      message: sample,
                     })}
                   </span>
                 </p>

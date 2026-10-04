@@ -627,6 +627,8 @@ const DICT = {
   "commands.role.subs": "المشتركون",
   "commands.role.vips": "VIPs",
   "commands.role.mods": "المشرفون والمذيع",
+  "commands.vars.general.label": "عام",
+  "commands.vars.general.description": "الأمر نفسه، والشخص الذي كتبه.",
   "commands.vars.sidebarTitle": "المتغيرات",
   "commands.vars.liveNow": "مباشر الآن",
   "commands.vars.sender.label": "المرسل",

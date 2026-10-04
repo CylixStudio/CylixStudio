@@ -1,8 +1,8 @@
 import { sendKickChatMessage } from "@/lib/clipCommand.server";
+import { resolveCommandTemplate } from "@/lib/commandTemplate.server";
 import { commandTrigger, type ChatCommandPlatform } from "@/lib/customCommands";
 import {
   catalogDefaultCommands,
-  formatDefaultReply,
   formatFollowDuration,
   matchDefaultCommand,
   mergeDefaultCommands,
@@ -146,7 +146,17 @@ export async function handleDefaultChatCommand(input: {
     template = command.fallbackResponse || command.response;
   }
 
-  const reply = formatDefaultReply(template, vars);
+  const reply = await resolveCommandTemplate({
+    template,
+    message: input.text,
+    command: command.trigger,
+    platform: input.platform,
+    userId: input.userId,
+    senderUsername: input.sender.username,
+    target: vars.target,
+    list: vars.list,
+    followage: vars.followage,
+  });
   if (!reply) return { status: "ignored", reason: "empty_reply" };
 
   if (input.platform === "KICK") {

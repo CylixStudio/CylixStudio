@@ -1,7 +1,7 @@
 import { sendKickChatMessage } from "@/lib/clipCommand.server";
+import { resolveCommandTemplate } from "@/lib/commandTemplate.server";
 import {
   commandTrigger,
-  formatCommandReply,
   matchCustomCommand,
   normalizeChatText,
   normalizeTriggerMarker,
@@ -124,9 +124,13 @@ export async function handleCustomChatCommand(input: {
   }
 
   const trigger = commandTrigger(matched, defaultPrefix);
-  const reply = formatCommandReply(matched.response, {
-    user: input.sender.username,
+  const reply = await resolveCommandTemplate({
+    template: matched.response,
+    message: text,
     command: trigger,
+    platform: input.platform,
+    userId: input.userId,
+    senderUsername: input.sender.username,
   });
   if (!reply) return { status: "ignored", reason: "empty_reply", command: trigger };
 

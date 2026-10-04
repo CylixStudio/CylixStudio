@@ -1,3 +1,4 @@
+import { blankCommandTemplate, renderCommandTemplate } from "@/lib/commandTemplate";
 import type { ChatCommandPlatform } from "@/lib/customCommands";
 
 export const DEFAULT_COMMAND_IDS = ["commands", "followage", "lurk", "so", "welcome"] as const;
@@ -165,14 +166,27 @@ export function formatDefaultReply(
   template: string,
   vars: { user: string; command: string; target?: string; list?: string; followage?: string },
 ): string {
-  return template
-    .replaceAll("{user}", vars.user)
-    .replaceAll("{command}", vars.command)
-    .replaceAll("{target}", vars.target ?? "")
-    .replaceAll("{list}", vars.list ?? "")
-    .replaceAll("{followage}", vars.followage ?? "")
-    .trim()
-    .slice(0, 480);
+  return renderCommandTemplate(
+    template,
+    blankCommandTemplate({
+      command: vars.command,
+      param: vars.target ?? "",
+      target: vars.target ?? "",
+      list: vars.list ?? "",
+      followage: vars.followage ?? "",
+      sender: {
+        username: vars.user,
+        followers: "",
+        url: "",
+        followage: vars.followage ?? "",
+      },
+      taggedUser: {
+        username: (vars.target ?? "").replace(/^@+/, ""),
+        followers: "",
+        followage: "",
+      },
+    }),
+  );
 }
 
 export function parseShoutoutTarget(argument: string): string {

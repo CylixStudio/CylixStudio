@@ -10,6 +10,12 @@ export type CommandVariableGroup = {
 
 export const COMMAND_VARIABLE_GROUPS: readonly CommandVariableGroup[] = [
   {
+    id: "general",
+    labelKey: "commands.vars.general.label",
+    descriptionKey: "commands.vars.general.description",
+    tags: ["{user}", "{command}"],
+  },
+  {
     id: "sender",
     labelKey: "commands.vars.sender.label",
     descriptionKey: "commands.vars.sender.description",
@@ -47,9 +53,6 @@ export const COMMAND_VARIABLE_GROUPS: readonly CommandVariableGroup[] = [
   },
 ];
 
-/** Tags the reply engine already interpolates today. */
-export const LIVE_COMMAND_INTERPOLATORS = ["{user}", "{command}"] as const;
-
 export function CommandVariablesSidebar({
   onInsert,
   className,
@@ -68,14 +71,6 @@ export function CommandVariablesSidebar({
       <p className="text-[0.72rem] font-medium uppercase tracking-wide text-muted-foreground">
         {t("commands.vars.sidebarTitle")}
       </p>
-      <div className="space-y-1.5">
-        <p className="text-[0.68rem] text-muted-foreground">{t("commands.vars.liveNow")}</p>
-        <div className="flex flex-wrap gap-1">
-          {LIVE_COMMAND_INTERPOLATORS.map((tag) => (
-            <VariableTag key={tag} tag={tag} onInsert={onInsert} />
-          ))}
-        </div>
-      </div>
       {COMMAND_VARIABLE_GROUPS.map((group) => (
         <div key={group.id} className="space-y-1.5">
           <p className="text-[0.68rem] font-semibold tracking-wide text-zinc-300">{t(group.labelKey)}</p>

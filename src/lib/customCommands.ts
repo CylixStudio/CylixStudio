@@ -1,3 +1,5 @@
+import { blankCommandTemplate, commandArgument, renderCommandTemplate, taggedUsername } from "@/lib/commandTemplate";
+
 export type ChatCommandPlatform = "KICK" | "TWITCH";
 
 export const COMMAND_ROLES = ["Everyone", "Subs", "VIPs", "Mods"] as const;
@@ -223,16 +225,35 @@ export function matchCustomCommand(
   return null;
 }
 
+/** Viewer who typed the command, without a leading @. */
+export function commandSenderName(username: string): string {
+  return username.trim().replace(/^@+/, "");
+}
+
 export function formatCommandReply(
   template: string,
-  vars: { user: string; command: string },
+  vars: { user: string; command: string; message?: string },
 ): string {
-  return template
-    .normalize("NFC")
-    .replaceAll("{user}", vars.user)
-    .replaceAll("{command}", vars.command)
-    .trim()
-    .slice(0, 480);
+  const param = commandArgument(vars.message ?? "");
+  return renderCommandTemplate(
+    template,
+    blankCommandTemplate({
+      command: vars.command,
+      platform: "KICK",
+      param,
+      sender: {
+        username: commandSenderName(vars.user),
+        followers: "",
+        url: "",
+        followage: "",
+      },
+      taggedUser: {
+        username: taggedUsername(param),
+        followers: "",
+        followage: "",
+      },
+    }),
+  );
 }
 
 export function emptyCommandDraft(): CustomChatCommandInput {

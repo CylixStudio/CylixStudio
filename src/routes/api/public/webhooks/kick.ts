@@ -61,6 +61,34 @@ function readIdentityBadges(source: KickPayload): string[] {
   });
 }
 
+const SENDER_NAME_PATHS = [
+  ["sender", "username"],
+  ["sender", "name"],
+  ["sender", "slug"],
+  ["chatter", "username"],
+  ["author", "username"],
+  ["message", "sender", "username"],
+] as const;
+
+const BROADCASTER_NAME_PATHS = [
+  ["broadcaster", "username"],
+  ["broadcaster", "name"],
+  ["broadcaster", "channel_slug"],
+  ["channel", "username"],
+  ["channel", "slug"],
+] as const;
+
+/** Prefer the chatter. A nested `user` is only used when it is not the channel account. */
+function senderUsernameFrom(source: KickPayload): string {
+  const sender = firstString(source, SENDER_NAME_PATHS.map((path) => [...path]));
+  if (sender) return sender;
+  const broadcaster = firstString(source, BROADCASTER_NAME_PATHS.map((path) => [...path]));
+  const generic =
+    firstString(source, [["user", "username"], ["user", "name"], ["username"]]) ?? "";
+  if (generic && generic.toLowerCase() !== (broadcaster ?? "").toLowerCase()) return generic;
+  return "";
+}
+
 /** Walks the shapes Kick has used for chat.message.sent, including wrapped `data`. */
 function extractKickChat(body: KickPayload): KickChatFields {
   const sources = [body, asRecord(body["data"]), asRecord(body["payload"]), asRecord(body["event"])].filter(
@@ -78,15 +106,7 @@ function extractKickChat(body: KickPayload): KickChatFields {
       messageTextFrom(source["message"]) ??
       messageTextFrom(source["text"]) ??
       "";
-    username ||=
-      firstString(source, [
-        ["sender", "username"],
-        ["sender", "name"],
-        ["sender", "slug"],
-        ["user", "username"],
-        ["chatter", "username"],
-        ["author", "username"],
-      ]) ?? "";
+    username ||= senderUsernameFrom(source);
     broadcasterId ||= firstString(source, [
       ["broadcaster", "user_id"],
       ["broadcaster", "id"],

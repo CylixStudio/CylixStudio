@@ -582,6 +582,8 @@ export const EN = {
   "commands.role.subs": "Subscribers",
   "commands.role.vips": "VIPs",
   "commands.role.mods": "Moderators and the streamer",
+  "commands.vars.general.label": "General",
+  "commands.vars.general.description": "The command itself, and the person who typed it.",
   "commands.vars.sidebarTitle": "Variables",
   "commands.vars.liveNow": "Live now",
   "commands.vars.sender.label": "Sender",
