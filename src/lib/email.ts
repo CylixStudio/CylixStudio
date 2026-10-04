@@ -4,8 +4,11 @@
  */
 export {
   renderMasterEmailLayout,
+  renderSubscriptionEmailLayout,
   emailLogoUrl,
   escapeHtml,
+  SUBSCRIPTION_DASHBOARD_URL,
+  SUBSCRIPTION_SUPPORT_EMAIL,
   type EmailLayoutOptions,
 } from "@/lib/email/layout";
 

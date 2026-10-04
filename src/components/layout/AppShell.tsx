@@ -184,7 +184,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
               ) : (
                 <span className="flex min-w-0 items-center gap-2">
                   <BrandLogo showWordmark size="sm" />
-                  <span className="flex shrink-0 items-center gap-1">
+                  <span dir="ltr" className="flex shrink-0 items-center gap-1">
                     <span
                       className={cn(
                         "shrink-0 rounded-md border border-primary/35 bg-primary/10",

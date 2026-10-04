@@ -1037,4 +1037,6 @@ export const EN = {
   "rules.event.SUBSCRIBE": "Subscribe",
   "rules.event.GIFT": "Gift",
   "settings.test.event.kicks": "KICKs",
+  "activity.group.count": "Repeated {count} times",
+  "activity.group.entry": "Repeat",
 } as const;

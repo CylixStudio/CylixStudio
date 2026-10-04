@@ -58,6 +58,12 @@ function isClientAbort(error: unknown): boolean {
   );
 }
 
+void import("./lib/relaySockets.server")
+  .then((mod) => mod.startRelaySockets())
+  .catch((error: unknown) => {
+    console.error("[relay-sockets] not started", error instanceof Error ? error.message : "error");
+  });
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const unregister = registerRequestContext(request, ctx);

@@ -1106,6 +1106,8 @@ const DICT = {
   "rules.event.SUBSCRIBE": "Subscribe",
   "rules.event.GIFT": "Gift",
   "settings.test.event.kicks": "KICKs",
+  "activity.group.count": "تكرّر {count} مرات",
+  "activity.group.entry": "تكرار",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

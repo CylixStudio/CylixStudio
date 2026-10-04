@@ -61,7 +61,6 @@ export function LinkInBioPage({
             : "max-w-[min(94vw,76rem)] px-3 py-10 sm:px-4 sm:py-12 md:px-5 md:py-16 lg:px-6",
         )}
       >
-        {!preview ? <PublicCopyLink slug={profile.slug} accent={theme.paletteAccent} /> : null}
         <Header
           profile={profile}
           compact={theme.layout === "grid"}
@@ -105,6 +104,11 @@ export function LinkInBioPage({
             />
           </div>
         )}
+        {!preview ? (
+          <footer className="mt-12 flex justify-center sm:mt-16">
+            <PublicCopyLink slug={profile.slug} accent={theme.paletteAccent} />
+          </footer>
+        ) : null}
       </div>
     </div>
   );
@@ -124,7 +128,7 @@ function PublicCopyLink({ slug, accent }: { slug: string; accent: string }) {
     try {
       await navigator.clipboard.writeText(target);
       setCopied(true);
-      toast.success(t("linkInBio.toast.linkCopied"));
+      toast.success(t("common.copied"));
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
       toast.error(t("linkInBio.err.couldNotCopy"));
@@ -132,7 +136,7 @@ function PublicCopyLink({ slug, accent }: { slug: string; accent: string }) {
   };
 
   return (
-    <div className="mb-6 flex justify-end sm:mb-8">
+    <div className="flex justify-center">
       <button
         type="button"
         onClick={() => void copy()}

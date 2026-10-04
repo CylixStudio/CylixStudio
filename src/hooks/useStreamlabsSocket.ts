@@ -1,66 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ingestStreamlabsSocketEvent } from "@/lib/connections.functions";
-
-type SlEventType = "DONATION" | "SUBSCRIPTION" | "GIFT_SUB" | "BITS" | "FOLLOW" | "RAID" | "LIKE";
-
-type SlRaw = {
-  type?: string;
-  event_id?: string;
-  for?: string;
-  message?: Record<string, unknown>[] | Record<string, unknown>;
-};
+import { parseStreamlabsPayload, readSocketIoFrame } from "@/lib/relayEvents";
 
 export type StreamlabsSocketStatus = "idle" | "connecting" | "live" | "error";
 
 const SOCKET_URL = "wss://sockets.streamlabs.com/socket.io/?transport=websocket&token=";
-
-const str = (value: unknown) => (typeof value === "string" ? value : undefined);
-const num = (value: unknown) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-/** Maps a Streamlabs socket `type` onto our internal event enum. */
-function mapType(type: string): SlEventType | null {
-  switch (type) {
-    case "donation":
-    case "streamlabscharitydonation":
-    case "merch":
-    case "superchat":
-      return "DONATION";
-    case "subscription":
-    case "resub":
-    case "membership":
-      return "SUBSCRIPTION";
-    case "subMysteryGift":
-    case "giftsub":
-      return "GIFT_SUB";
-    case "bits":
-    case "cheer":
-      return "BITS";
-    case "follow":
-    case "subscriber":
-      return "FOLLOW";
-    case "raid":
-    case "host":
-      return "RAID";
-    case "like":
-    case "likes":
-      return "LIKE";
-    default:
-      return null;
-  }
-}
-
-function relayOrigin(raw: SlRaw, eventType: SlEventType): string | null {
-  const tagged = (raw.for ?? "").toString().trim();
-  if (tagged) return tagged;
-  const type = (raw.type ?? "").toString().toLowerCase();
-  if (type === "superchat" || type === "membership") return "youtube";
-  if (eventType === "LIKE") return "tiktok";
-  return null;
-}
 
 /**
  * Direct Streamlabs Socket API bridge.
@@ -86,41 +31,23 @@ export function useStreamlabsSocket(token: string | null) {
     let attempts = 0;
     let closed = false;
 
-    const forward = async (raw: SlRaw) => {
-      const type = (raw.type ?? "").toString();
-      const eventType = mapType(type);
-      if (!eventType) return;
-      const list = Array.isArray(raw.message)
-        ? raw.message
-        : raw.message
-          ? [raw.message]
-          : [];
-      for (const [index, msg] of list.entries()) {
-        const providerEventId =
-          str(msg["_id"]) ??
-          str(msg["id"]) ??
-          (raw.event_id ? `${raw.event_id}:${index}` : `${type}:${Date.now()}:${index}`);
-        if (seen.current.has(providerEventId)) continue;
-        seen.current.add(providerEventId);
-        if (seen.current.size > 500) seen.current = new Set([providerEventId]);
+    const forward = async (raw: unknown) => {
+      for (const event of parseStreamlabsPayload(raw)) {
+        if (seen.current.has(event.providerEventId)) continue;
+        seen.current.add(event.providerEventId);
+        if (seen.current.size > 500) seen.current = new Set([event.providerEventId]);
 
-        const amount = eventType === "DONATION" ? num(msg["amount"]) : null;
-        const bits = eventType === "BITS" ? num(msg["amount"]) : null;
         try {
           await ingestStreamlabsSocketEvent({
             data: {
-              eventType,
-              providerEventId,
-              actorName:
-                str(msg["from"]) ?? str(msg["name"]) ?? str(msg["display_name"]) ?? "Anonymous",
-              amount: amount ?? bits,
-              currency: str(msg["currency"]) ?? null,
-              quantity:
-                eventType === "SUBSCRIPTION" || eventType === "GIFT_SUB"
-                  ? Math.max(num(msg["months"]) ?? 1, 1)
-                  : 1,
-              message: str(msg["message"]) ?? str(msg["comment"]) ?? null,
-              origin: relayOrigin(raw, eventType),
+              eventType: event.eventType,
+              providerEventId: event.providerEventId,
+              actorName: event.actorName,
+              amount: event.amount,
+              currency: event.currency,
+              quantity: event.quantity,
+              message: event.message,
+              origin: event.origin,
             },
           });
         } catch {
@@ -146,13 +73,8 @@ export function useStreamlabsSocket(token: string | null) {
           socket?.send("3");
           return;
         }
-        if (!frame.startsWith("42")) return;
-        try {
-          const parsed = JSON.parse(frame.slice(2)) as [string, SlRaw];
-          if (parsed[0] === "event" && parsed[1]) void forward(parsed[1]);
-        } catch {
-          // Ignore malformed frames.
-        }
+        const parsed = readSocketIoFrame(frame);
+        if (parsed && parsed !== "ping" && parsed.name === "event") void forward(parsed.payload);
       };
 
       socket.onerror = () => setStatus("error");

@@ -16,11 +16,13 @@ import {
 
 import { AppShell } from "@/components/layout/AppShell";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { TestEventMenu, type InjectedFeedEvent } from "@/components/activity/TestEventMenu";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { groupConsecutiveEvents, type FeedEventGroup } from "@/lib/activityFeed";
 import { isAllowedPlatformEvent, triggerPhrase } from "@/lib/platformEvents";
 import { isTestMode } from "@/lib/testMode";
 import { useWidgets } from "@/hooks/useWidgets";
@@ -178,6 +180,107 @@ function writeTestFeed(events: FeedEvent[]) {
   } catch {
     /* quota / private mode */
   }
+}
+
+function formatFeedAmount(
+  event: FeedEvent,
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+): string | null {
+  if (event.event_type === "DONATION" && event.amount) {
+    return `${event.currency === "USD" || !event.currency ? "$" : ""}${event.amount}${
+      event.currency && event.currency !== "USD" ? ` ${event.currency}` : ""
+    }`;
+  }
+  if (event.event_type === "BITS" && event.amount) {
+    return `${event.amount} ${event.platform === "KICK" ? t("activity.type.KICKS") : t("activity.type.BITS")}`;
+  }
+  if (event.quantity > 1) return `×${event.quantity}`;
+  return null;
+}
+
+function ActivityFeedRow({
+  group,
+  fresh,
+  justNow,
+  t,
+}: {
+  group: FeedEventGroup<FeedEvent>;
+  fresh: boolean;
+  justNow: string;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
+}) {
+  const event = group.events[0]!;
+  const count = group.events.length;
+  const color = PLATFORM_COLOR[event.platform] ?? "#A1A1AA";
+  const label = t(activityLabelKey(event.platform, event.event_type));
+  const amount = formatFeedAmount(event, t);
+
+  return (
+    <li className={fresh ? "soft-rise" : ""}>
+      <div className="flex items-start gap-3 py-3.5">
+        <span
+          className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
+          style={{
+            background: `color-mix(in oklab, ${color} 18%, transparent)`,
+            border: `1px solid color-mix(in oklab, ${color} 35%, transparent)`,
+            color,
+          }}
+        >
+          <PlatformIcon platform={event.platform} size={13} />
+          <span>{label}</span>
+          {amount ? <span className="opacity-80">{amount}</span> : null}
+          {count > 1 ? <span className="opacity-80">×{count}</span> : null}
+        </span>
+
+        <div className="min-w-0 flex-1 text-start">
+          <p className="truncate text-sm font-semibold" style={{ color }} dir="auto">
+            {event.actor_name ?? t("activity.anonymous")}
+          </p>
+          {event.message ? (
+            <p className="mt-0.5 break-words text-[0.8rem] text-muted-foreground" dir="auto">
+              “{event.message}”
+            </p>
+          ) : null}
+          {count > 1 ? (
+            <Collapsible className="mt-1.5">
+              <CollapsibleTrigger className="group flex items-center gap-1.5 text-[0.72rem] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground">
+                {t("activity.group.count", { count })}
+                <ChevronDown
+                  className="size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
+                  aria-hidden
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ul className="mt-1.5 space-y-0.5 border-s border-white/10 ps-3">
+                  {group.events.map((item) => {
+                    const detail = [formatFeedAmount(item, t), item.message].filter(Boolean).join(" · ");
+                    return (
+                      <li
+                        key={item.id}
+                        className="flex items-center gap-2 py-1 text-[0.75rem] text-muted-foreground"
+                      >
+                        <PlatformIcon platform={item.platform} size={12} />
+                        <span className="min-w-0 flex-1 truncate" dir="auto">
+                          {detail || t("activity.group.entry")}
+                        </span>
+                        <span className="shrink-0 tabular-nums" title={item.created_at}>
+                          {relativeTime(item.created_at, justNow)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </CollapsibleContent>
+            </Collapsible>
+          ) : null}
+        </div>
+
+        <span className="shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">
+          {relativeTime(event.created_at, justNow)}
+        </span>
+      </div>
+    </li>
+  );
 }
 
 function relativeTime(iso: string, justNow: string) {
@@ -437,6 +540,8 @@ function ActivityFeedPage() {
     [events, active],
   );
 
+  const groups = useMemo(() => groupConsecutiveEvents(visible), [visible]);
+
   const toggle = (id: string) =>
     setActive((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
@@ -570,55 +675,15 @@ function ActivityFeedPage() {
           )
         ) : (
           <ul className="divide-y divide-white/5">
-            {visible.map((event) => {
-              const color = PLATFORM_COLOR[event.platform] ?? "#A1A1AA";
-              const label = t(activityLabelKey(event.platform, event.event_type));
-              const amount =
-                event.event_type === "DONATION" && event.amount
-                  ? `${event.currency === "USD" || !event.currency ? "$" : ""}${event.amount}${
-                      event.currency && event.currency !== "USD" ? ` ${event.currency}` : ""
-                    }`
-                  : event.event_type === "BITS" && event.amount
-                    ? `${event.amount} ${event.platform === "KICK" ? t("activity.type.KICKS") : t("activity.type.BITS")}`
-                    : event.quantity > 1
-                      ? `×${event.quantity}`
-                      : null;
-
-              return (
-                <li
-                  key={event.id}
-                  className={`flex items-start gap-3 py-3.5 ${freshIds.has(event.id) ? "soft-rise" : ""}`}
-                >
-                  <span
-                    className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
-                    style={{
-                      background: `color-mix(in oklab, ${color} 18%, transparent)`,
-                      border: `1px solid color-mix(in oklab, ${color} 35%, transparent)`,
-                      color,
-                    }}
-                  >
-                    <PlatformIcon platform={event.platform} size={13} />
-                    <span>{label}</span>
-                    {amount ? <span className="opacity-80">{amount}</span> : null}
-                  </span>
-
-                  <div className="min-w-0 flex-1 text-start">
-                    <p className="truncate text-sm font-semibold" style={{ color }} dir="auto">
-                      {event.actor_name ?? t("activity.anonymous")}
-                    </p>
-                    {event.message ? (
-                      <p className="mt-0.5 break-words text-[0.8rem] text-muted-foreground" dir="auto">
-                        “{event.message}”
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <span className="shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">
-                    {relativeTime(event.created_at, t("activity.justNow"))}
-                  </span>
-                </li>
-              );
-            })}
+            {groups.map((group) => (
+              <ActivityFeedRow
+                key={group.id}
+                group={group}
+                fresh={group.events.some((event) => freshIds.has(event.id))}
+                justNow={t("activity.justNow")}
+                t={t}
+              />
+            ))}
           </ul>
         )}
       </section>

@@ -254,6 +254,65 @@ async function pause(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Reserve pro_purchases.code_delivered_at before sending.
+ * A second webhook for the same payment loses the update and does not send again.
+ * The stamp is cleared only when the provider call fails, so a later fulfillment can retry.
+ */
+async function claimActivationEmail(
+  admin: AdminClient,
+  purchaseId: string,
+): Promise<"claimed" | "already_sent" | "error"> {
+  const now = new Date().toISOString();
+  const { data, error } = await admin
+    .from("pro_purchases")
+    .update({ code_delivered_at: now, updated_at: now })
+    .eq("id", purchaseId)
+    .is("code_delivered_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("[pro-purchase] claim activation email failed", { message: error.message });
+    return "error";
+  }
+  return data ? "claimed" : "already_sent";
+}
+
+async function releaseActivationEmailClaim(admin: AdminClient, purchaseId: string): Promise<void> {
+  const { error } = await admin
+    .from("pro_purchases")
+    .update({ code_delivered_at: null, updated_at: new Date().toISOString() })
+    .eq("id", purchaseId);
+  if (error) {
+    console.error("[pro-purchase] release activation email claim failed", { message: error.message });
+  }
+}
+
+async function deliverPurchaseEmailOnce(
+  admin: AdminClient,
+  args: {
+    purchaseId: string;
+    alreadyDelivered: boolean;
+    toEmail: string;
+    template: string;
+    send: () => ReturnType<typeof sendTemplateEmail>;
+  },
+): Promise<{ delivered: boolean; error?: string }> {
+  if (args.alreadyDelivered) return { delivered: true };
+
+  const claim = await claimActivationEmail(admin, args.purchaseId);
+  if (claim === "already_sent") return { delivered: true };
+  if (claim === "error") return { delivered: false, error: "email_claim_failed" };
+
+  const status = await deliverActivationEmail(args.send, {
+    purchaseId: args.purchaseId,
+    toEmail: args.toEmail,
+    template: args.template,
+  });
+  if (!status.delivered) await releaseActivationEmailClaim(admin, args.purchaseId);
+  return status;
+}
+
 /** Sends an activation-code email, retrying transient provider failures. */
 async function deliverActivationEmail(
   send: () => ReturnType<typeof sendTemplateEmail>,
@@ -289,17 +348,25 @@ async function deliverActivationEmail(
   return { delivered: false, error: lastError };
 }
 
-async function deliverSelfActivationEmail(args: {
-  toEmail: string;
-  code: string;
-  interval: FulfillProPurchaseInput["interval"];
-  durationDays: number;
-  siteUrl: string;
-  locale: "ar" | "en";
-  purchaseId: string;
-}): Promise<{ delivered: boolean; error?: string }> {
-  return deliverActivationEmail(
-    () =>
+async function deliverSelfActivationEmail(
+  admin: AdminClient,
+  args: {
+    toEmail: string;
+    code: string;
+    interval: FulfillProPurchaseInput["interval"];
+    durationDays: number;
+    siteUrl: string;
+    locale: "ar" | "en";
+    purchaseId: string;
+    alreadyDelivered: boolean;
+  },
+): Promise<{ delivered: boolean; error?: string }> {
+  return deliverPurchaseEmailOnce(admin, {
+    purchaseId: args.purchaseId,
+    alreadyDelivered: args.alreadyDelivered,
+    toEmail: args.toEmail,
+    template: "pro_activation",
+    send: () =>
       sendTemplateEmail(
         args.toEmail,
         {
@@ -319,23 +386,30 @@ async function deliverSelfActivationEmail(args: {
           ],
         },
       ),
-    { purchaseId: args.purchaseId, toEmail: args.toEmail, template: "pro_activation" },
-  );
+  });
 }
 
-async function deliverGiftEmail(args: {
-  toEmail: string;
-  code: string;
-  interval: FulfillProPurchaseInput["interval"];
-  durationDays: number;
-  siteUrl: string;
-  locale: "ar" | "en";
-  purchaseId: string;
-  giftMessage?: string | null;
-  fromName?: string | null;
-}): Promise<{ delivered: boolean; error?: string }> {
-  return deliverActivationEmail(
-    () =>
+async function deliverGiftEmail(
+  admin: AdminClient,
+  args: {
+    toEmail: string;
+    code: string;
+    interval: FulfillProPurchaseInput["interval"];
+    durationDays: number;
+    siteUrl: string;
+    locale: "ar" | "en";
+    purchaseId: string;
+    alreadyDelivered: boolean;
+    giftMessage?: string | null;
+    fromName?: string | null;
+  },
+): Promise<{ delivered: boolean; error?: string }> {
+  return deliverPurchaseEmailOnce(admin, {
+    purchaseId: args.purchaseId,
+    alreadyDelivered: args.alreadyDelivered,
+    toEmail: args.toEmail,
+    template: "gift_activation",
+    send: () =>
       sendTemplateEmail(
         args.toEmail,
         {
@@ -357,47 +431,48 @@ async function deliverGiftEmail(args: {
           ],
         },
       ),
-    { purchaseId: args.purchaseId, toEmail: args.toEmail, template: "gift_activation" },
-  );
+  });
 }
 
-async function deliverDirectConfirmation(args: {
-  toEmail: string;
-  interval: FulfillProPurchaseInput["interval"];
-  durationDays: number;
-  siteUrl: string;
-  locale: "ar" | "en";
-  purchaseId: string;
-  expiresAt: string | null;
-}): Promise<{ delivered: boolean; error?: string }> {
-  const result = await sendTemplateEmail(
-    args.toEmail,
-    {
-      template: "direct_activated",
-      data: {
-        siteUrl: args.siteUrl,
-        interval: args.interval,
-        durationDays: args.durationDays,
-        expiresAt: args.expiresAt,
-        locale: args.locale,
-      },
-    },
-    {
-      tags: [
-        { name: "template", value: "direct_activated" },
-        { name: "purchase_id", value: args.purchaseId.slice(0, 48) },
-      ],
-    },
-  );
-
-  if (result.ok) return { delivered: true };
-  console.error("[pro-purchase] direct confirmation email failed", {
+async function deliverDirectConfirmation(
+  admin: AdminClient,
+  args: {
+    toEmail: string;
+    interval: FulfillProPurchaseInput["interval"];
+    durationDays: number;
+    siteUrl: string;
+    locale: "ar" | "en";
+    purchaseId: string;
+    alreadyDelivered: boolean;
+    expiresAt: string | null;
+  },
+): Promise<{ delivered: boolean; error?: string }> {
+  return deliverPurchaseEmailOnce(admin, {
     purchaseId: args.purchaseId,
-    email: args.toEmail,
-    error: result.error,
-    skipped: result.skipped,
+    alreadyDelivered: args.alreadyDelivered,
+    toEmail: args.toEmail,
+    template: "direct_activated",
+    send: () =>
+      sendTemplateEmail(
+        args.toEmail,
+        {
+          template: "direct_activated",
+          data: {
+            siteUrl: args.siteUrl,
+            interval: args.interval,
+            durationDays: args.durationDays,
+            expiresAt: args.expiresAt,
+            locale: args.locale,
+          },
+        },
+        {
+          tags: [
+            { name: "template", value: "direct_activated" },
+            { name: "purchase_id", value: args.purchaseId.slice(0, 48) },
+          ],
+        },
+      ),
   });
-  return { delivered: false, error: result.error };
 }
 
 async function resolveBuyerUserId(
@@ -443,26 +518,16 @@ async function grantDirectEntitlement(
   let expiresAt: string | null = null;
 
   const finishEmail = async (expires: string | null, idempotent: boolean): Promise<FulfillProPurchaseResult> => {
-    let emailStatus: { delivered: boolean; error?: string } = {
-      delivered: Boolean(args.codeDeliveredAt),
-    };
-    if (!args.codeDeliveredAt) {
-      emailStatus = await deliverDirectConfirmation({
-        toEmail: args.email,
-        interval: args.interval,
-        durationDays: args.durationDays,
-        siteUrl: args.siteUrl,
-        locale: args.locale,
-        purchaseId: args.purchaseId,
-        expiresAt: expires,
-      });
-      if (emailStatus.delivered) {
-        await admin
-          .from("pro_purchases")
-          .update({ code_delivered_at: new Date().toISOString() })
-          .eq("id", args.purchaseId);
-      }
-    }
+    const emailStatus = await deliverDirectConfirmation(admin, {
+      toEmail: args.email,
+      interval: args.interval,
+      durationDays: args.durationDays,
+      siteUrl: args.siteUrl,
+      locale: args.locale,
+      purchaseId: args.purchaseId,
+      alreadyDelivered: Boolean(args.codeDeliveredAt),
+      expiresAt: expires,
+    });
     return {
       ok: true,
       purchaseId: args.purchaseId,
@@ -629,26 +694,16 @@ export async function fulfillProPurchase(
       }
 
       if (codeRow?.code) {
-        let emailStatus: { delivered: boolean; error?: string } = {
-          delivered: Boolean(existing.code_delivered_at),
-        };
-        if (!existing.code_delivered_at) {
-          emailStatus = await deliverSelfActivationEmail({
-            toEmail: email,
-            code: codeRow.code,
-            interval: input.interval,
-            durationDays: codeRow.duration_days,
-            siteUrl: input.siteUrl,
-            locale,
-            purchaseId: existing.id,
-          });
-          if (emailStatus.delivered) {
-            await admin
-              .from("pro_purchases")
-              .update({ code_delivered_at: new Date().toISOString() })
-              .eq("id", existing.id);
-          }
-        }
+        const emailStatus = await deliverSelfActivationEmail(admin, {
+          toEmail: email,
+          code: codeRow.code,
+          interval: input.interval,
+          durationDays: codeRow.duration_days,
+          siteUrl: input.siteUrl,
+          locale,
+          purchaseId: existing.id,
+          alreadyDelivered: Boolean(existing.code_delivered_at),
+        });
         return {
           ok: true,
           purchaseId: existing.id,
@@ -697,45 +752,21 @@ export async function fulfillProPurchase(
       }
 
       if (codeRow?.code) {
-        let emailStatus: { delivered: boolean; error?: string } = {
-          delivered: Boolean(existing.code_delivered_at),
-        };
-        const deliverTo =
-          normalizeEmail(existing.gift_recipient_email) ?? email;
-
-        if (!existing.code_delivered_at) {
-          const selfAddressed = !normalizeEmail(existing.gift_recipient_email);
-          emailStatus = selfAddressed
-            ? await deliverSelfActivationEmail({
-                toEmail: email,
-                code: codeRow.code,
-                interval: input.interval,
-                durationDays: codeRow.duration_days,
-                siteUrl: input.siteUrl,
-                locale,
-                purchaseId: existing.id,
-              })
-            : await deliverGiftEmail({
-                toEmail: deliverTo,
-                code: codeRow.code,
-                interval: input.interval,
-                durationDays: codeRow.duration_days,
-                siteUrl: input.siteUrl,
-                locale,
-                purchaseId: existing.id,
-                ...(existing.gift_message ? { giftMessage: existing.gift_message } : {}),
-                ...(input.buyerName ? { fromName: input.buyerName } : {}),
-              });
-          if (emailStatus.delivered) {
-            const { error: markError } = await admin
-              .from("pro_purchases")
-              .update({ code_delivered_at: new Date().toISOString() })
-              .eq("id", existing.id);
-            if (markError) {
-              console.error("[pro-purchase] mark delivered failed", markError);
-            }
-          }
-        }
+        const deliverTo = normalizeEmail(existing.gift_recipient_email) ?? email;
+        const emailStatus = await deliverGiftEmail(admin, {
+          toEmail: deliverTo,
+          code: codeRow.code,
+          interval: input.interval,
+          durationDays: codeRow.duration_days,
+          siteUrl: input.siteUrl,
+          locale,
+          purchaseId: existing.id,
+          alreadyDelivered: Boolean(existing.code_delivered_at),
+          ...(existing.gift_message ? { giftMessage: existing.gift_message } : {}),
+          ...(normalizeEmail(existing.gift_recipient_email) && input.buyerName
+            ? { fromName: input.buyerName }
+            : {}),
+        });
 
         return {
           ok: true,
@@ -801,7 +832,7 @@ export async function fulfillProPurchase(
       console.error("[pro-purchase] link code→purchase failed", linkError);
     }
 
-    const emailStatus = await deliverSelfActivationEmail({
+    const emailStatus = await deliverSelfActivationEmail(admin, {
       toEmail: email,
       code: inserted.code,
       interval: input.interval,
@@ -809,17 +840,8 @@ export async function fulfillProPurchase(
       siteUrl: input.siteUrl,
       locale,
       purchaseId: purchase.id,
+      alreadyDelivered: false,
     });
-
-    if (emailStatus.delivered) {
-      const { error: markError } = await admin
-        .from("pro_purchases")
-        .update({ code_delivered_at: new Date().toISOString() })
-        .eq("id", purchase.id);
-      if (markError) {
-        console.error("[pro-purchase] mark delivered failed", markError);
-      }
-    }
 
     console.info("[pro-purchase] fulfilled (activation code emailed)", {
       purchaseId: purchase.id,
@@ -964,37 +986,20 @@ export async function fulfillProPurchase(
     console.error("[pro-purchase] link code→purchase failed", linkError);
   }
 
-  const emailStatus = giftRecipientEmail
-    ? await deliverGiftEmail({
-        toEmail: deliverTo,
-        code: inserted.code,
-        interval: input.interval,
-        durationDays,
-        siteUrl: input.siteUrl,
-        locale,
-        purchaseId: purchase.id,
-        ...(giftMessage ? { giftMessage } : {}),
-        ...(input.buyerName || email ? { fromName: input.buyerName ?? email } : {}),
-      })
-    : await deliverSelfActivationEmail({
-        toEmail: email,
-        code: inserted.code,
-        interval: input.interval,
-        durationDays,
-        siteUrl: input.siteUrl,
-        locale,
-        purchaseId: purchase.id,
-      });
-
-  if (emailStatus.delivered) {
-    const { error: markError } = await admin
-      .from("pro_purchases")
-      .update({ code_delivered_at: new Date().toISOString() })
-      .eq("id", purchase.id);
-    if (markError) {
-      console.error("[pro-purchase] mark delivered failed", markError);
-    }
-  }
+  const emailStatus = await deliverGiftEmail(admin, {
+    toEmail: deliverTo,
+    code: inserted.code,
+    interval: input.interval,
+    durationDays,
+    siteUrl: input.siteUrl,
+    locale,
+    purchaseId: purchase.id,
+    alreadyDelivered: false,
+    ...(giftMessage ? { giftMessage } : {}),
+    ...(giftRecipientEmail && (input.buyerName || email)
+      ? { fromName: input.buyerName ?? email }
+      : {}),
+  });
 
   let smsResult: { delivered: boolean; error?: string } = { delivered: false };
   const phone = input.phone?.trim();
@@ -1002,7 +1007,7 @@ export async function fulfillProPurchase(
     const duration = intervalLabel(input.interval, durationDays);
     const sms = await sendSms(
       phone,
-      `CylixStudio Pro (${duration}) — الرمز: ${formatActivationCode(inserted.code)}. فعّله من الإعدادات. لا تشاركه.`,
+      `CylixStudio Pro (${duration}) — الرمز: ${formatActivationCode(inserted.code)}. سجّل الدخول من لوحة التحكم لتفعيله. لا تشاركه.`,
     );
     smsResult = sms.ok ? { delivered: true } : { delivered: false, error: sms.error };
   }

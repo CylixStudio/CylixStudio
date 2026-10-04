@@ -1,23 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import type { NormalizedEvent } from "@/lib/webhooks/ingest.server";
+import { parseStreamElementsPayload } from "@/lib/relayEvents";
 
-type SePayload = {
-  _id?: string;
-  type?: string;
-  channel?: string;
-  provider?: string;
-  createdAt?: string;
-  data?: {
-    username?: string;
-    displayName?: string;
-    amount?: number;
-    currency?: string;
-    message?: string;
-    tipId?: string;
-    providerId?: string;
-  };
-};
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
 export const Route = createFileRoute("/api/public/webhooks/streamelements")({
   server: {
@@ -27,36 +15,49 @@ export const Route = createFileRoute("/api/public/webhooks/streamelements")({
           "@/lib/webhooks/ingest.server"
         );
         const { resolveRelaySource } = await import("@/lib/platformEvents");
-        const { verifyStreamElementsJwt } = await import("@/lib/webhooks/verify.server");
+        const { verifyStreamElementsJwt, safeEqual } = await import("@/lib/webhooks/verify.server");
 
         const rawBody = await request.text();
-        let body: SePayload;
+        let body: unknown;
         try {
-          body = JSON.parse(rawBody) as SePayload;
+          body = JSON.parse(rawBody) as unknown;
         } catch {
           return jsonResponse({ error: "invalid_json" }, 400);
         }
 
-        // StreamElements authenticates with its channel JWT.
+        const root = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+        const bodyChannel = text(root["channel"]);
+
+        // StreamElements authenticates with its channel JWT, either as the bearer
+        // token itself or as the HMAC secret of a short-lived webhook JWT.
         const authHeader = request.headers.get("authorization") ?? "";
         const token =
           (authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7) : authHeader) ||
           new URL(request.url).searchParams.get("jwt") ||
           "";
-        if (!token) return new Response("Missing token", { status: 401 });
+        if (!token.trim()) return new Response("Missing token", { status: 401 });
+        const presented = token.trim();
 
         const { supabaseAdmin } = await import("@/lib/supabase/client.server");
         const connections = await listConnections(supabaseAdmin, "STREAMELEMENTS");
 
-        // The JWT must verify against a stored channel secret AND its channel
-        // claim must match that same connection.
         let matched: { userId: string } | null = null;
         for (const connection of connections) {
           if (!connection.access_token) continue;
-          const claims = verifyStreamElementsJwt(token, connection.access_token);
+          const channelOk =
+            !bodyChannel ||
+            !connection.platform_user_id ||
+            bodyChannel === connection.platform_user_id;
+          if (!channelOk) continue;
+
+          if (safeEqual(presented, connection.access_token)) {
+            matched = { userId: connection.user_id };
+            break;
+          }
+
+          const claims = verifyStreamElementsJwt(presented, connection.access_token);
           if (!claims) continue;
-          const channelClaim =
-            typeof claims["channel"] === "string" ? (claims["channel"] as string) : null;
+          const channelClaim = text(claims["channel"]);
           if (
             connection.platform_user_id &&
             channelClaim &&
@@ -64,34 +65,32 @@ export const Route = createFileRoute("/api/public/webhooks/streamelements")({
           ) {
             continue;
           }
-          if (body.channel && channelClaim && body.channel !== channelClaim) continue;
+          if (bodyChannel && channelClaim && bodyChannel !== channelClaim) continue;
           matched = { userId: connection.user_id };
           break;
         }
         if (!matched) return new Response("Invalid token", { status: 401 });
 
-        const type = (body.type ?? "").toLowerCase();
-        if (type !== "tip" && type !== "donation" && type !== "superchat") {
-          return jsonResponse({ status: "ignored", reason: "unsupported_type" });
-        }
+        const event = parseStreamElementsPayload(body);
+        if (!event) return jsonResponse({ status: "ignored", reason: "unsupported_type" });
 
         const resolved = resolveRelaySource({
           relay: "STREAMELEMENTS",
-          origin: body.provider ?? (type === "superchat" ? "youtube" : null),
-          eventType: "DONATION",
+          origin: event.origin,
+          eventType: event.eventType,
         });
         if (!resolved) return jsonResponse({ status: "ignored", reason: "unsupported_type" });
 
         const normalized: NormalizedEvent = {
           platform: resolved.platform,
           eventType: resolved.eventType,
-          providerEventId: body._id ?? body.data?.tipId ?? null,
-          actorName: body.data?.displayName ?? body.data?.username ?? "Anonymous",
-          actorPlatformId: body.data?.providerId ?? null,
-          amount: typeof body.data?.amount === "number" ? body.data.amount : 0,
-          currency: body.data?.currency ?? null,
-          quantity: 1,
-          rawPayload: body,
+          providerEventId: event.providerEventId,
+          actorName: event.actorName,
+          actorPlatformId: null,
+          amount: event.amount,
+          currency: event.currency,
+          quantity: event.quantity,
+          rawPayload: event.raw,
         };
 
         const result = await receivePlatformEvent(supabaseAdmin, matched.userId, normalized);

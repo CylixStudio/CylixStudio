@@ -2,11 +2,16 @@
  * Production email service — Resend SDK.
  * Server-only: import from *.server.ts / API routes / createServerFn handlers.
  *
- * From address defaults to: CylixStudio <noreply@cylixstudio.com>
- * Env: RESEND_API_KEY (required), EMAIL_FROM (optional override)
+ * Sending domain noted in `.env.example`: cylixstudio.com (Resend domain verification).
+ * From / Reply-To default: CylixStudio <support@cylixstudio.com>
+ * Env: RESEND_API_KEY (required), EMAIL_FROM or RESEND_FROM (optional From override)
+ *
+ * These messages are transactional receipts. Do not add List-Unsubscribe,
+ * List-Unsubscribe-Post, or Precedence — those headers classify mail as bulk.
  */
 import { Resend } from "resend";
 
+import { SUBSCRIPTION_SUPPORT_EMAIL } from "@/lib/email/layout";
 import {
   buildEmailFromTemplate,
   type BuiltEmail,
@@ -26,7 +31,18 @@ export type SendEmailResult =
   | { ok: true; id: string }
   | { ok: false; error: string; skipped?: boolean };
 
-const DEFAULT_FROM = "CylixStudio <noreply@cylixstudio.com>";
+/** Mailbox on the cylixstudio.com sending domain. Display name is CylixStudio. */
+export const DEFAULT_FROM = `CylixStudio <${SUBSCRIPTION_SUPPORT_EMAIL}>`;
+
+/**
+ * Receipt headers only. Absent on purpose: List-Unsubscribe, List-Unsubscribe-Post, Precedence.
+ */
+export function transactionalReceiptHeaders(): Record<string, string> {
+  return {
+    "Auto-Submitted": "auto-generated",
+    "X-Auto-Response-Suppress": "All, OOF, AutoReply",
+  };
+}
 
 function resolveFrom(): string {
   return (
@@ -34,6 +50,38 @@ function resolveFrom(): string {
     process.env["RESEND_FROM"]?.trim() ||
     DEFAULT_FROM
   );
+}
+
+export type TransactionalSendPayload = {
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+  replyTo: string;
+  headers: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
+};
+
+/** Build the Resend payload without sending. Used by sendEmail and by local checks. */
+export function composeTransactionalSend(
+  input: SendEmailInput,
+  from = resolveFrom(),
+): TransactionalSendPayload | { error: "invalid_recipient" } {
+  const recipients = normalizeRecipients(input.to);
+  if (recipients.length === 0) return { error: "invalid_recipient" };
+
+  const payload: TransactionalSendPayload = {
+    from,
+    to: recipients,
+    subject: input.subject,
+    html: input.html,
+    text: input.text,
+    replyTo: input.replyTo?.trim() || SUBSCRIPTION_SUPPORT_EMAIL,
+    headers: transactionalReceiptHeaders(),
+  };
+  if (input.tags?.length) payload.tags = input.tags;
+  return payload;
 }
 
 function getResendClient(): Resend | null {
@@ -66,17 +114,21 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     return { ok: false, error: "email_not_configured", skipped: true };
   }
 
-  const from = resolveFrom();
+  const composed = composeTransactionalSend(input);
+  if ("error" in composed) {
+    return { ok: false, error: composed.error };
+  }
 
   try {
     const { data, error } = await client.emails.send({
-      from,
-      to: recipients,
-      subject: input.subject,
-      html: input.html,
-      text: input.text,
-      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
-      ...(input.tags?.length ? { tags: input.tags } : {}),
+      from: composed.from,
+      to: composed.to,
+      subject: composed.subject,
+      html: composed.html,
+      text: composed.text,
+      replyTo: composed.replyTo,
+      headers: composed.headers,
+      ...(composed.tags?.length ? { tags: composed.tags } : {}),
     });
 
     if (error) {
@@ -90,7 +142,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     }
 
     const id = data?.id ?? "sent";
-    console.info("[email] sent", { id, to: recipients, subject: input.subject, from });
+    console.info("[email] sent", { id, to: recipients, subject: input.subject, from: composed.from });
     return { ok: true, id };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
