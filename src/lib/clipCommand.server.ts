@@ -1,3 +1,4 @@
+import { chatMention } from "@/lib/commandTemplate";
 import { captureKickClip, fetchKickChannel, refreshKickBuffer } from "@/lib/kickClip.server";
 import { publicSiteUrl } from "@/lib/siteUrl.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
@@ -289,7 +290,7 @@ export async function handleClipCommand(input: {
   if (row?.id) await supabaseAdmin.from("clips").update({ share_url: shareUrl }).eq("id", row.id);
 
   const reply = (settings.response || CLIP_DEFAULTS.response)
-    .replaceAll("{user}", sender.username)
+    .replace(/@?\{user\}/gi, () => chatMention(sender.username))
     .replaceAll("{clip_url}", shareUrl);
   await sendKickChatMessage(userId, broadcasterUserId, reply);
 

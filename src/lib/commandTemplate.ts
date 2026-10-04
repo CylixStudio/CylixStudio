@@ -222,6 +222,18 @@ function pickRandomRange(minRaw: string, maxRaw: string): string {
   return String(min + Math.floor(Math.random() * (max - min + 1)));
 }
 
+/**
+ * Kick, Twitch, and YouTube notify a chatter when the message contains
+ * `@username`. Their chat send APIs take that text as-is; none accept a
+ * separate mention object.
+ */
+export function chatMention(username: string): string {
+  const name = username.trim().replace(/^@+/, "");
+  return name ? `@${name}` : "";
+}
+
+const MENTION_FIELDS = new Set(["user", "sender", "sender.username", "taggeduser", "taggeduser.username"]);
+
 function fieldValue(data: CommandTemplateData, path: string): string {
   switch (path.toLowerCase()) {
     case "sender.username":
@@ -296,8 +308,18 @@ export function renderCommandTemplate(
     pickRandomItem(body),
   );
 
-  text = text.replace(/\{\{\s*([a-zA-Z][\w.]*)\s*\}\}|\{\s*([a-zA-Z][\w.]*)\s*\}/g, (_match, dotted: string | undefined, plain: string | undefined) =>
-    fieldValue(data, dotted ?? plain ?? ""),
+  text = text.replace(
+    /\{\{\s*([a-zA-Z][\w.]*)\s*\}\}|\{\s*([a-zA-Z][\w.]*)\s*\}/g,
+    (_match, dotted: string | undefined, plain: string | undefined, offset: number, source: string) => {
+      const path = (dotted ?? plain ?? "").toLowerCase();
+      const value = fieldValue(data, path);
+      if (!MENTION_FIELDS.has(path) || !value) return value;
+      const name = value.replace(/^@+/, "");
+      const before = offset > 0 ? source.charAt(offset - 1) : "";
+      if (before === "@") return name;
+      const mention = chatMention(name);
+      return before && /[\p{L}\p{N}]/u.test(before) ? ` ${mention}` : mention;
+    },
   );
 
   text = text.replace(/\{\{[^{}]{0,200}\}\}/g, "");
