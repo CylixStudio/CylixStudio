@@ -6,8 +6,6 @@ import { safeEqual } from "@/lib/webhooks/verify.server";
 
 const API_BASE = "https://stream-app-service.streampay.sa/api/v2";
 
-const productIds = new Map<string, string>();
-
 type Json = Record<string, unknown>;
 
 export function customerDisplayName(input: {
@@ -168,9 +166,13 @@ function readUrl(value: unknown): string | null {
     record["checkout_url"] ??
     record["payment_url"] ??
     record["link"] ??
+    record["hosted_url"] ??
+    record["hosted_invoice_url"] ??
+    record["public_url"] ??
     nested?.["url"] ??
     nested?.["checkout_url"] ??
-    nested?.["payment_url"];
+    nested?.["payment_url"] ??
+    nested?.["hosted_invoice_url"];
   return typeof url === "string" && url.startsWith("https://") ? url : null;
 }
 
@@ -182,42 +184,6 @@ function listOf(value: unknown): Json[] {
     if (Array.isArray(record[key])) return listOf(record[key]);
   }
   return [];
-}
-
-function productEnvKey(interval: ProBillingInterval): string {
-  if (interval === "monthly") return "STREAMPAY_PRODUCT_MONTHLY";
-  if (interval === "six_months") return "STREAMPAY_PRODUCT_SIX_MONTHS";
-  return "STREAMPAY_PRODUCT_YEARLY";
-}
-
-async function ensureProduct(interval: ProBillingInterval, name: string, amount: number): Promise<string | null> {
-  const fromEnv = process.env[productEnvKey(interval)]?.trim();
-  if (fromEnv) return fromEnv;
-  const cached = productIds.get(interval);
-  if (cached) return cached;
-
-  const listed = await streampay("GET", "/products");
-  const existing = listOf(listed.json).find((row) => row["name"] === name);
-  const existingId = readId(existing);
-  if (existingId) {
-    productIds.set(interval, existingId);
-    return existingId;
-  }
-
-  const attempts: Json[] = [
-    { name, description: name, currency: "SAR", price: amount, type: "ONE_TIME", is_recurring: false },
-    { name, description: name, currency: "SAR", prices: [{ currency: "SAR", amount, type: "ONE_TIME" }] },
-  ];
-  for (const body of attempts) {
-    const created = await streampay("POST", "/products", body);
-    const id = readId(created.json) ?? readId(asRecord(created.json)?.["data"]);
-    if (created.status >= 200 && created.status < 300 && id) {
-      productIds.set(interval, id);
-      return id;
-    }
-    logStreamPayFailure("create_product", created);
-  }
-  return null;
 }
 
 async function ensureConsumer(input: {
@@ -267,13 +233,9 @@ export async function createStreamPayCheckout(input: {
     console.info("[streampay] create checkout", {
       interval: input.interval,
       amount: option.amount,
-      currency: option.currency,
+      currency: "SAR",
       name: input.name,
     });
-    const productId = await ensureProduct(input.interval, payload.productName, option.amount);
-    if (!productId) {
-      return { ok: false, error: "streampay_product_failed", message: "StreamPay rejected the product" };
-    }
 
     const consumerId = await ensureConsumer({
       name: input.name,
@@ -286,35 +248,85 @@ export async function createStreamPayCheckout(input: {
     }
 
     const origin = input.origin.replace(/\/+$/, "");
-    const created = await streampay("POST", "/payment_links", {
+    const metadata = {
+      user_id: input.userId,
+      email: input.email,
+      interval: input.interval,
+      purchase_type: input.purchaseType,
+      amount: String(option.amount),
+      currency: "SAR",
+      buyer_name: input.name,
+      locale: input.locale,
+    };
+    const line = {
+      name: payload.productName,
+      description: payload.productName,
+      quantity: 1,
+      unit_price: option.amount,
+      price: option.amount,
+      amount: option.amount,
+      currency: "SAR",
+    };
+    const created = await streampay("POST", "/invoices", {
       name: input.name,
       description: payload.productName,
-      currency: option.currency,
-      items: [{ product_id: productId, quantity: 1 }],
-      contact_information_type: "EMAIL",
-      max_number_of_payments: 1,
+      currency: "SAR",
       organization_consumer_id: consumerId,
+      items: [line],
       success_redirect_url: `${origin}/subscription?streampay=paid`,
       failure_redirect_url: `${origin}/subscription?streampay=failed`,
-      custom_metadata: {
-        user_id: input.userId,
-        email: input.email,
-        interval: input.interval,
-        purchase_type: input.purchaseType,
-        amount: String(option.amount),
-        currency: option.currency,
-        buyer_name: input.name,
-        locale: input.locale,
-      },
+      custom_metadata: metadata,
     });
-    const url = readUrl(created.json);
-    if (created.status < 200 || created.status >= 300 || !url) {
-      logStreamPayFailure("create_payment_link", created);
-      return {
-        ok: false,
-        error: "streampay_link_failed",
-        message: streamPayErrorMessage(created.json),
-      };
+    let url = created.status >= 200 && created.status < 300 ? readUrl(created.json) : null;
+    if (!url) {
+      logStreamPayFailure("create_invoice", created);
+      const product = await streampay("POST", "/products", {
+        name: payload.productName,
+        description: payload.productName,
+        type: "ONE_OFF",
+        is_active: true,
+        is_one_time: true,
+        currency: "SAR",
+        price: option.amount,
+        prices: [
+          {
+            currency: "SAR",
+            amount: option.amount,
+            is_price_inclusive_of_vat: true,
+            is_price_exempt_from_vat: false,
+          },
+        ],
+      });
+      const productId = readId(product.json) ?? readId(asRecord(product.json)?.["data"]);
+      if (product.status < 200 || product.status >= 300 || !productId) {
+        logStreamPayFailure("create_inline_product", product);
+        return {
+          ok: false,
+          error: "streampay_invoice_failed",
+          message: streamPayErrorMessage(created.json),
+        };
+      }
+      const link = await streampay("POST", "/payment_links", {
+        name: payload.productName,
+        description: payload.productName,
+        currency: "SAR",
+        items: [{ product_id: productId, quantity: 1 }],
+        contact_information_type: "EMAIL",
+        max_number_of_payments: 1,
+        organization_consumer_id: consumerId,
+        success_redirect_url: `${origin}/subscription?streampay=paid`,
+        failure_redirect_url: `${origin}/subscription?streampay=failed`,
+        custom_metadata: metadata,
+      });
+      url = link.status >= 200 && link.status < 300 ? readUrl(link.json) : null;
+      if (!url) {
+        logStreamPayFailure("create_payment_link", link);
+        return {
+          ok: false,
+          error: "streampay_link_failed",
+          message: streamPayErrorMessage(link.json),
+        };
+      }
     }
     const checkout = new URL(url);
     checkout.searchParams.set("language", input.locale);
