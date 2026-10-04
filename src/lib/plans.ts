@@ -15,8 +15,21 @@ export type PlanFeatureRow = {
 
 export const PLAN_PRICES = {
   free: { amount: 0, currency: "SAR" as const },
-  /** Pro list price shown in the comparison table (monthly). */
+  /** Regular monthly Pro price. The launch offer charges less while it is active. */
   pro: { amount: 39, currency: "SAR" as const },
+} as const;
+
+/**
+ * Opening-week price for monthly Pro.
+ * Set `active` to false to charge the regular 39 SAR again.
+ */
+export const LAUNCH_OFFER = {
+  active: true,
+  interval: "monthly" as const,
+  /** Amount sent to checkout while the offer is on. */
+  amount: 20,
+  /** Regular monthly price, shown crossed out. */
+  listAmount: 39,
 } as const;
 
 /** Pro billing intervals shown on the welcome plan card. */
@@ -33,6 +46,10 @@ export type ProBillingOption = {
   months: number;
   /** Effective monthly rate, in SAR. */
   perMonthAmount: number;
+  /** Regular price shown crossed out while a launch offer replaces `amount`. */
+  listAmount: number | null;
+  /** Opening-week launch price is active for this interval. */
+  launchOffer: boolean;
   /** Optional savings badge versus 12× the monthly price. */
   savePercent: number | null;
   /** Yearly is the highlighted best-value interval. */
@@ -42,11 +59,13 @@ export type ProBillingOption = {
 export const PRO_BILLING_OPTIONS: Record<ProBillingInterval, ProBillingOption> = {
   monthly: {
     id: "monthly",
-    amount: 39,
+    amount: LAUNCH_OFFER.active ? LAUNCH_OFFER.amount : PLAN_PRICES.pro.amount,
     currency: "SAR",
-    label: "39",
+    label: LAUNCH_OFFER.active ? String(LAUNCH_OFFER.amount) : String(PLAN_PRICES.pro.amount),
     months: 1,
-    perMonthAmount: 39,
+    perMonthAmount: LAUNCH_OFFER.active ? LAUNCH_OFFER.amount : PLAN_PRICES.pro.amount,
+    listAmount: LAUNCH_OFFER.active ? LAUNCH_OFFER.listAmount : null,
+    launchOffer: LAUNCH_OFFER.active,
     savePercent: null,
   },
   six_months: {
@@ -56,6 +75,8 @@ export const PRO_BILLING_OPTIONS: Record<ProBillingInterval, ProBillingOption> =
     label: "169",
     months: 6,
     perMonthAmount: 28,
+    listAmount: null,
+    launchOffer: false,
     savePercent: null,
   },
   yearly: {
@@ -65,6 +86,8 @@ export const PRO_BILLING_OPTIONS: Record<ProBillingInterval, ProBillingOption> =
     label: "279",
     months: 12,
     perMonthAmount: 23,
+    listAmount: null,
+    launchOffer: false,
     /** vs 12 × 39 SAR (468). */
     savePercent: 40,
     bestValue: true,
@@ -85,6 +108,9 @@ export type ProCheckoutPayload = {
   currency: "SAR";
   months: number;
   label: string;
+  /** Regular price when `amount` is a launch offer. */
+  listAmount: number | null;
+  launchOffer: boolean;
   productName: string;
   /** direct = activate on buyer account; gift = email an activation code */
   purchaseType: ProPurchaseType;
@@ -119,7 +145,11 @@ export function buildProCheckoutPayload(
     currency: option.currency,
     months: option.months,
     label: option.label,
-    productName: `CylixStudio Pro ${option.amount} SAR (${option.months === 1 ? "Monthly" : option.months === 6 ? "6 Months" : "Yearly"})`,
+    listAmount: option.listAmount,
+    launchOffer: option.launchOffer,
+    productName: option.launchOffer
+      ? `CylixStudio Pro Launch Offer ${option.amount} SAR (Monthly)`
+      : `CylixStudio Pro ${option.amount} SAR (${option.months === 1 ? "Monthly" : option.months === 6 ? "6 Months" : "Yearly"})`,
     purchaseType,
     userId: options?.userId ?? null,
     buyerEmail: options?.buyerEmail?.trim().toLowerCase() || null,

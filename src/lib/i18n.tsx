@@ -434,6 +434,8 @@ const DICT = {
   "gateway.billing.yearly": "سنوي",
   "gateway.billing.save": "وفّر ~{percent}%",
   "gateway.billing.bestValue": "الأفضل قيمة",
+  "gateway.billing.launchOffer": "عرض الافتتاح",
+  "gateway.billing.launchOfferHint": "سعر الأسبوع الأول. السعر المعتاد يظهر مشطوباً.",
   "gateway.billing.suffix.monthly": "/شهر",
   "gateway.billing.suffix.sixMonths": "/6 أشهر",
   "gateway.billing.suffix.yearly": "/سنة",

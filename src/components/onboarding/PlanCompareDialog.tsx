@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { SaudiRiyalAmount } from "@/components/brand/SaudiRiyalSymbol";
-import { PLAN_FEATURES, PLAN_PRICES, type FeatureAvailability } from "@/lib/plans";
+import { PLAN_FEATURES, PLAN_PRICES, PRO_BILLING_OPTIONS, type FeatureAvailability } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 function CellValue({ value }: { value: FeatureAvailability }) {
@@ -37,6 +37,7 @@ type PlanCompareDialogProps = {
 
 export function PlanCompareDialog({ open, onOpenChange }: PlanCompareDialogProps) {
   const { t } = useLanguage();
+  const monthly = PRO_BILLING_OPTIONS.monthly;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -62,10 +63,18 @@ export function PlanCompareDialog({ open, onOpenChange }: PlanCompareDialogProps
                 </th>
                 <th className="px-3 py-3 text-center font-medium text-primary">
                   {t("gateway.pro.name")}
-                  <span className="mt-0.5 flex items-baseline justify-center gap-1 text-[0.65rem] normal-case tracking-normal text-primary/80">
-                    <SaudiRiyalAmount amount={PLAN_PRICES.pro.amount} />
+                  <span className="mt-0.5 flex flex-wrap items-baseline justify-center gap-1 text-[0.65rem] normal-case tracking-normal text-primary/80">
+                    <SaudiRiyalAmount amount={monthly.amount} />
+                    {monthly.listAmount != null ? (
+                      <SaudiRiyalAmount amount={monthly.listAmount} className="text-zinc-500 line-through" />
+                    ) : null}
                     {t("gateway.price.period")}
                   </span>
+                  {monthly.launchOffer ? (
+                    <span className="mt-1 block text-[0.62rem] font-semibold normal-case tracking-normal text-amber-200">
+                      {t("gateway.billing.launchOffer")}
+                    </span>
+                  ) : null}
                 </th>
               </tr>
             </thead>

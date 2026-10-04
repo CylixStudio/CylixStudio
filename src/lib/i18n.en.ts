@@ -395,6 +395,8 @@ export const EN = {
   "gateway.billing.yearly": "Yearly",
   "gateway.billing.save": "Save ~{percent}%",
   "gateway.billing.bestValue": "Best value",
+  "gateway.billing.launchOffer": "Launch offer",
+  "gateway.billing.launchOfferHint": "Opening-week price. The regular price is crossed out.",
   "gateway.billing.suffix.monthly": "/month",
   "gateway.billing.suffix.sixMonths": "/6 months",
   "gateway.billing.suffix.yearly": "/year",

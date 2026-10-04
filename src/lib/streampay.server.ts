@@ -1,7 +1,7 @@
 import { createHmac } from "crypto";
 
 import type { ProBillingInterval, ProPurchaseType } from "@/lib/plans";
-import { PRO_BILLING_OPTIONS, buildProCheckoutPayload } from "@/lib/plans";
+import { buildProCheckoutPayload } from "@/lib/plans";
 import { safeEqual } from "@/lib/webhooks/verify.server";
 
 const API_BASE = "https://stream-app-service.streampay.sa/api/v2";
@@ -264,7 +264,6 @@ export async function createStreamPayCheckout(input: {
       console.error("[streampay] missing STREAMPAY_API_KEY or STREAMPAY_SECRET_KEY");
       return { ok: false, error: "streampay_not_configured", message: "StreamPay keys are missing" };
     }
-    const option = PRO_BILLING_OPTIONS[input.interval];
     const payload = buildProCheckoutPayload(input.interval, {
       purchaseType: input.purchaseType,
       userId: input.userId,
@@ -273,7 +272,9 @@ export async function createStreamPayCheckout(input: {
     const customerName = streamPayCustomerName(input.name);
     console.info("[streampay] create checkout", {
       interval: input.interval,
-      amount: option.amount,
+      amount: payload.amount,
+      listAmount: payload.listAmount,
+      launchOffer: payload.launchOffer,
       currency: "SAR",
       name: customerName,
     });
@@ -294,7 +295,9 @@ export async function createStreamPayCheckout(input: {
       email: input.email,
       interval: input.interval,
       purchase_type: input.purchaseType,
-      amount: String(option.amount),
+      amount: String(payload.amount),
+      list_amount: payload.listAmount != null ? String(payload.listAmount) : "",
+      launch_offer: payload.launchOffer ? "1" : "0",
       currency: "SAR",
       buyer_name: customerName,
       locale: input.locale,
@@ -303,9 +306,9 @@ export async function createStreamPayCheckout(input: {
       name: payload.productName,
       description: payload.productName,
       quantity: 1,
-      unit_price: option.amount,
-      price: option.amount,
-      amount: option.amount,
+      unit_price: payload.amount,
+      price: payload.amount,
+      amount: payload.amount,
       currency: "SAR",
     };
     const created = await streampay("POST", "/invoices", {
@@ -330,11 +333,11 @@ export async function createStreamPayCheckout(input: {
         is_active: true,
         is_one_time: true,
         currency: "SAR",
-        price: option.amount,
+        price: payload.amount,
         prices: [
           {
             currency: "SAR",
-            amount: option.amount,
+            amount: payload.amount,
             is_price_inclusive_of_vat: true,
             is_price_exempt_from_vat: false,
           },
