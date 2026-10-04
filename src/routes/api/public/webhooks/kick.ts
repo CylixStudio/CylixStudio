@@ -203,7 +203,12 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
         );
         const signature = request.headers.get("kick-event-signature");
         const timestamp = request.headers.get("kick-event-message-timestamp");
-        const verification = verifyKickSignature({
+        const skipVerify = process.env["KICK_WEBHOOK_SKIP_VERIFY"] === "true";
+        const missingEnv = [
+          publicKeyPem?.trim() ? null : "KICK_WEBHOOK_PUBLIC_KEY",
+          hmacSecret?.trim() ? null : "KICK_WEBHOOK_SECRET",
+        ].filter((name): name is string => name != null);
+        const verification = await verifyKickSignature({
           publicKeyPem,
           hmacSecret,
           messageId,
@@ -211,8 +216,20 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           signature,
           rawBody,
         });
-        if (!verification.ok) {
-          console.error("[kick-webhook] invalid signature", JSON.stringify(verification));
+        if (!verification.ok && skipVerify) {
+          console.warn(
+            "[kick-webhook] signature bypassed via KICK_WEBHOOK_SKIP_VERIFY",
+            JSON.stringify({ ...verification, missingEnv }),
+          );
+        } else if (!verification.ok) {
+          console.error(
+            "[kick-webhook] invalid signature",
+            JSON.stringify({
+              ...verification,
+              missingEnv,
+              note: "Kick signs with its RSA public key. KICK_WEBHOOK_PUBLIC_KEY and KICK_WEBHOOK_SECRET are optional overrides.",
+            }),
+          );
           return jsonResponse({ error: "invalid_signature", reason: verification.reason }, 403);
         }
 
