@@ -8,6 +8,18 @@ const API_BASE = "https://stream-app-service.streampay.sa/api/v2";
 
 type Json = Record<string, unknown>;
 
+const STREAM_PAY_NAME_FALLBACK = "CylixStudio User";
+
+/** StreamPay consumers require `name`. Keep it a short readable string. */
+export function streamPayCustomerName(value: string | null | undefined): string {
+  const cleaned = (value ?? "")
+    .replace(/[^\p{L}\p{N}\s.'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return cleaned.length >= 2 ? cleaned : STREAM_PAY_NAME_FALLBACK;
+}
+
 export function customerDisplayName(input: {
   email: string | null;
   metadata: Record<string, unknown> | null;
@@ -20,13 +32,16 @@ export function customerDisplayName(input: {
     meta["name"],
     meta["display_name"],
     meta["username"],
+    meta["preferred_username"],
+    meta["user_name"],
+    input.email?.split("@")[0]?.replace(/[._+-]+/g, " "),
   ];
   for (const value of candidates) {
-    if (typeof value === "string" && value.trim()) return value.trim().slice(0, 120);
+    if (typeof value !== "string") continue;
+    const name = streamPayCustomerName(value);
+    if (name !== STREAM_PAY_NAME_FALLBACK) return name;
   }
-  const local = input.email?.split("@")[0]?.replace(/[._-]+/g, " ").trim();
-  if (local) return local.slice(0, 120);
-  return "CylixStudio";
+  return STREAM_PAY_NAME_FALLBACK;
 }
 
 function cleanEnv(name: string): string {
@@ -186,28 +201,53 @@ function listOf(value: unknown): Json[] {
   return [];
 }
 
+async function findConsumer(userId: string, email: string): Promise<string | null> {
+  const queries = [
+    `/consumers?external_id=${encodeURIComponent(userId)}`,
+    `/consumers?email=${encodeURIComponent(email)}`,
+    `/consumers?limit=100`,
+  ];
+  for (const path of queries) {
+    const listed = await streampay("GET", path);
+    const match = listOf(listed.json).find((row) => row["external_id"] === userId || row["email"] === email);
+    const id = readId(match);
+    if (id) return id;
+  }
+  return null;
+}
+
 async function ensureConsumer(input: {
   name: string;
   email: string;
   userId: string;
   locale: "ar" | "en";
-}): Promise<string | null> {
-  const created = await streampay("POST", "/consumers", {
-    name: input.name,
-    email: input.email,
-    external_id: input.userId,
-    preferred_language: input.locale,
-    communication_methods: ["EMAIL"],
-  });
-  const createdId = readId(created.json) ?? readId(asRecord(created.json)?.["data"]);
-  if (created.status >= 200 && created.status < 300 && createdId) return createdId;
-  logStreamPayFailure("create_consumer", created);
-
-  const listed = await streampay("GET", `/consumers?external_id=${encodeURIComponent(input.userId)}`);
-  const match = listOf(listed.json).find((row) => {
-    return row["external_id"] === input.userId || row["email"] === input.email;
-  });
-  return readId(match);
+}): Promise<{ id: string } | { id: null; message: string }> {
+  const name = streamPayCustomerName(input.name);
+  const attempts: Json[] = [
+    {
+      name,
+      email: input.email,
+      external_id: input.userId,
+      preferred_language: input.locale,
+      communication_methods: ["EMAIL"],
+    },
+    {
+      name: STREAM_PAY_NAME_FALLBACK,
+      email: input.email,
+      external_id: input.userId,
+    },
+  ];
+  let lastMessage = "StreamPay could not create the customer";
+  for (const body of attempts) {
+    const created = await streampay("POST", "/consumers", body);
+    const createdId = readId(created.json) ?? readId(asRecord(created.json)?.["data"]);
+    if (created.status >= 200 && created.status < 300 && createdId) return { id: createdId };
+    lastMessage = streamPayErrorMessage(created.json);
+    logStreamPayFailure("create_consumer", created);
+    const existing = await findConsumer(input.userId, input.email);
+    if (existing) return { id: existing };
+  }
+  return { id: null, message: lastMessage };
 }
 
 export async function createStreamPayCheckout(input: {
@@ -230,22 +270,23 @@ export async function createStreamPayCheckout(input: {
       userId: input.userId,
       buyerEmail: input.email,
     });
+    const customerName = streamPayCustomerName(input.name);
     console.info("[streampay] create checkout", {
       interval: input.interval,
       amount: option.amount,
       currency: "SAR",
-      name: input.name,
+      name: customerName,
     });
-
-    const consumerId = await ensureConsumer({
-      name: input.name,
+    const consumer = await ensureConsumer({
+      name: customerName,
       email: input.email,
       userId: input.userId,
       locale: input.locale,
     });
-    if (!consumerId) {
-      return { ok: false, error: "streampay_consumer_failed", message: "StreamPay rejected the customer name" };
+    if (!consumer.id) {
+      return { ok: false, error: "streampay_consumer_failed", message: consumer.message };
     }
+    const consumerId = consumer.id;
 
     const origin = input.origin.replace(/\/+$/, "");
     const metadata = {
@@ -255,7 +296,7 @@ export async function createStreamPayCheckout(input: {
       purchase_type: input.purchaseType,
       amount: String(option.amount),
       currency: "SAR",
-      buyer_name: input.name,
+      buyer_name: customerName,
       locale: input.locale,
     };
     const line = {
@@ -268,9 +309,11 @@ export async function createStreamPayCheckout(input: {
       currency: "SAR",
     };
     const created = await streampay("POST", "/invoices", {
-      name: input.name,
+      name: payload.productName,
       description: payload.productName,
       currency: "SAR",
+      customer_name: customerName,
+      customer: { name: customerName, email: input.email },
       organization_consumer_id: consumerId,
       items: [line],
       success_redirect_url: `${origin}/subscription?streampay=paid`,
