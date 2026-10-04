@@ -287,6 +287,10 @@ export type SpotlightMessage = {
   pinnedAt: string;
   /** Monotonic counter so the overlay replays the entry animation. */
   nonce: number;
+  isReply?: boolean;
+  replyQuote?: string | null;
+  /** Original message time, used when the pin itself is a reply. */
+  appearedAt?: string;
 };
 
 export function parseSpotlightState(raw: unknown): SpotlightMessage | null {
@@ -317,6 +321,9 @@ export function parseSpotlightState(raw: unknown): SpotlightMessage | null {
     badgeImages,
     pinnedAt: typeof entry["pinnedAt"] === "string" ? entry["pinnedAt"] : new Date().toISOString(),
     nonce: typeof entry["nonce"] === "number" ? entry["nonce"] : 0,
+    isReply: entry["isReply"] === true,
+    replyQuote: typeof entry["replyQuote"] === "string" ? entry["replyQuote"].slice(0, 160) : null,
+    appearedAt: typeof entry["appearedAt"] === "string" ? entry["appearedAt"] : undefined,
   };
 }
 
@@ -358,6 +365,11 @@ export type OverlayEvent = {
   quantity: number;
   secondsAdded: number;
   createdAt: string;
+  /** Set when the stored payload is a reply to an earlier message or alert. */
+  isReply?: boolean;
+  replyQuote?: string | null;
+  /** When the reply appeared. Falls back to createdAt for the 10-minute clock. */
+  appearedAt?: string;
 };
 
 export type GoalSnapshot = {

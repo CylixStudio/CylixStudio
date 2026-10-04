@@ -5,6 +5,8 @@ import { Eraser, Pin } from "lucide-react";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { badgeAssetUrl } from "@/hooks/useKickBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
+import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
+import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { clearSpotlightMessage, pinSpotlightMessage } from "@/lib/spotlight.functions";
 import { SPOTLIGHT_AUTO_HIDE, type SpotlightMessage } from "@/lib/widgets";
 import { DarkSelect } from "@/components/ui/dark-select";
@@ -42,6 +44,11 @@ export function SpotlightControlPanel({
     .filter((message) => message.text.trim().length > 0)
     .sort((a, b) => b.at - a.at)
     .slice(0, 12);
+  const liveFeed = useReplyAlertExpiry(feed, {
+    getId: (message) => message.id,
+    isReply: (message) => message.isReply === true,
+    appearanceMs: (message) => message.at,
+  });
 
   const run = async (key: string, action: () => Promise<unknown>) => {
     setBusy(key);
@@ -69,6 +76,9 @@ export function SpotlightControlPanel({
             label: badge.text ?? badge.type,
             imageUrl: badge.imageUrl ?? badgeAssetUrl(badge as unknown as Record<string, unknown>),
           })),
+          isReply: message.isReply === true,
+          replyQuote: message.replyQuote ?? null,
+          appearedAt: new Date(message.at).toISOString(),
         },
       }),
     );
@@ -147,17 +157,23 @@ export function SpotlightControlPanel({
           {"Live chat feed"}
         </p>
 
-        {feed.length === 0 ? (
+        {liveFeed.items.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             {"Waiting for Twitch / Kick chat messages…"}
           </p>
         ) : (
           <ul className="max-h-64 space-y-1.5 overflow-y-auto pe-1">
-            {feed.map((message) => (
+            {liveFeed.items.map((message) => (
               <li
                 key={message.id}
-                className="flex items-start gap-2 rounded-lg border border-border/70 px-2.5 py-2 text-xs"
+                className="rounded-lg border border-border/70 px-2.5 py-2 text-xs"
               >
+                <ReplyAlertFrame
+                  active={message.isReply === true}
+                  fading={liveFeed.fadingIds.has(message.id)}
+                  quote={message.replyQuote}
+                >
+              <div className="flex items-start gap-2">
                 <PlatformIcon platform={message.platform} size={14} />
                 <span className="min-w-0 flex-1">
                   <span className="font-semibold" style={{ color: message.color ?? undefined }} dir="auto">
@@ -174,6 +190,8 @@ export function SpotlightControlPanel({
                 >
                   <Pin className="size-3.5" aria-hidden />
                 </button>
+              </div>
+                </ReplyAlertFrame>
               </li>
             ))}
           </ul>

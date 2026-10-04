@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { badgeAssetUrl, type KickBadge } from "@/hooks/useKickBadges";
+import { readReplyMeta } from "@/lib/replyAlert";
 
 export type ChatMessage = {
   id: string;
@@ -12,7 +13,18 @@ export type ChatMessage = {
   badgeList?: KickBadge[];
   text: string;
   at: number;
+  isReply?: boolean;
+  replyQuote?: string | null;
 };
+
+function replyFields(payload: unknown, fallbackAt: number): Pick<ChatMessage, "isReply" | "replyQuote" | "at"> {
+  const meta = readReplyMeta(payload);
+  return {
+    isReply: meta.isReply,
+    replyQuote: meta.quote,
+    at: meta.appearanceMs ?? fallbackAt,
+  };
+}
 
 export type ChatSources = {
   twitchChannel: string | null;
@@ -97,6 +109,16 @@ export function useLiveChat(
           const match = line.match(/^(?:@([^ ]+) )?:([^!]+)![^ ]+ PRIVMSG #[^ ]+ :(.*)$/);
           if (!match) continue;
           const tags = match[1] ? parseTags(match[1]) : {};
+          const reply = replyFields(
+            {
+              "reply-parent-msg-id": tags["reply-parent-msg-id"],
+              "reply-parent-user-id": tags["reply-parent-user-id"],
+              "reply-parent-display-name": tags["reply-parent-display-name"],
+              "reply-parent-msg-body": tags["reply-parent-msg-body"],
+              "tmi-sent-ts": tags["tmi-sent-ts"],
+            },
+            Date.now(),
+          );
           push.current({
             id: tags["id"] ?? nextId(),
             platform: "TWITCH",
@@ -107,7 +129,7 @@ export function useLiveChat(
               .map((badge) => badge.split("/")[0] ?? "")
               .filter(Boolean),
             text: match[3] ?? "",
-            at: Date.now(),
+            ...reply,
           });
         }
       };
@@ -180,6 +202,7 @@ export function useLiveChat(
               };
             };
             if (!pinPayload?.content) return;
+            const pinReply = replyFields(pin, Date.now());
             const pinBadges: KickBadge[] = (pinPayload.sender?.identity?.badges ?? []).map(
               (badge) => ({
                 type: String(badge["type"] ?? "").trim(),
@@ -196,7 +219,7 @@ export function useLiveChat(
               badges: pinBadges.map((badge) => badge.type).filter(Boolean),
               badgeList: pinBadges,
               text: pinPayload.content,
-              at: Date.now(),
+              ...pinReply,
             });
             return;
           }
@@ -234,7 +257,7 @@ export function useLiveChat(
             badges: badgeList.map((badge) => badge.type).filter(Boolean),
             badgeList,
             text,
-            at: Date.now(),
+            ...replyFields(data, Date.now()),
           };
           push.current(message);
 

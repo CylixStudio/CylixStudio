@@ -1,17 +1,20 @@
 /**
- * Production email service — Resend SDK.
+ * Production email service — Spacemail SMTP via Nodemailer.
  * Server-only: import from *.server.ts / API routes / createServerFn handlers.
  *
- * Sending domain noted in `.env.example`: cylixstudio.com (Resend domain verification).
- * From / Reply-To default: CylixStudio <support@cylixstudio.com>
- * Env: RESEND_API_KEY (required), EMAIL_FROM or RESEND_FROM (optional From override)
+ * fulfillProPurchase sends activation, gift, and direct-confirmation templates
+ * through sendTemplateEmail only after the payment is verified. This module
+ * does not connect at import time. If SMTP_PASSWORD is unset, send fails with
+ * "SMTP is not configured" and does not fall through to another provider.
+ *
+ * From default: CylixStudio <support@cylixstudio.com> (EMAIL_FROM override).
+ * Reply-To default: support@cylixstudio.com.
  *
  * These messages are transactional receipts. Do not add List-Unsubscribe,
  * List-Unsubscribe-Post, or Precedence — those headers classify mail as bulk.
  */
-import { Resend } from "resend";
-
 import { SUBSCRIPTION_SUPPORT_EMAIL } from "@/lib/email/layout";
+import { openSmtpTransport } from "@/lib/email/smtp.server";
 import {
   buildEmailFromTemplate,
   type BuiltEmail,
@@ -45,11 +48,16 @@ export function transactionalReceiptHeaders(): Record<string, string> {
 }
 
 function resolveFrom(): string {
-  return (
-    process.env["EMAIL_FROM"]?.trim() ||
-    process.env["RESEND_FROM"]?.trim() ||
-    DEFAULT_FROM
-  );
+  return process.env["EMAIL_FROM"]?.trim() || DEFAULT_FROM;
+}
+
+function redactSmtpPassword(message: string): string {
+  const raw = process.env["SMTP_PASSWORD"] ?? "";
+  const trimmed = raw.trim();
+  let next = message;
+  if (raw) next = next.split(raw).join("[redacted]");
+  if (trimmed && trimmed !== raw) next = next.split(trimmed).join("[redacted]");
+  return next;
 }
 
 export type TransactionalSendPayload = {
@@ -63,7 +71,7 @@ export type TransactionalSendPayload = {
   tags?: Array<{ name: string; value: string }>;
 };
 
-/** Build the Resend payload without sending. Used by sendEmail and by local checks. */
+/** Build the receipt payload without sending. Used by sendEmail and by local checks. */
 export function composeTransactionalSend(
   input: SendEmailInput,
   from = resolveFrom(),
@@ -84,12 +92,6 @@ export function composeTransactionalSend(
   return payload;
 }
 
-function getResendClient(): Resend | null {
-  const apiKey = process.env["RESEND_API_KEY"]?.trim();
-  if (!apiKey) return null;
-  return new Resend(apiKey);
-}
-
 function normalizeRecipients(to: string | string[]): string[] {
   const list = (Array.isArray(to) ? to : [to])
     .map((entry) => entry.trim().toLowerCase())
@@ -105,22 +107,23 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     return { ok: false, error: "invalid_recipient" };
   }
 
-  const client = getResendClient();
-  if (!client) {
-    console.warn("[email] RESEND_API_KEY missing — skipping send", {
+  const opened = openSmtpTransport();
+  if (!opened.ok) {
+    console.warn("[email] " + opened.error, {
       to: recipients,
       subject: input.subject,
     });
-    return { ok: false, error: "email_not_configured", skipped: true };
+    return { ok: false, error: opened.error, skipped: true };
   }
 
   const composed = composeTransactionalSend(input);
   if ("error" in composed) {
+    opened.transport.close();
     return { ok: false, error: composed.error };
   }
 
   try {
-    const { data, error } = await client.emails.send({
+    const info = await opened.transport.sendMail({
       from: composed.from,
       to: composed.to,
       subject: composed.subject,
@@ -128,26 +131,21 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       text: composed.text,
       replyTo: composed.replyTo,
       headers: composed.headers,
-      ...(composed.tags?.length ? { tags: composed.tags } : {}),
     });
 
-    if (error) {
-      console.error("[email] Resend API error", {
-        to: recipients,
-        subject: input.subject,
-        message: error.message,
-        name: error.name,
-      });
-      return { ok: false, error: error.message || "resend_error" };
-    }
-
-    const id = data?.id ?? "sent";
+    const id = info.messageId || "sent";
     console.info("[email] sent", { id, to: recipients, subject: input.subject, from: composed.from });
     return { ok: true, id };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[email] Resend threw", { to: recipients, subject: input.subject, message });
-    return { ok: false, error: message };
+    const message = redactSmtpPassword(err instanceof Error ? err.message : String(err));
+    console.error("[email] SMTP send failed", {
+      to: recipients,
+      subject: input.subject,
+      message: message || "smtp_send_failed",
+    });
+    return { ok: false, error: message || "smtp_send_failed" };
+  } finally {
+    opened.transport.close();
   }
 }
 

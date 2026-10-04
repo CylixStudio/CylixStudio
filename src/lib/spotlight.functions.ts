@@ -10,6 +10,9 @@ export type PinInput = {
   text: string;
   badges?: string[];
   badgeImages?: { label: string; imageUrl: string | null }[];
+  isReply?: boolean;
+  replyQuote?: string | null;
+  appearedAt?: string | null;
 };
 
 const clip = (value: unknown, max: number, fallback = "") =>
@@ -54,6 +57,9 @@ export const pinSpotlightMessage = createServerFn({ method: "POST" })
         .slice(0, 12),
       pinnedAt: new Date().toISOString(),
       nonce: Date.now(),
+      isReply: data.isReply === true,
+      replyQuote: data.isReply ? clip(data.replyQuote, 160) || null : null,
+      appearedAt: data.isReply ? clip(data.appearedAt, 40) || new Date().toISOString() : undefined,
     };
 
     const { error } = await supabaseAdmin

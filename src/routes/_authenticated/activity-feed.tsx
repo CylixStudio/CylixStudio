@@ -19,7 +19,9 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { TestEventMenu, type InjectedFeedEvent } from "@/components/activity/TestEventMenu";
+import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
+import { readReplyMeta } from "@/lib/replyAlert";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { groupConsecutiveEvents, type FeedEventGroup } from "@/lib/activityFeed";
@@ -61,6 +63,8 @@ type FeedEvent = {
   seconds_added: number;
   message: string | null;
   created_at: string;
+  isReply?: boolean;
+  replyQuote?: string | null;
 };
 
 
@@ -217,6 +221,7 @@ function ActivityFeedRow({
 
   return (
     <li className={fresh ? "soft-rise" : ""}>
+      <ReplyAlertFrame active={event.isReply === true} quote={event.replyQuote}>
       <div className="flex items-start gap-3 py-3.5">
         <span
           className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
@@ -255,10 +260,12 @@ function ActivityFeedRow({
                   {group.events.map((item) => {
                     const detail = [formatFeedAmount(item, t), item.message].filter(Boolean).join(" · ");
                     return (
-                      <li
+                        <li
                         key={item.id}
-                        className="flex items-center gap-2 py-1 text-[0.75rem] text-muted-foreground"
+                        className="py-1 text-[0.75rem] text-muted-foreground"
                       >
+                        <ReplyAlertFrame active={item.isReply === true} quote={item.replyQuote}>
+                        <div className="flex items-center gap-2">
                         <PlatformIcon platform={item.platform} size={12} />
                         <span className="min-w-0 flex-1 truncate" dir="auto">
                           {detail || t("activity.group.entry")}
@@ -266,6 +273,8 @@ function ActivityFeedRow({
                         <span className="shrink-0 tabular-nums" title={item.created_at}>
                           {relativeTime(item.created_at, justNow)}
                         </span>
+                        </div>
+                        </ReplyAlertFrame>
                       </li>
                     );
                   })}
@@ -279,6 +288,7 @@ function ActivityFeedRow({
           {relativeTime(event.created_at, justNow)}
         </span>
       </div>
+      </ReplyAlertFrame>
     </li>
   );
 }
@@ -318,6 +328,7 @@ type EventRow = {
 
 /** Normalizes a persisted `events` row into the shape the feed renders. */
 function toFeedEvent(row: EventRow): FeedEvent {
+  const reply = readReplyMeta(row.raw_payload);
   return {
     id: row.id,
     platform: row.platform,
@@ -329,6 +340,8 @@ function toFeedEvent(row: EventRow): FeedEvent {
     seconds_added: row.seconds_added ?? 0,
     message: readMessage(row.raw_payload),
     created_at: row.created_at,
+    isReply: reply.isReply,
+    replyQuote: reply.quote,
   };
 }
 

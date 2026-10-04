@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 
 import { OverlayView } from "@/components/overlay/OverlayView";
+import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { PlatformIcon, normalizePlatform } from "@/components/widgets/PlatformIcon";
 import { RoleBadgeIcon, resolveBadgeRoles } from "@/components/widgets/RoleBadgeIcon";
 import { StreamEventsScheduleView } from "@/components/widgets/StreamEventsScheduleCard";
@@ -9,6 +10,7 @@ import { StreamEventsScheduleView } from "@/components/widgets/StreamEventsSched
 import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKickBadges";
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
+import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
@@ -139,20 +141,39 @@ export function AlertBoxView({
 }) {
   const style = parseAlertConfig(config);
   const skin = widgetThemeSkin(parseWidgetThemeId(config));
-  const latest = events[0] ?? null;
+  const expiry = useReplyAlertExpiry(events, {
+    enabled: !demo,
+    getId: (event) => event.id,
+    isReply: (event) => event.isReply === true,
+    appearanceMs: (event) => {
+      const parsed = Date.parse(event.appearedAt ?? event.createdAt);
+      return Number.isFinite(parsed) ? parsed : null;
+    },
+  });
+  const head = events[0] ?? null;
+  const headHidden = Boolean(head?.isReply && !expiry.items.some((event) => event.id === head.id));
+  const latest = headHidden ? null : head;
+  const replyFading = Boolean(latest?.isReply && expiry.fadingIds.has(latest.id));
   const [visible, setVisible] = useState(demo);
   const seen = useRef<string | null>(null);
+  const latestRef = useRef(latest);
+  latestRef.current = latest;
+
+  useEffect(() => {
+    if (!latestRef.current) setVisible(false);
+  }, [latest?.id]);
 
   useEffect(() => {
     if (demo) return;
-    if (!latest) return;
+    const current = latestRef.current;
+    if (!current) return;
     if (seen.current === null) {
       // First frame after connecting: don't replay history into the scene.
-      seen.current = latest.id;
+      seen.current = current.id;
       return;
     }
-    if (seen.current === latest.id) return;
-    seen.current = latest.id;
+    if (seen.current === current.id) return;
+    seen.current = current.id;
     setVisible(true);
     if (style.soundUrl) {
       const audio = new Audio(style.soundUrl);
@@ -161,13 +182,15 @@ export function AlertBoxView({
         /* autoplay can be blocked until the browser source has been clicked */
       });
     }
+    if (current.isReply) return;
     const timeout = setTimeout(() => setVisible(false), style.holdMs);
     return () => clearTimeout(timeout);
-  }, [latest, style.holdMs, demo]);
+  }, [latest?.id, latest?.isReply, style.holdMs, style.soundUrl, demo]);
 
   if (!latest || !visible) return <div className="h-0 w-0" aria-hidden />;
 
   return (
+    <ReplyAlertFrame active={latest.isReply === true} fading={replyFading} quote={latest.replyQuote}>
     <div
       className="overlay-anim-bounce flex min-w-[380px] flex-col items-center gap-2 rounded-2xl px-10 py-7 text-center"
       style={{
@@ -210,6 +233,7 @@ export function AlertBoxView({
         </span>
       ) : null}
     </div>
+    </ReplyAlertFrame>
   );
 }
 
@@ -337,6 +361,12 @@ export function ChatBoxView({
     .filter((message) => message.text.trim().length > 0)
     .sort((a, b) => b.at - a.at)
     .slice(0, style.maxMessages);
+  const chatExpiry = useReplyAlertExpiry(chatFeed, {
+    getId: (message) => message.id,
+    isReply: (message) => message.isReply === true,
+    appearanceMs: (message) => message.at,
+  });
+  const visibleChat = chatExpiry.items;
 
   const containerClass =
     layout === "glass"
@@ -497,9 +527,20 @@ export function ChatBoxView({
 
 
 
+    const replyWrap = (node: React.ReactNode) => (
+      <ReplyAlertFrame
+        key={message.id}
+        active={message.isReply === true}
+        fading={chatExpiry.fadingIds.has(message.id)}
+        quote={message.replyQuote}
+      >
+        {node}
+      </ReplyAlertFrame>
+    );
+
     if (layout === "island") {
-      return (
-        <div key={message.id} className="overlay-anim-fade" style={islandCapsuleStyle}>
+      return replyWrap(
+        <div className="overlay-anim-fade" style={islandCapsuleStyle}>
           <span style={{ display: "inline", minWidth: 0 }}>
             <span style={islandNameStyle}>
               {platformBlock}
@@ -509,12 +550,12 @@ export function ChatBoxView({
             </span>
             <span dir="auto" style={islandTextStyle}>{renderChatText(message.text)}</span>
           </span>
-        </div>
+        </div>,
       );
     }
 
-    return (
-      <div key={message.id} className={rowClassForLayout(layout)}>
+    return replyWrap(
+      <div className={rowClassForLayout(layout)}>
         <span
           className={`message-line block w-full ${layout === "transparent" ? "px-2 py-1" : ""}`}
         >
@@ -528,7 +569,7 @@ export function ChatBoxView({
             {renderChatText(message.text)}
           </span>
         </span>
-      </div>
+      </div>,
     );
   };
 
@@ -543,9 +584,9 @@ export function ChatBoxView({
         fontSize: `${style.fontSize}px`,
       }}
     >
-      {chatFeed.length > 0 ? chatFeed.map((message) => renderMessage(message)) : null}
+      {visibleChat.length > 0 ? visibleChat.map((message) => renderMessage(message)) : null}
 
-      {chatFeed.length === 0 ? <span style={{ opacity: 0.6 }}>Waiting for chat…</span> : null}
+      {visibleChat.length === 0 ? <span style={{ opacity: 0.6 }}>Waiting for chat…</span> : null}
     </div>
   );
 }
@@ -775,6 +816,9 @@ export function ChatSpotlightView({
         })),
         pinnedAt: new Date(pinnedLive.at).toISOString(),
         nonce: pinnedLive.at,
+        isReply: pinnedLive.isReply === true,
+        replyQuote: pinnedLive.replyQuote ?? null,
+        appearedAt: new Date(pinnedLive.at).toISOString(),
       }
     : null;
 
@@ -798,7 +842,18 @@ export function ChatSpotlightView({
 
   const incomingKey = spotlightKey(incoming);
   const pinned = incoming && incomingKey !== dismissedKey ? incoming : null;
-  const pinKey = spotlightKey(pinned);
+  const replyLife = useReplyAlertExpiry(pinned ? [pinned] : [], {
+    enabled: !demo,
+    getId: (message) => message.id,
+    isReply: (message) => message.isReply === true,
+    appearanceMs: (message) => {
+      const parsed = Date.parse(message.appearedAt ?? message.pinnedAt);
+      return Number.isFinite(parsed) ? parsed : null;
+    },
+  });
+  const visiblePin = replyLife.items[0] ?? null;
+  const pinKey = spotlightKey(visiblePin);
+  const replyFading = Boolean(visiblePin?.isReply && replyLife.fadingIds.has(visiblePin.id));
 
   useEffect(() => {
     if (pinKey === shownKeyRef.current) return;
@@ -807,8 +862,8 @@ export function ChatSpotlightView({
     const wait = window.setTimeout(
       () => {
         shownKeyRef.current = pinKey;
-        setDisplay(pinned);
-        if (!pinned) {
+        setDisplay(visiblePin);
+        if (!visiblePin) {
           setMotion("exit");
           return;
         }
@@ -820,7 +875,7 @@ export function ChatSpotlightView({
       hadCard ? SPOTLIGHT_FADE_MS : 16,
     );
     return () => window.clearTimeout(wait);
-  }, [pinKey, pinned]);
+  }, [pinKey, visiblePin]);
 
   useEffect(() => {
     if (!display || style.autoHideMs <= 0) return;
@@ -844,6 +899,11 @@ export function ChatSpotlightView({
   const roles = style.showBadges ? resolveBadgeRoles(display.badges, 6) : [];
 
   return (
+    <ReplyAlertFrame
+      active={display.isReply === true}
+      fading={replyFading || Boolean(display.isReply && visiblePin?.id !== display.id)}
+      quote={display.replyQuote}
+    >
     <div
       className="overlay-spotlight-swap flex w-full min-w-[360px] max-w-[560px] flex-col gap-2 rounded-2xl px-6 py-5"
       data-motion={motion}
@@ -911,6 +971,7 @@ export function ChatSpotlightView({
         {renderChatText(display.text)}
       </p>
     </div>
+    </ReplyAlertFrame>
   );
 }
 

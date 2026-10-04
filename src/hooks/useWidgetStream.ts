@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useWidgetRealtime } from "@/hooks/useWidgetRealtime";
 import type { ChatMessage, ChatSources } from "@/hooks/useLiveChat";
+import { readReplyMeta } from "@/lib/replyAlert";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
 import { computeRemaining, type TimerFrame } from "@/lib/timer";
 import type {
@@ -201,6 +202,7 @@ export function useWidgetStream(publicToken: string | null) {
   useWidgetRealtime(widget?.id ?? null, (message) => {
     if (message.event === "chat") {
       const payload = message.payload as Partial<ChatMessage>;
+      const reply = readReplyMeta(payload);
       setTestMessages((prev) =>
         [
           {
@@ -210,7 +212,9 @@ export function useWidgetStream(publicToken: string | null) {
             color: (payload.color as string | null) ?? null,
             badges: Array.isArray(payload.badges) ? (payload.badges as string[]) : [],
             text: String(payload.text ?? ""),
-            at: Date.now(),
+            at: typeof payload.at === "number" && payload.at > 0 ? payload.at : (reply.appearanceMs ?? Date.now()),
+            isReply: payload.isReply === true || reply.isReply,
+            replyQuote: typeof payload.replyQuote === "string" ? payload.replyQuote : reply.quote,
           },
           ...prev,
         ].slice(0, 25),

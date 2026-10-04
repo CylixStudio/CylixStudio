@@ -304,6 +304,8 @@ body.overlay-transparent {
   to { opacity: 1; transform: none; }
 }
 .overlay-anim-fade { animation: overlay-chat-in 0.28s ease-out; }
+.reply-alert { transition: opacity 500ms ease; }
+.reply-alert[data-fading="true"] { opacity: 0; }
 .overlay-float { animation: overlay-float-up 1.6s ease-out forwards; }
 
 @keyframes overlay-live-pulse {

@@ -1108,6 +1108,7 @@ const DICT = {
   "settings.test.event.kicks": "KICKs",
   "activity.group.count": "تكرّر {count} مرات",
   "activity.group.entry": "تكرار",
+  "alert.reply": "رد",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

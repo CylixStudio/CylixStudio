@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { isAllowedPlatformEvent, timerUnits } from "@/lib/platformEvents";
+import { annotateReplyPayload } from "@/lib/replyAlert";
 import type { Database } from "@/lib/supabase/types";
 
 export type Platform = Database["public"]["Enums"]["platform_type"];
@@ -258,7 +259,7 @@ export async function ingestEvent(
       currency: event.currency,
       quantity: event.quantity,
       seconds_added: seconds,
-      raw_payload: (event.rawPayload ?? {}) as never,
+      raw_payload: annotateReplyPayload(event.rawPayload ?? {}) as never,
       processed_at: new Date().toISOString(),
     })
     .select("id")

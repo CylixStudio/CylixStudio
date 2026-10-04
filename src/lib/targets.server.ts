@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { goalTypePreset } from "@/lib/goalTypes";
 import type { Database } from "@/lib/supabase/types";
+import { readReplyMeta } from "@/lib/replyAlert";
 import type { OverlayEvent } from "@/lib/widgets";
 import type { NormalizedEvent } from "@/lib/webhooks/ingest.server";
 
@@ -161,6 +162,20 @@ export async function listTargetStatus(admin: Admin, userId: string): Promise<Ta
   });
 }
 
+function replyOverlayFields(
+  raw: unknown,
+  createdAt: string,
+): Pick<OverlayEvent, "isReply" | "replyQuote" | "appearedAt"> {
+  const meta = readReplyMeta(raw);
+  if (!meta.isReply) return { isReply: false, replyQuote: null };
+  const appearance = meta.appearanceMs ?? Date.parse(createdAt);
+  return {
+    isReply: true,
+    replyQuote: meta.quote,
+    appearedAt: Number.isFinite(appearance) ? new Date(appearance).toISOString() : createdAt,
+  };
+}
+
 /** Events the alert and activity overlays should render. */
 export async function listOverlayEvents(
   admin: Admin,
@@ -172,7 +187,9 @@ export async function listOverlayEvents(
   if (args.subathonId) {
     const { data } = await admin
       .from("events")
-      .select("id, platform, event_type, actor_name, amount, currency, quantity, seconds_added, created_at")
+      .select(
+        "id, platform, event_type, actor_name, amount, currency, quantity, seconds_added, raw_payload, created_at",
+      )
       .eq("subathon_id", args.subathonId)
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -187,6 +204,7 @@ export async function listOverlayEvents(
         quantity: event.quantity,
         secondsAdded: event.seconds_added,
         createdAt: event.created_at,
+        ...replyOverlayFields(event.raw_payload, event.created_at),
       });
     }
   }

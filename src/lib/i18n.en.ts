@@ -1039,4 +1039,5 @@ export const EN = {
   "settings.test.event.kicks": "KICKs",
   "activity.group.count": "Repeated {count} times",
   "activity.group.entry": "Repeat",
+  "alert.reply": "Reply",
 } as const;

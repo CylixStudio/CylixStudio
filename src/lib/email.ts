@@ -1,6 +1,6 @@
 /**
  * Public email helpers (layout + templates). Safe to import from server modules.
- * Sending with Resend lives in `@/lib/email.server` (API key — server only).
+ * Sending via Spacemail SMTP lives in `@/lib/email.server` (SMTP_PASSWORD — server only).
  */
 export {
   renderMasterEmailLayout,
