@@ -173,24 +173,30 @@ export function SpotlightControlPanel({
                   fading={liveFeed.fadingIds.has(message.id)}
                   quote={message.replyQuote}
                 >
-              <div className="flex items-start gap-2">
-                <PlatformIcon platform={message.platform} size={14} />
-                <span className="min-w-0 flex-1">
-                  <span className="font-semibold" style={{ color: message.color ?? undefined }} dir="auto">
-                    {message.author}
-                  </span>
-                  <span className="ms-1 break-words text-muted-foreground" dir="auto">{message.text}</span>
-                </span>
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => pinMessage(message)}
-                  aria-label={"Pin message"}
-                  className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
-                >
-                  <Pin className="size-3.5" aria-hidden />
-                </button>
-              </div>
+                  <div className="flex items-start gap-2">
+                    <PlatformIcon platform={message.platform} size={14} />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="font-semibold"
+                        style={{ color: message.color ?? undefined }}
+                        dir="auto"
+                      >
+                        {message.author}
+                      </span>
+                      <span className="ms-1 break-words text-muted-foreground" dir="auto">
+                        {message.text}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => pinMessage(message)}
+                      aria-label={"Pin message"}
+                      className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                    >
+                      <Pin className="size-3.5" aria-hidden />
+                    </button>
+                  </div>
                 </ReplyAlertFrame>
               </li>
             ))}
