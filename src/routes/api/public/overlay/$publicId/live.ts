@@ -86,31 +86,17 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
 
         let events: OverlayEvent[] = [];
         if (
-          (type === "ALERT_BOX" ||
-            type === "CHAT_BOX" ||
-            type === "EMOTE_RAIN" ||
-            type === "SUBATHON_TIMER") &&
-          subathonId
+          type === "ALERT_BOX" ||
+          type === "CHAT_BOX" ||
+          type === "EMOTE_RAIN" ||
+          type === "SUBATHON_TIMER"
         ) {
-          const { data } = await supabase
-            .from("events")
-            .select(
-              "id, platform, event_type, actor_name, amount, currency, quantity, seconds_added, created_at",
-            )
-            .eq("subathon_id", subathonId)
-            .order("created_at", { ascending: false })
-            .limit(type === "CHAT_BOX" ? 25 : 5);
-          events = (data ?? []).map((event) => ({
-            id: event.id,
-            platform: event.platform,
-            eventType: event.event_type,
-            actorName: event.actor_name,
-            amount: event.amount === null ? null : Number(event.amount),
-            currency: event.currency,
-            quantity: event.quantity,
-            secondsAdded: event.seconds_added,
-            createdAt: event.created_at,
-          }));
+          const { listOverlayEvents } = await import("@/lib/targets.server");
+          events = await listOverlayEvents(supabase, {
+            userId: widget.user_id,
+            subathonId,
+            limit: type === "CHAT_BOX" ? 25 : 5,
+          });
         }
 
         let tappers = null;

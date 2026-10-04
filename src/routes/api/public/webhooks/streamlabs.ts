@@ -41,7 +41,7 @@ export const Route = createFileRoute("/api/public/webhooks/streamlabs")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { jsonResponse, ingestEvent, resolveSubathonByToken } = await import(
+        const { jsonResponse, receivePlatformEvent, resolveUserByToken } = await import(
           "@/lib/webhooks/ingest.server"
         );
         const { safeEqual } = await import("@/lib/webhooks/verify.server");
@@ -89,8 +89,8 @@ export const Route = createFileRoute("/api/public/webhooks/streamlabs")({
         }
 
         const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-        const target = await resolveSubathonByToken(supabaseAdmin, "STREAMLABS", token);
-        if (!target || !safeEqual(target.secret, token)) {
+        const userId = await resolveUserByToken(supabaseAdmin, "STREAMLABS", token);
+        if (!userId) {
           return jsonResponse({ error: "unauthorized" }, 401);
         }
 
@@ -127,7 +127,7 @@ export const Route = createFileRoute("/api/public/webhooks/streamlabs")({
             quantity: 1,
             rawPayload: msg,
           };
-          results.push(await ingestEvent(supabaseAdmin, target, normalized));
+          results.push(await receivePlatformEvent(supabaseAdmin, userId, normalized));
         }
 
         return jsonResponse({ processed: results.length, results });

@@ -82,7 +82,7 @@ export type GoalConfig = BaseStyle & {
   goalType: "DONATION" | "FOLLOWER" | "SUBSCRIBER" | "CUSTOM";
 };
 
-export type AlertConfig = BaseStyle & { holdMs: number; showAmount: boolean };
+export type AlertConfig = BaseStyle & { holdMs: number; showAmount: boolean; soundUrl: string | null };
 export type ChatLayout = "transparent" | "glass" | "island" | "bubble";
 
 export const CHAT_LAYOUTS: {
@@ -187,6 +187,7 @@ export function parseAlertConfig(raw: unknown): AlertConfig {
     ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 34 }),
     holdMs: num(source["holdMs"], 6000, 1500, 30_000),
     showAmount: bool(source["showAmount"], true),
+    soundUrl: text(source["soundUrl"], "", 500) || null,
   };
 }
 

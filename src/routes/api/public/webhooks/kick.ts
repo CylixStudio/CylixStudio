@@ -182,7 +182,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           headers: { "content-type": "application/json", "cache-control": "no-store" },
         }),
       POST: async ({ request }) => {
-        const { jsonResponse, ingestEvent, resolveSubathonByPlatformUser } = await import(
+        const { jsonResponse, receivePlatformEvent, resolveUserByPlatformUser } = await import(
           "@/lib/webhooks/ingest.server"
         );
         const { verifyKickSignature } = await import("@/lib/webhooks/verify.server");
@@ -431,10 +431,10 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
         if (!broadcasterId) return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
 
         const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-        const target = await resolveSubathonByPlatformUser(supabaseAdmin, "KICK", broadcasterId);
-        if (!target) return jsonResponse({ status: "ignored", reason: "no_active_subathon" });
+        const userId = await resolveUserByPlatformUser(supabaseAdmin, "KICK", broadcasterId);
+        if (!userId) return jsonResponse({ status: "ignored", reason: "no_connection" });
 
-        const result = await ingestEvent(supabaseAdmin, target, normalized);
+        const result = await receivePlatformEvent(supabaseAdmin, userId, normalized);
         return jsonResponse(result);
         } catch (error) {
           console.error("[kick-webhook] unhandled failure", error);

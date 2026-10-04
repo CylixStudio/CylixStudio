@@ -146,24 +146,12 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
             };
 
             const fetchEvents = async (limit: number): Promise<OverlayEvent[]> => {
-              if (!subathonId) return [];
-              // POST-based RPC: long-lived connections were being served
-              // cached GET responses, freezing the feed on its first read.
-              const { data } = await supabase.rpc("overlay_stream_events", {
-                p_subathon: subathonId,
-                p_limit: limit,
+              const { listOverlayEvents } = await import("@/lib/targets.server");
+              return listOverlayEvents(supabase, {
+                userId: widget.user_id,
+                subathonId,
+                limit,
               });
-              return (data ?? []).map((event) => ({
-                id: event.id,
-                platform: event.platform,
-                eventType: event.event_type,
-                actorName: event.actor_name,
-                amount: event.amount === null ? null : Number(event.amount),
-                currency: event.currency,
-                quantity: event.quantity,
-                secondsAdded: event.seconds_added,
-                createdAt: event.created_at,
-              }));
             };
 
             const fetchWidgetState = async () => {

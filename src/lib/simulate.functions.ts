@@ -22,23 +22,14 @@ export const simulateStreamEvent = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { userId } = context;
     const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-    const { activeSubathonFor, ingestEvent } = await import("@/lib/webhooks/ingest.server");
+    const { receivePlatformEvent } = await import("@/lib/webhooks/ingest.server");
 
     const { data: widget } = await supabaseAdmin
       .from("widgets")
-      .select("id, user_id, subathon_id")
+      .select("id, user_id")
       .eq("id", data.widgetId)
       .maybeSingle();
     if (!widget || widget.user_id !== userId) throw new Error("Widget not found");
-
-    let subathonId = widget.subathon_id;
-    if (!subathonId) {
-      const fallback = await activeSubathonFor(supabaseAdmin, userId);
-      subathonId = fallback?.subathonId ?? null;
-    }
-    if (!subathonId) {
-      return { ok: false as const, error: "no_subathon" };
-    }
 
     const amount =
       data.eventType === "DONATION"
@@ -47,10 +38,7 @@ export const simulateStreamEvent = createServerFn({ method: "POST" })
           ? (data.amount ?? 100)
           : null;
 
-    const result = await ingestEvent(
-      supabaseAdmin,
-      { subathonId, userId },
-      {
+    const result = await receivePlatformEvent(supabaseAdmin, userId, {
         platform: data.platform,
         eventType: data.eventType,
         providerEventId: `sim-${crypto.randomUUID()}`,
@@ -60,8 +48,7 @@ export const simulateStreamEvent = createServerFn({ method: "POST" })
         currency: data.eventType === "DONATION" ? "USD" : null,
         quantity: Math.max(1, Math.round(data.quantity ?? 1)),
         rawPayload: { simulated: true },
-      },
-    );
+    });
 
     return { ok: true as const, result };
   });
@@ -113,7 +100,7 @@ export const fireTestEvent = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { userId } = context;
     const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-    const { activeSubathonFor, ingestEvent, isAllowedEventSource } = await import(
+    const { receivePlatformEvent, isAllowedEventSource } = await import(
       "@/lib/webhooks/ingest.server"
     );
 
@@ -122,21 +109,6 @@ export const fireTestEvent = createServerFn({ method: "POST" })
         ok: false as const,
         error: `${data.platform} never reports ${data.eventType} events — blocked by source routing.`,
       };
-    }
-
-    let target = await activeSubathonFor(supabaseAdmin, userId);
-    if (!target) {
-      const { data: latest } = await supabaseAdmin
-        .from("subathons")
-        .select("id")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (latest) target = { subathonId: latest.id, userId };
-    }
-    if (!target) {
-      return { ok: false as const, error: "Create a widget first so events have somewhere to land." };
     }
 
     const amount =
@@ -149,7 +121,7 @@ export const fireTestEvent = createServerFn({ method: "POST" })
     const message = data.message?.trim().slice(0, 400) || null;
     const quantity = Math.max(1, Math.round(data.quantity ?? 1));
 
-    const result = await ingestEvent(supabaseAdmin, target, {
+    const result = await receivePlatformEvent(supabaseAdmin, userId, {
       platform: data.platform,
       eventType: data.eventType,
       providerEventId: `test-${crypto.randomUUID()}`,

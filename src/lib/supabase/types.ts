@@ -1678,6 +1678,75 @@ export type Database = {
         }
         Relationships: []
       }
+      target_events: {
+        Row: {
+          actor_name: string | null
+          actor_platform_id: string | null
+          amount: number | null
+          created_at: string
+          currency: string | null
+          event_type: Database["public"]["Enums"]["rule_event_type"]
+          id: string
+          platform: Database["public"]["Enums"]["platform_type"]
+          provider_event_id: string | null
+          quantity: number
+          user_id: string
+        }
+        Insert: {
+          actor_name?: string | null
+          actor_platform_id?: string | null
+          amount?: number | null
+          created_at?: string
+          currency?: string | null
+          event_type: Database["public"]["Enums"]["rule_event_type"]
+          id?: string
+          platform: Database["public"]["Enums"]["platform_type"]
+          provider_event_id?: string | null
+          quantity?: number
+          user_id: string
+        }
+        Update: {
+          actor_name?: string | null
+          actor_platform_id?: string | null
+          amount?: number | null
+          created_at?: string
+          currency?: string | null
+          event_type?: Database["public"]["Enums"]["rule_event_type"]
+          id?: string
+          platform?: Database["public"]["Enums"]["platform_type"]
+          provider_event_id?: string | null
+          quantity?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      target_milestones: {
+        Row: {
+          goal_id: string
+          id: string
+          reached_at: string
+          target_value: number
+          user_id: string
+          widget_id: string
+        }
+        Insert: {
+          goal_id: string
+          id?: string
+          reached_at?: string
+          target_value: number
+          user_id: string
+          widget_id: string
+        }
+        Update: {
+          goal_id?: string
+          id?: string
+          reached_at?: string
+          target_value?: number
+          user_id?: string
+          widget_id?: string
+        }
+        Relationships: []
+      }
       widgets: {
         Row: {
           config: Json

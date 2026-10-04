@@ -23,7 +23,7 @@ export const Route = createFileRoute("/api/public/webhooks/streamelements")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { jsonResponse, ingestEvent, listConnections, activeSubathonFor } = await import(
+        const { jsonResponse, receivePlatformEvent, listConnections } = await import(
           "@/lib/webhooks/ingest.server"
         );
         const { verifyStreamElementsJwt } = await import("@/lib/webhooks/verify.server");
@@ -74,9 +74,6 @@ export const Route = createFileRoute("/api/public/webhooks/streamelements")({
           return jsonResponse({ status: "ignored", reason: "unsupported_type" });
         }
 
-        const target = await activeSubathonFor(supabaseAdmin, matched.userId);
-        if (!target) return jsonResponse({ status: "ignored", reason: "no_active_subathon" });
-
         const normalized: NormalizedEvent = {
           platform: "STREAMELEMENTS",
           eventType: "DONATION",
@@ -89,7 +86,7 @@ export const Route = createFileRoute("/api/public/webhooks/streamelements")({
           rawPayload: body,
         };
 
-        const result = await ingestEvent(supabaseAdmin, target, normalized);
+        const result = await receivePlatformEvent(supabaseAdmin, matched.userId, normalized);
         return jsonResponse(result);
       },
     },

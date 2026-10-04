@@ -235,16 +235,23 @@ export async function ingestEvent(
     } as never,
   });
 
-  await applyGoalIncrements(admin, target.subathonId, event);
+  const skipped = await applyGoalIncrements(admin, target.subathonId, event);
+  const { advanceTargets } = await import("@/lib/targets.server");
+  const targets = await advanceTargets(admin, target.userId, event, skipped);
 
   // Push every overlay owned by this creator immediately (OBS refreshes
   // without waiting for its next poll).
   const { broadcastUserWidgets } = await import("@/lib/realtime.server");
-  await broadcastUserWidgets(admin as never, target.userId, "refresh", {
+  await broadcastUserWidgets(admin as never, target.userId, "alert", {
     reason: "event",
     platform: event.platform,
     eventType: event.eventType,
+    actorName: event.actorName,
+    amount: event.amount,
+    quantity: event.quantity,
     secondsAdded: seconds,
+    goals: targets.updated,
+    milestones: targets.milestones,
   });
 
 
@@ -266,7 +273,8 @@ export async function applyGoalIncrements(
   admin: Admin,
   subathonId: string,
   event: NormalizedEvent,
-): Promise<void> {
+): Promise<Set<string>> {
+  const touched = new Set<string>();
   const { data: rules } = await admin
     .from("rules")
     .select("widget_id, goal_increment, unit_amount, min_amount, platform")
@@ -276,7 +284,7 @@ export async function applyGoalIncrements(
     .not("widget_id", "is", null)
     .in("platform", [event.platform, "MANUAL"]);
 
-  if (!rules?.length) return;
+  if (!rules?.length) return touched;
 
   const units =
     event.amount !== null && event.amount !== undefined
@@ -294,7 +302,80 @@ export async function applyGoalIncrements(
       p_widget_id: rule.widget_id,
       p_amount: delta,
     });
+    touched.add(rule.widget_id);
   }
+  return touched;
+}
+
+/**
+ * One entry for every platform webhook. An active subathon still drives the
+ * timer. Goals, milestones, and the alert broadcast run either way.
+ */
+export async function receivePlatformEvent(
+  admin: Admin,
+  userId: string,
+  event: NormalizedEvent,
+): Promise<IngestResult> {
+  if (!isAllowedEventSource(event.platform, event.eventType)) {
+    return {
+      status: "ignored",
+      reason: `${event.platform} does not own ${event.eventType} events — handled by the native platform connection`,
+    };
+  }
+
+  const target = await activeSubathonFor(admin, userId);
+  if (target) return ingestEvent(admin, target, event);
+
+  const { recordTargetEvent, advanceTargets } = await import("@/lib/targets.server");
+  const recorded = await recordTargetEvent(admin, userId, event);
+  if (!recorded.inserted) return { status: "duplicate", eventId: recorded.id };
+
+  const targets = await advanceTargets(admin, userId, event, new Set());
+  const { broadcastUserWidgets } = await import("@/lib/realtime.server");
+  await broadcastUserWidgets(admin as never, userId, "alert", {
+    reason: "event",
+    platform: event.platform,
+    eventType: event.eventType,
+    actorName: event.actorName,
+    amount: event.amount,
+    quantity: event.quantity,
+    goals: targets.updated,
+    milestones: targets.milestones,
+  });
+
+  return { status: "accepted", eventId: recorded.id ?? "", secondsAdded: 0, remainingSeconds: 0 };
+}
+
+/** Resolves the creator who owns a connected platform account. */
+export async function resolveUserByPlatformUser(
+  admin: Admin,
+  platform: Platform,
+  platformUserId: string,
+): Promise<string | null> {
+  const { data } = await admin
+    .from("platform_connections")
+    .select("user_id")
+    .eq("platform", platform)
+    .eq("platform_user_id", platformUserId)
+    .eq("is_active", true)
+    .maybeSingle();
+  return data?.user_id ?? null;
+}
+
+/** Resolves the creator from a provider token stored on the connection. */
+export async function resolveUserByToken(
+  admin: Admin,
+  platform: Platform,
+  token: string,
+): Promise<string | null> {
+  const { data } = await admin
+    .from("platform_connections")
+    .select("user_id")
+    .eq("platform", platform)
+    .eq("is_active", true)
+    .eq("access_token", token)
+    .maybeSingle();
+  return data?.user_id ?? null;
 }
 
 export function jsonResponse(body: unknown, status = 200): Response {

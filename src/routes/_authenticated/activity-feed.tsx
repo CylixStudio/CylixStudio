@@ -337,15 +337,31 @@ function ActivityFeedPage() {
     enabled: !testMode,
     refetchInterval: scrolled || testMode ? false : 8000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("events")
-        .select(
-          "id, platform, event_type, actor_name, amount, currency, quantity, seconds_added, raw_payload, created_at",
-        )
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      return (data ?? []).map((row) => toFeedEvent(row as EventRow));
+      const [eventsResult, targetsResult] = await Promise.all([
+        supabase
+          .from("events")
+          .select(
+            "id, platform, event_type, actor_name, amount, currency, quantity, seconds_added, raw_payload, created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(200),
+        supabase
+          .from("target_events")
+          .select("id, platform, event_type, actor_name, amount, currency, quantity, created_at")
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ]);
+      if (eventsResult.error) throw eventsResult.error;
+      if (targetsResult.error && targetsResult.error.code !== "PGRST205") throw targetsResult.error;
+      const rows = [
+        ...(eventsResult.data ?? []),
+        ...(targetsResult.data ?? []).map((row) => ({
+          ...row,
+          seconds_added: 0,
+          raw_payload: {},
+        })),
+      ];
+      return rows.map((row) => toFeedEvent(row as EventRow));
     },
   });
 
@@ -367,6 +383,17 @@ function ActivityFeedPage() {
               ? prev
               : [toFeedEvent(row), ...prev].slice(0, 200),
           );
+          markFresh(row.id);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "target_events" },
+        (payload) => {
+          const row = payload.new as EventRow | null;
+          if (!row?.id) return;
+          const event = toFeedEvent({ ...row, seconds_added: 0, raw_payload: {} });
+          setLive((prev) => (prev.some((item) => item.id === row.id) ? prev : [event, ...prev].slice(0, 200)));
           markFresh(row.id);
         },
       )

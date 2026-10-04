@@ -154,6 +154,13 @@ export function AlertBoxView({
     if (seen.current === latest.id) return;
     seen.current = latest.id;
     setVisible(true);
+    if (style.soundUrl) {
+      const audio = new Audio(style.soundUrl);
+      audio.volume = 1;
+      void audio.play().catch(() => {
+        /* autoplay can be blocked until the browser source has been clicked */
+      });
+    }
     const timeout = setTimeout(() => setVisible(false), style.holdMs);
     return () => clearTimeout(timeout);
   }, [latest, style.holdMs, demo]);
