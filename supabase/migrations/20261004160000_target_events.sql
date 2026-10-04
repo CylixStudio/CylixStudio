@@ -1,4 +1,5 @@
 -- Live target progress: event log and goal milestones that do not require a subathon.
+-- Idempotent: safe to re-run if an earlier draft of these tables already exists.
 
 CREATE TABLE IF NOT EXISTS public.target_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -8,11 +9,17 @@ CREATE TABLE IF NOT EXISTS public.target_events (
   provider_event_id text,
   actor_name text,
   actor_platform_id text,
-  amount numeric,
+  amount numeric(14, 2),
   currency text,
   quantity integer NOT NULL DEFAULT 1,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT target_events_quantity_positive CHECK (quantity >= 1),
+  CONSTRAINT target_events_currency_len CHECK (currency IS NULL OR char_length(currency) <= 12)
 );
+
+ALTER TABLE public.target_events
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE UNIQUE INDEX IF NOT EXISTS target_events_provider_uidx
   ON public.target_events (platform, provider_event_id)
@@ -26,9 +33,17 @@ CREATE TABLE IF NOT EXISTS public.target_milestones (
   user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   goal_id uuid NOT NULL REFERENCES public.goals(id) ON DELETE CASCADE,
   widget_id uuid NOT NULL REFERENCES public.widgets(id) ON DELETE CASCADE,
-  target_value numeric NOT NULL,
-  reached_at timestamptz NOT NULL DEFAULT now()
+  target_value numeric(14, 2) NOT NULL,
+  reached_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.target_milestones
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.target_milestones
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE UNIQUE INDEX IF NOT EXISTS target_milestones_goal_target_uidx
   ON public.target_milestones (goal_id, target_value);
@@ -57,6 +72,18 @@ CREATE POLICY target_milestones_owner_select
   FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
+
+DROP TRIGGER IF EXISTS target_events_set_updated_at ON public.target_events;
+CREATE TRIGGER target_events_set_updated_at
+  BEFORE UPDATE ON public.target_events
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS target_milestones_set_updated_at ON public.target_milestones;
+CREATE TRIGGER target_milestones_set_updated_at
+  BEFORE UPDATE ON public.target_milestones
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
 
 DO $$
 BEGIN

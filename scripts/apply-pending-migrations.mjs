@@ -40,6 +40,8 @@ const CRITICAL_TABLES = [
   "giveaway_settings",
   "stream_schedule_settings",
   "link_in_bio_profiles",
+  "target_events",
+  "target_milestones",
 ];
 
 function loadEnvFile() {
@@ -74,17 +76,47 @@ function resolveDatabaseUrl() {
   if (process.env.DATABASE_URL?.trim()) return process.env.DATABASE_URL.trim();
   if (process.env.SUPABASE_DB_URL?.trim()) return process.env.SUPABASE_DB_URL.trim();
   if (process.env.DIRECT_URL?.trim()) return process.env.DIRECT_URL.trim();
+  return null;
+}
+
+/** Direct host first, then session poolers. Passwords stay inside the URL. */
+function databaseCandidates() {
+  const explicit = resolveDatabaseUrl();
+  if (explicit) return [explicit];
 
   const password = process.env.SUPABASE_DB_PASSWORD?.trim();
   const supabaseUrl =
     process.env.SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim();
   const ref = projectRefFromUrl(supabaseUrl || "");
-  if (!password || !ref) return null;
+  if (!password || !ref) return [];
 
-  const region = process.env.SUPABASE_DB_REGION?.trim() || "aws-0-eu-central-1";
   const encoded = encodeURIComponent(password);
-  // Session mode (port 5432) is safer for DDL than transaction pooler (6543).
-  return `postgresql://postgres.${ref}:${encoded}@${region}.pooler.supabase.com:5432/postgres`;
+  const preferred = process.env.SUPABASE_DB_REGION?.trim();
+  const regions = [
+    preferred,
+    "aws-0-eu-central-1",
+    "aws-1-eu-central-1",
+    "aws-0-eu-west-1",
+    "aws-1-eu-west-1",
+    "aws-0-us-east-1",
+    "aws-1-us-east-1",
+  ].filter((region, index, all) => region && all.indexOf(region) === index);
+
+  return [
+    `postgresql://postgres:${encoded}@db.${ref}.supabase.co:5432/postgres`,
+    ...regions.map(
+      (region) =>
+        `postgresql://postgres.${ref}:${encoded}@${region}.pooler.supabase.com:5432/postgres`,
+    ),
+  ];
+}
+
+function hostOf(connectionString) {
+  try {
+    return new URL(connectionString).host;
+  } catch {
+    return "(unparsed)";
+  }
 }
 
 function listMigrationFiles() {
@@ -122,11 +154,13 @@ function softenSql(sql) {
       `DROP TRIGGER IF EXISTS ${name} ON ${table};\nCREATE TRIGGER ${name} ${mid} ON ${table}`,
   );
 
-  out = out.replace(
-    /ALTER\s+PUBLICATION\s+([a-zA-Z0-9_]+)\s+ADD\s+TABLE\s+([^;]+);/gi,
-    (_m, pub, tables) =>
-      `DO $$ BEGIN ALTER PUBLICATION ${pub} ADD TABLE ${tables}; EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_object THEN NULL; END $$;`,
-  );
+  if (!/ALTER\s+PUBLICATION[\s\S]{0,240}EXCEPTION\s+WHEN\s+duplicate_object/i.test(out)) {
+    out = out.replace(
+      /ALTER\s+PUBLICATION\s+([a-zA-Z0-9_]+)\s+ADD\s+TABLE\s+([^;]+);/gi,
+      (_m, pub, tables) =>
+        `DO $$ BEGIN ALTER PUBLICATION ${pub} ADD TABLE ${tables}; EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_object THEN NULL; END $$;`,
+    );
+  }
 
   // Seed inserts with fixed UUIDs — ignore if already present.
   out = out.replace(
@@ -217,16 +251,21 @@ if (probeOnly) {
   process.exit(missing && missing > 0 ? 1 : 0);
 }
 
-const files = listMigrationFiles();
-console.log(`Found ${files.length} migration file(s)`);
+const only = process.env.ONLY_MIGRATION?.trim();
+const files = listMigrationFiles().filter((file) => !only || file === only || file.replace(/\.sql$/, "") === only);
+console.log(`Found ${files.length} migration file(s)${only ? ` matching ${only}` : ""}`);
+if (only && files.length === 0) {
+  console.error(`No migration file matches ONLY_MIGRATION=${only}`);
+  process.exit(2);
+}
 
 if (dryRun) {
   for (const f of files) console.log(`  ${f}`);
   process.exit(0);
 }
 
-const databaseUrl = resolveDatabaseUrl();
-if (!databaseUrl) {
+const candidates = databaseCandidates();
+if (!candidates.length) {
   console.error(`
 Cannot apply migrations: no database connection string.
 
@@ -237,6 +276,10 @@ Or:
   DATABASE_URL=postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres
 
 Then:
+  node scripts/apply-pending-migrations.mjs
+
+Apply one file only:
+  $env:ONLY_MIGRATION = "20261004160000_target_events.sql"
   node scripts/apply-pending-migrations.mjs
 `);
   await probeTables();
@@ -249,12 +292,33 @@ const ref = projectRefFromUrl(
 console.log(`Applying to project: ${ref ?? "(from DATABASE_URL)"}`);
 
 const { Client } = await loadPg();
-const client = new Client({
-  connectionString: databaseUrl,
-  ssl: { rejectUnauthorized: false },
-});
-
-await client.connect();
+let client = null;
+let lastError = null;
+for (const connectionString of candidates) {
+  const attempt = new Client({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 8000,
+  });
+  try {
+    await attempt.connect();
+    client = attempt;
+    console.log(`Connected via ${hostOf(connectionString)}`);
+    break;
+  } catch (err) {
+    lastError = err;
+    console.log(`skip host ${hostOf(connectionString)} (${err.code || "error"})`);
+    try {
+      await attempt.end();
+    } catch {
+      /* already closed */
+    }
+  }
+}
+if (!client) {
+  console.error("Could not open a Postgres connection.", lastError?.message?.split("\n")[0] ?? "");
+  process.exit(1);
+}
 
 try {
   await client.query(`
