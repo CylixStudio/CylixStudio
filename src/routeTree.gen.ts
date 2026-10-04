@@ -62,6 +62,7 @@ import { Route as ApiPublicWebhooksKickRouteImport } from './routes/api/public/w
 import { Route as ApiPublicWebhooksProCheckoutRouteImport } from './routes/api/public/webhooks/pro-checkout'
 import { Route as ApiPublicWebhooksStreamelementsRouteImport } from './routes/api/public/webhooks/streamelements'
 import { Route as ApiPublicWebhooksStreamlabsRouteImport } from './routes/api/public/webhooks/streamlabs'
+import { Route as ApiPublicWebhooksStreampayRouteImport } from './routes/api/public/webhooks/streampay'
 import { Route as ApiPublicWebhooksTwitchRouteImport } from './routes/api/public/webhooks/twitch'
 import { Route as ApiPublicAuthProviderCallbackRouteImport } from './routes/api/public/auth/$provider/callback'
 import { Route as ApiPublicAuthProviderStartRouteImport } from './routes/api/public/auth/$provider/start'
@@ -364,6 +365,12 @@ const ApiPublicWebhooksStreamlabsRoute =
     path: '/api/public/webhooks/streamlabs',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicWebhooksStreampayRoute =
+  ApiPublicWebhooksStreampayRouteImport.update({
+    id: '/api/public/webhooks/streampay',
+    path: '/api/public/webhooks/streampay',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWebhooksTwitchRoute = ApiPublicWebhooksTwitchRouteImport.update({
   id: '/api/public/webhooks/twitch',
   path: '/api/public/webhooks/twitch',
@@ -528,6 +535,7 @@ export interface FileRoutesByFullPath {
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
   '/api/public/webhooks/streamelements': typeof ApiPublicWebhooksStreamelementsRoute
   '/api/public/webhooks/streamlabs': typeof ApiPublicWebhooksStreamlabsRoute
+  '/api/public/webhooks/streampay': typeof ApiPublicWebhooksStreampayRoute
   '/api/public/webhooks/twitch': typeof ApiPublicWebhooksTwitchRoute
   '/widgets/$widgetId/': typeof AuthenticatedWidgetsWidgetIdIndexRoute
   '/api/public/auth/$provider/callback': typeof ApiPublicAuthProviderCallbackRoute
@@ -600,6 +608,7 @@ export interface FileRoutesByTo {
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
   '/api/public/webhooks/streamelements': typeof ApiPublicWebhooksStreamelementsRoute
   '/api/public/webhooks/streamlabs': typeof ApiPublicWebhooksStreamlabsRoute
+  '/api/public/webhooks/streampay': typeof ApiPublicWebhooksStreampayRoute
   '/api/public/webhooks/twitch': typeof ApiPublicWebhooksTwitchRoute
   '/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdIndexRoute
   '/api/public/auth/$provider/callback': typeof ApiPublicAuthProviderCallbackRoute
@@ -675,6 +684,7 @@ export interface FileRoutesById {
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
   '/api/public/webhooks/streamelements': typeof ApiPublicWebhooksStreamelementsRoute
   '/api/public/webhooks/streamlabs': typeof ApiPublicWebhooksStreamlabsRoute
+  '/api/public/webhooks/streampay': typeof ApiPublicWebhooksStreampayRoute
   '/api/public/webhooks/twitch': typeof ApiPublicWebhooksTwitchRoute
   '/_authenticated/widgets/$widgetId/': typeof AuthenticatedWidgetsWidgetIdIndexRoute
   '/api/public/auth/$provider/callback': typeof ApiPublicAuthProviderCallbackRoute
@@ -750,6 +760,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/pro-checkout'
     | '/api/public/webhooks/streamelements'
     | '/api/public/webhooks/streamlabs'
+    | '/api/public/webhooks/streampay'
     | '/api/public/webhooks/twitch'
     | '/widgets/$widgetId/'
     | '/api/public/auth/$provider/callback'
@@ -822,6 +833,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/pro-checkout'
     | '/api/public/webhooks/streamelements'
     | '/api/public/webhooks/streamlabs'
+    | '/api/public/webhooks/streampay'
     | '/api/public/webhooks/twitch'
     | '/widgets/$widgetId'
     | '/api/public/auth/$provider/callback'
@@ -896,6 +908,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/pro-checkout'
     | '/api/public/webhooks/streamelements'
     | '/api/public/webhooks/streamlabs'
+    | '/api/public/webhooks/streampay'
     | '/api/public/webhooks/twitch'
     | '/_authenticated/widgets/$widgetId/'
     | '/api/public/auth/$provider/callback'
@@ -947,6 +960,7 @@ export interface RootRouteChildren {
   ApiPublicWebhooksProCheckoutRoute: typeof ApiPublicWebhooksProCheckoutRoute
   ApiPublicWebhooksStreamelementsRoute: typeof ApiPublicWebhooksStreamelementsRoute
   ApiPublicWebhooksStreamlabsRoute: typeof ApiPublicWebhooksStreamlabsRoute
+  ApiPublicWebhooksStreampayRoute: typeof ApiPublicWebhooksStreampayRoute
   ApiPublicWebhooksTwitchRoute: typeof ApiPublicWebhooksTwitchRoute
   ApiPublicAuthProviderCallbackRoute: typeof ApiPublicAuthProviderCallbackRoute
   ApiPublicAuthProviderStartRoute: typeof ApiPublicAuthProviderStartRoute
@@ -1341,6 +1355,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWebhooksStreamlabsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/webhooks/streampay': {
+      id: '/api/public/webhooks/streampay'
+      path: '/api/public/webhooks/streampay'
+      fullPath: '/api/public/webhooks/streampay'
+      preLoaderRoute: typeof ApiPublicWebhooksStreampayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/webhooks/twitch': {
       id: '/api/public/webhooks/twitch'
       path: '/api/public/webhooks/twitch'
@@ -1592,6 +1613,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicWebhooksProCheckoutRoute: ApiPublicWebhooksProCheckoutRoute,
   ApiPublicWebhooksStreamelementsRoute: ApiPublicWebhooksStreamelementsRoute,
   ApiPublicWebhooksStreamlabsRoute: ApiPublicWebhooksStreamlabsRoute,
+  ApiPublicWebhooksStreampayRoute: ApiPublicWebhooksStreampayRoute,
   ApiPublicWebhooksTwitchRoute: ApiPublicWebhooksTwitchRoute,
   ApiPublicAuthProviderCallbackRoute: ApiPublicAuthProviderCallbackRoute,
   ApiPublicAuthProviderStartRoute: ApiPublicAuthProviderStartRoute,

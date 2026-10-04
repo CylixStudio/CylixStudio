@@ -439,6 +439,7 @@ const DICT = {
   "gateway.purchaseType.directHint": "تُحفظ الخطة المختارة على هذا الحساب.",
   "gateway.purchaseType.gift": "هدية / رمز تفعيل",
   "gateway.purchaseType.giftHint": "رمز التفعيل يُدخل من إعدادات الحساب.",
+  "gateway.checkout.failed": "تعذر فتح صفحة الدفع. حاول مرة أخرى.",
   "gateway.gift.recipientLabel": "بريد المستلم (اختياري)",
   "gateway.gift.recipientPlaceholder": "friend@email.com",
   "gateway.gift.recipientHint": "اتركه فارغاً لإرسال الرمز إلى بريدك.",

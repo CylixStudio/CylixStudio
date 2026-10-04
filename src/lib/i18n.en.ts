@@ -400,6 +400,7 @@ export const EN = {
   "gateway.purchaseType.directHint": "Saves the selected plan on this account.",
   "gateway.purchaseType.gift": "Gift / activation code",
   "gateway.purchaseType.giftHint": "Activation codes are entered in account settings.",
+  "gateway.checkout.failed": "Could not open the payment page. Try again.",
   "gateway.gift.recipientLabel": "Recipient email (optional)",
   "gateway.gift.recipientPlaceholder": "friend@email.com",
   "gateway.gift.recipientHint": "Leave this blank to send the code to your own email.",

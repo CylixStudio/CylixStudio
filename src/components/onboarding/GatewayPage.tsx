@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { PlanCompareDialog } from "@/components/onboarding/PlanCompareDialog";
 import { PlatformAsset } from "@/components/icons/platformAssets";
@@ -29,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { startStreamPayCheckout } from "@/lib/streampay.functions";
 import {
   DEFAULT_PRO_BILLING,
   markGatewayCompleted,
@@ -327,6 +329,7 @@ function ProPlanCard({
   onBillingChange,
   onActivateAccount,
   onGiftOrCode,
+  checkoutBusy = false,
 }: {
   badge: string;
   title: string;
@@ -336,6 +339,7 @@ function ProPlanCard({
   onBillingChange: (next: ProBillingInterval) => void;
   onActivateAccount: () => void;
   onGiftOrCode: () => void;
+  checkoutBusy?: boolean;
 }) {
   const { t } = useLanguage();
   const option = PRO_BILLING_OPTIONS[billing];
@@ -388,6 +392,7 @@ function ProPlanCard({
           type="button"
           variant="default"
           onClick={onActivateAccount}
+          disabled={checkoutBusy}
           className="h-10 min-w-0 gap-1.5 px-2 text-[0.72rem] font-semibold shadow-[0_14px_36px_-16px_color-mix(in_oklab,var(--primary)_70%,transparent)] sm:text-[0.78rem]"
           data-tier="pro"
           data-billing-interval={option.id}
@@ -425,10 +430,11 @@ export function GatewayPlansPanel({
   onContinueFree?: () => void;
   className?: string;
 } = {}) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useRouteContext({ from: "/_authenticated" });
   const navigate = useNavigate();
   const [compareOpen, setCompareOpen] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [proBilling, setProBilling] = useState<ProBillingInterval>(DEFAULT_PRO_BILLING);
 
   const goDashboard = () => {
@@ -439,11 +445,28 @@ export function GatewayPlansPanel({
   const continueFree = onContinueFree ?? goDashboard;
 
   const activateOnAccount = () => {
+    if (checkoutBusy) return;
     prepareProCheckout(proBilling, {
       purchaseType: "direct",
       userId: user.id,
       buyerEmail: user.email ?? null,
     });
+    setCheckoutBusy(true);
+    void startStreamPayCheckout({
+      data: { interval: proBilling, purchaseType: "direct", locale: lang },
+    })
+      .then((result) => {
+        if (!result.ok) {
+          toast.error(t("gateway.checkout.failed"));
+          setCheckoutBusy(false);
+          return;
+        }
+        window.location.assign(result.url);
+      })
+      .catch(() => {
+        toast.error(t("gateway.checkout.failed"));
+        setCheckoutBusy(false);
+      });
   };
 
   const openGiftOrCode = () => {
@@ -475,6 +498,7 @@ export function GatewayPlansPanel({
             onBillingChange={setProBilling}
             onActivateAccount={activateOnAccount}
             onGiftOrCode={openGiftOrCode}
+            checkoutBusy={checkoutBusy}
           />
         </section>
 
