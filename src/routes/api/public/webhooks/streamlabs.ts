@@ -21,6 +21,7 @@ const SlMessageSchema = z
 const SlPayloadSchema = z
   .object({
     type: z.string().optional(),
+    for: z.string().optional(),
     event_id: z.union([z.string(), z.number()]).optional(),
     message: z.union([SlMessageSchema, z.array(SlMessageSchema)]).optional(),
     created_at: z.union([z.string(), z.number()]).optional(),
@@ -44,6 +45,7 @@ export const Route = createFileRoute("/api/public/webhooks/streamlabs")({
         const { jsonResponse, receivePlatformEvent, resolveUserByToken } = await import(
           "@/lib/webhooks/ingest.server"
         );
+        const { resolveRelaySource } = await import("@/lib/platformEvents");
         const { safeEqual } = await import("@/lib/webhooks/verify.server");
 
         const url = new URL(request.url);
@@ -95,9 +97,18 @@ export const Route = createFileRoute("/api/public/webhooks/streamlabs")({
         }
 
         const type = (parsed.type ?? "").toLowerCase();
-        // Streamlabs may only contribute tips; subscriptions/follows come from Twitch/Kick.
-        const eventType: EventType | null = type === "donation" ? "DONATION" : null;
+        const eventType: EventType | null =
+          type === "donation" || type === "superchat" || type === "merch"
+            ? "DONATION"
+            : type === "follow"
+              ? "FOLLOW"
+              : type === "subscription" || type === "resub" || type === "membership"
+                ? "SUBSCRIPTION"
+                : null;
         if (!eventType) return jsonResponse({ status: "ignored", reason: "unsupported_type" });
+        const origin =
+          (typeof parsed.for === "string" ? parsed.for : null) ??
+          (type === "superchat" || type === "membership" ? "youtube" : null);
 
         const messages = Array.isArray(parsed.message)
           ? parsed.message
@@ -116,9 +127,11 @@ export const Route = createFileRoute("/api/public/webhooks/streamlabs")({
                 : parsed.event_id != null
                   ? `${parsed.event_id}:${index}`
                   : null;
+          const resolved = resolveRelaySource({ relay: "STREAMLABS", origin, eventType });
+          if (!resolved) continue;
           const normalized: NormalizedEvent = {
-            platform: "STREAMLABS",
-            eventType,
+            platform: resolved.platform,
+            eventType: resolved.eventType,
             providerEventId: providerId,
             actorName: msg.from ?? msg.name ?? "Anonymous",
             actorPlatformId: msg.subscriber_id ?? null,

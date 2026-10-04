@@ -7,6 +7,7 @@ const REQUIRED_KICK_EVENTS = [
   { name: "channel.subscription.new", version: 1 },
   { name: "channel.subscription.renewal", version: 1 },
   { name: "channel.subscription.gifts", version: 1 },
+  { name: "kicks.gifted", version: 1 },
 ] as const;
 
 type KickSubscription = {

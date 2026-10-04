@@ -1958,7 +1958,7 @@ VALUES (
   'clips',
   false,
   52428800,
-  ARRAY['video/mp4', 'video/webm', 'image/jpeg', 'image/png', 'image/webp']
+  ARRAY['video/mp4', 'video/webm', 'video/mp2t', 'image/jpeg', 'image/png', 'image/webp']
 )
 ON CONFLICT (id) DO NOTHING;
 

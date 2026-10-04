@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { InfoTip } from "@/components/ui/info-tip";
 import { SaudiBusinessSeal } from "@/components/brand/SaudiBusinessSeal";
 import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -76,6 +77,7 @@ import { getMediaRequestDashboard } from "@/lib/mediaRequests.functions";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { createWidget, errorMessage } from "@/lib/createWidget";
+import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 import type { WidgetType } from "@/lib/widgets";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isTestMode } from "@/lib/testMode";
@@ -288,6 +290,9 @@ function HomePage() {
   const [deleting, setDeleting] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("ALL");
   const [visibleCount, setVisibleCount] = useState(HUB_INITIAL_VISIBLE);
+  useApplyDefaultPlatform(workspace?.profile?.default_platform, (platform) => {
+    setPlatformFilter(platform);
+  });
 
   const visibleTools = TOOLS.filter(
     (tool) => platformFilter === "ALL" || tool.platforms.includes(platformFilter),
@@ -397,6 +402,9 @@ function HomePage() {
       }
       return;
     }
+    // Wait until the widget list is known so a slow load cannot insert a second
+    // row (and a second OBS token) for a tool that already exists.
+    if (widgets.isPending) return;
     setBusy(tool.id);
     try {
       const widget = await createWidget({
@@ -449,6 +457,7 @@ function HomePage() {
         className="mb-5 flex flex-wrap items-center gap-1 overflow-visible px-0.5"
         style={{ overflow: "visible" }}
       >
+        <InfoTip text={t("tooltips.home.platformFilter")} />
         {FILTER_ORDER.map((id) => {
           const active = platformFilter === id;
           const color = id === "ALL" ? "var(--foreground)" : PLATFORM_META[id].color;

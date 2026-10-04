@@ -1651,6 +1651,7 @@ export type Database = {
       users: {
         Row: {
           created_at: string
+          default_platform: string | null
           email: string | null
           id: string
           image: string | null
@@ -1660,6 +1661,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_platform?: string | null
           email?: string | null
           id: string
           image?: string | null
@@ -1669,6 +1671,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_platform?: string | null
           email?: string | null
           id?: string
           image?: string | null

@@ -66,18 +66,20 @@ export const ingestStreamElementsEvent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
     (data: {
-      eventType: "DONATION" | "SUBSCRIPTION" | "GIFT_SUB" | "BITS" | "FOLLOW" | "RAID";
+      eventType: "DONATION" | "SUBSCRIPTION" | "GIFT_SUB" | "BITS" | "FOLLOW" | "RAID" | "LIKE";
       providerEventId: string | null;
       actorName: string;
       amount: number | null;
       currency: string | null;
       quantity: number;
       message: string | null;
+      origin?: string | null;
     }) => {
-      const allowed = ["DONATION", "SUBSCRIPTION", "GIFT_SUB", "BITS", "FOLLOW", "RAID"];
+      const allowed = ["DONATION", "SUBSCRIPTION", "GIFT_SUB", "BITS", "FOLLOW", "RAID", "LIKE"];
       if (!allowed.includes(data?.eventType)) throw new Error("Unsupported event type");
       return {
         eventType: data.eventType,
+        origin: (data.origin ?? "").slice(0, 40) || null,
         providerEventId: (data.providerEventId ?? "").slice(0, 200) || null,
         actorName: (data.actorName ?? "Anonymous").slice(0, 80) || "Anonymous",
         amount:
@@ -93,9 +95,16 @@ export const ingestStreamElementsEvent = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/lib/supabase/client.server");
     const { receivePlatformEvent } = await import("@/lib/webhooks/ingest.server");
-    const result = await receivePlatformEvent(supabaseAdmin, context.userId, {
-      platform: "STREAMELEMENTS",
+    const { resolveRelaySource } = await import("@/lib/platformEvents");
+    const resolved = resolveRelaySource({
+      relay: "STREAMELEMENTS",
+      origin: data.origin,
       eventType: data.eventType,
+    });
+    if (!resolved) return { status: "ok" as const, result: { status: "ignored" as const, reason: "unsupported_type" } };
+    const result = await receivePlatformEvent(supabaseAdmin, context.userId, {
+      platform: resolved.platform,
+      eventType: resolved.eventType,
       providerEventId: data.providerEventId,
       actorName: data.actorName,
       actorPlatformId: null,
@@ -161,6 +170,7 @@ const SOCKET_EVENT_TYPES = [
   "BITS",
   "FOLLOW",
   "RAID",
+  "LIKE",
 ] as const;
 
 /** Ingests one parsed Streamlabs socket event through the shared pipeline. */
@@ -175,10 +185,12 @@ export const ingestStreamlabsSocketEvent = createServerFn({ method: "POST" })
       currency: string | null;
       quantity: number;
       message: string | null;
+      origin?: string | null;
     }) => {
       if (!SOCKET_EVENT_TYPES.includes(data?.eventType)) throw new Error("Unsupported event type");
       return {
         eventType: data.eventType,
+        origin: (data.origin ?? "").slice(0, 40) || null,
         providerEventId: (data.providerEventId ?? "").slice(0, 200) || null,
         actorName: (data.actorName ?? "Anonymous").slice(0, 80) || "Anonymous",
         amount:
@@ -194,9 +206,16 @@ export const ingestStreamlabsSocketEvent = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/lib/supabase/client.server");
     const { receivePlatformEvent } = await import("@/lib/webhooks/ingest.server");
-    const result = await receivePlatformEvent(supabaseAdmin, context.userId, {
-      platform: "STREAMLABS",
+    const { resolveRelaySource } = await import("@/lib/platformEvents");
+    const resolved = resolveRelaySource({
+      relay: "STREAMLABS",
+      origin: data.origin,
       eventType: data.eventType,
+    });
+    if (!resolved) return { status: "ok" as const, result: { status: "ignored" as const, reason: "unsupported_type" } };
+    const result = await receivePlatformEvent(supabaseAdmin, context.userId, {
+      platform: resolved.platform,
+      eventType: resolved.eventType,
       providerEventId: data.providerEventId,
       actorName: data.actorName,
       actorPlatformId: null,

@@ -31,7 +31,6 @@ function normalize(type: string, messageId: string, ev: Record<string, unknown>)
         quantity: 1,
       };
     case "channel.subscribe":
-    case "channel.subscription.message":
       return {
         ...base,
         eventType: "SUBSCRIPTION" as EventType,
@@ -39,7 +38,12 @@ function normalize(type: string, messageId: string, ev: Record<string, unknown>)
         actorPlatformId: str("user_id"),
         amount: null,
         quantity: TIER_MULTIPLIER[str("tier") ?? "1000"] ?? 1,
+        isGiftedSubscription: ev["is_gift"] === true,
       };
+    case "channel.subscription.message":
+      // Resubs already arrive as channel.subscribe. This message is the chat
+      // text for that same sub, not a second subscription.
+      return null;
     case "channel.subscription.gift":
       return {
         ...base,
@@ -64,8 +68,8 @@ function normalize(type: string, messageId: string, ev: Record<string, unknown>)
         eventType: "RAID" as EventType,
         actorName: str("from_broadcaster_user_name"),
         actorPlatformId: str("from_broadcaster_user_id"),
-        amount: num("viewers"),
-        quantity: Math.max(num("viewers") ?? 1, 1),
+        amount: null,
+        quantity: 1,
       };
     default:
       return null;

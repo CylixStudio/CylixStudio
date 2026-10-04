@@ -43,6 +43,7 @@ export const TEST_EVENT_GROUPS: TestEventGroup[] = [
       { type: "FOLLOW", labelKey: "settings.test.event.follow" },
       { type: "SUBSCRIPTION", labelKey: "settings.test.event.sub" },
       { type: "GIFT_SUB", labelKey: "settings.test.event.giftSub" },
+      { type: "BITS", labelKey: "settings.test.event.kicks", amount: 100 },
       { type: "RAID", labelKey: "settings.test.event.raid" },
     ],
   },

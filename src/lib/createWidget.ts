@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
 import { DEFAULT_OVERLAY_THEME } from "@/lib/overlayTheme";
 import { goalTypePreset, type GoalTypeId } from "@/lib/goalTypes";
+import { mintWidgetPublicToken } from "@/lib/widgetOverlayUrl";
 import {
   DEFAULT_STYLE,
   WIDGET_LABEL,
@@ -141,6 +142,8 @@ export async function createWidget(args: {
       type: args.type,
       name: args.name?.trim() || WIDGET_LABEL[args.type],
       config: defaultConfig(args.type, args.goalType) as never,
+      // Assigned once. Later settings and token refreshes must not replace it.
+      public_token: mintWidgetPublicToken(),
     })
     .select("id, public_token")
     .single();

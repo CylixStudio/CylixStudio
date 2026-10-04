@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { isAllowedPlatformEvent, timerUnits } from "@/lib/platformEvents";
 import type { Database } from "@/lib/supabase/types";
 
 export type Platform = Database["public"]["Enums"]["platform_type"];
@@ -20,6 +21,17 @@ export type NormalizedEvent = {
   /** Unit count (gift subs, months, tier weight). */
   quantity: number;
   rawPayload: unknown;
+  /**
+   * False when this row is logged for the feed but must not move the timer
+   * (a replay of an event that another row already times).
+   */
+  countsTowardTimer?: boolean;
+  /**
+   * Twitch sends channel.subscribe with is_gift for every gifted sub, and also
+   * channel.subscription.gift for the whole gift. When a gift-sub rule is
+   * enabled, only the gift event adds time.
+   */
+  isGiftedSubscription?: boolean;
 };
 
 export type IngestResult =
@@ -27,25 +39,9 @@ export type IngestResult =
   | { status: "duplicate"; eventId: string | null }
   | { status: "accepted"; eventId: string; secondsAdded: number; remainingSeconds: number };
 
-/**
- * Strict source routing: each provider may only report the events it owns.
- * Streamlabs/StreamElements relay follows and subs that Twitch/Kick already
- * deliver natively, so tip-style events are the only thing accepted from them.
- */
-const PLATFORM_EVENT_ALLOWLIST: Record<Platform, EventType[]> = {
-  TWITCH: ["FOLLOW", "SUBSCRIPTION", "GIFT_SUB", "BITS", "RAID"],
-  KICK: ["FOLLOW", "SUBSCRIPTION", "GIFT_SUB", "RAID"],
-  TIKTOK: ["FOLLOW", "DONATION", "LIKE"],
-  STREAMELEMENTS: ["DONATION"],
-  STREAMLABS: ["DONATION"],
-  YOUTUBE: ["FOLLOW", "SUBSCRIPTION", "DONATION"],
-  X: ["FOLLOW"],
-  MANUAL: ["FOLLOW", "SUBSCRIPTION", "GIFT_SUB", "BITS", "DONATION", "RAID"],
-};
-
 /** True when this provider is allowed to report this kind of event. */
 export function isAllowedEventSource(platform: Platform, eventType: EventType): boolean {
-  return PLATFORM_EVENT_ALLOWLIST[platform]?.includes(eventType) ?? false;
+  return isAllowedPlatformEvent(platform, eventType);
 }
 
 
@@ -112,36 +108,45 @@ export async function activeSubathonFor(
 }
 
 /**
- * Evaluates enabled rules for the subathon and returns the seconds to award.
- * Highest priority matching rule wins; platform-specific beats MANUAL.
+ * Seconds awarded by an enabled rule for this exact platform and event.
+ * A Twitch follow rule does not fire for Kick, and a MANUAL rule does not
+ * cover other platforms. No matching rule means zero seconds.
  */
 export async function evaluateRules(
   admin: Admin,
   subathonId: string,
   event: NormalizedEvent,
 ): Promise<number> {
+  if (event.countsTowardTimer === false) return 0;
+
+  if (event.isGiftedSubscription) {
+    const { data: giftRules } = await admin
+      .from("rules")
+      .select("id")
+      .eq("subathon_id", subathonId)
+      .eq("platform", event.platform)
+      .eq("event_type", "GIFT_SUB")
+      .eq("is_enabled", true)
+      .limit(1);
+    if (giftRules?.length) return 0;
+  }
+
   const { data: rules } = await admin
     .from("rules")
     .select("*")
     .eq("subathon_id", subathonId)
     .eq("event_type", event.eventType)
+    .eq("platform", event.platform)
     .eq("is_enabled", true)
-    .in("platform", [event.platform, "MANUAL"])
     .order("priority", { ascending: false });
 
   if (!rules?.length) return 0;
 
-  const units =
-    event.amount !== null && event.amount !== undefined
-      ? Number(event.amount)
-      : Math.max(event.quantity, 1);
+  const units = timerUnits(event);
+  if (units <= 0) return 0;
 
-  const rule =
-    rules.find(
-      (r) => r.platform === event.platform && (r.min_amount === null || units >= Number(r.min_amount)),
-    ) ?? rules.find((r) => r.min_amount === null || units >= Number(r.min_amount));
-
-  if (!rule) return 0;
+  const rule = rules.find((entry) => entry.min_amount === null || units >= Number(entry.min_amount));
+  if (!rule || rule.seconds_per_unit <= 0) return 0;
 
   const unitAmount = Number(rule.unit_amount) || 1;
   let seconds = Math.floor((units / unitAmount) * rule.seconds_per_unit);
@@ -149,6 +154,64 @@ export async function evaluateRules(
     seconds = Math.min(seconds, rule.max_seconds_per_event);
   }
   return Math.max(seconds, 0);
+}
+
+const REPLAY_WINDOW_MS = 12_000;
+
+function sameDelivery(
+  row: { amount: number | null; quantity: number },
+  event: NormalizedEvent,
+): boolean {
+  const quantity = Math.max(1, Math.round(event.quantity || 1));
+  if (row.quantity !== quantity) return false;
+  if (event.amount == null || row.amount == null) return true;
+  return Number(row.amount) === Number(event.amount);
+}
+
+/**
+ * Socket and webhook copies of one tip or sub often carry different provider
+ * ids. Same actor, type, amount, and quantity inside a few seconds is one
+ * delivery. Anonymous rows are left alone so two unnamed tips are not merged.
+ */
+async function findReplayTwin(
+  admin: Admin,
+  scope: { subathonId?: string; userId?: string },
+  event: NormalizedEvent,
+): Promise<string | null> {
+  const actor = (event.actorName ?? "").trim();
+  if (actor.length < 2 || /^anonymous$/i.test(actor)) return null;
+  const since = new Date(Date.now() - REPLAY_WINDOW_MS).toISOString();
+
+  if (scope.subathonId) {
+    const { data } = await admin
+      .from("events")
+      .select("id, amount, quantity")
+      .eq("subathon_id", scope.subathonId)
+      .eq("platform", event.platform)
+      .eq("event_type", event.eventType)
+      .eq("actor_name", actor)
+      .gte("created_at", since)
+      .limit(8);
+    const twin = (data ?? []).find((row) => sameDelivery(row, event));
+    if (twin) return twin.id;
+  }
+
+  if (scope.userId) {
+    const { data, error } = await admin
+      .from("target_events")
+      .select("id, amount, quantity")
+      .eq("user_id", scope.userId)
+      .eq("platform", event.platform)
+      .eq("event_type", event.eventType)
+      .eq("actor_name", actor)
+      .gte("created_at", since)
+      .limit(8);
+    if (error?.code === "PGRST205") return null;
+    const twin = (data ?? []).find((row) => sameDelivery(row, event));
+    if (twin) return twin.id;
+  }
+
+  return null;
 }
 
 /**
@@ -176,6 +239,9 @@ export async function ingestEvent(
       .maybeSingle();
     if (existing) return { status: "duplicate", eventId: existing.id };
   }
+
+  const replay = await findReplayTwin(admin, { subathonId: target.subathonId, userId: target.userId }, event);
+  if (replay) return { status: "duplicate", eventId: replay };
 
   const seconds = await evaluateRules(admin, target.subathonId, event);
 
@@ -280,16 +346,14 @@ export async function applyGoalIncrements(
     .select("widget_id, goal_increment, unit_amount, min_amount, platform")
     .eq("subathon_id", subathonId)
     .eq("event_type", event.eventType)
+    .eq("platform", event.platform)
     .eq("is_enabled", true)
-    .not("widget_id", "is", null)
-    .in("platform", [event.platform, "MANUAL"]);
+    .not("widget_id", "is", null);
 
   if (!rules?.length) return touched;
 
-  const units =
-    event.amount !== null && event.amount !== undefined
-      ? Number(event.amount)
-      : Math.max(event.quantity, 1);
+  const units = timerUnits(event);
+  if (units <= 0) return touched;
 
   for (const rule of rules) {
     const increment = Number(rule.goal_increment ?? 0);
@@ -325,6 +389,9 @@ export async function receivePlatformEvent(
 
   const target = await activeSubathonFor(admin, userId);
   if (target) return ingestEvent(admin, target, event);
+
+  const replay = await findReplayTwin(admin, { userId }, event);
+  if (replay) return { status: "duplicate", eventId: replay };
 
   const { recordTargetEvent, advanceTargets } = await import("@/lib/targets.server");
   const recorded = await recordTargetEvent(admin, userId, event);

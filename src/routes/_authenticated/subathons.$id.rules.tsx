@@ -5,8 +5,12 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { InfoTip } from "@/components/ui/info-tip";
 import { supabase } from "@/lib/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
+import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { eventsForPlatform, triggerPhrase, type StreamEventType } from "@/lib/platformEvents";
 import type { Database } from "@/lib/supabase/types";
 import { DarkSelect } from "@/components/ui/dark-select";
 
@@ -17,28 +21,30 @@ type Rule = Database["public"]["Tables"]["rules"]["Row"];
 const PLATFORMS: Platform[] = [
   "TWITCH",
   "KICK",
+  "YOUTUBE",
   "TIKTOK",
   "STREAMELEMENTS",
   "STREAMLABS",
   "MANUAL",
 ];
-const EVENT_TYPES: EventType[] = [
-  "FOLLOW",
-  "SUBSCRIPTION",
-  "GIFT_SUB",
-  "BITS",
-  "DONATION",
-  "RAID",
-];
+function triggerKey(platform: string, eventType: string): TranslationKey {
+  return `rules.event.${triggerPhrase(platform, eventType)}` as TranslationKey;
+}
+
+function eventForPlatform(platform: Platform, current: EventType): EventType {
+  const allowed = eventsForPlatform(platform);
+  if (allowed.includes(current as StreamEventType)) return current;
+  return (allowed[0] ?? "FOLLOW") as EventType;
+}
 
 const UNIT_LABEL: Record<EventType, string> = {
   FOLLOW: "follow",
   SUBSCRIPTION: "sub (tier weighted)",
   GIFT_SUB: "gifted sub",
-  BITS: "bits / coins",
+  BITS: "bits",
   DONATION: "currency unit",
-  RAID: "raid viewer",
-  LIKE: "tap / like",
+  RAID: "raid",
+  LIKE: "like",
 };
 
 export const Route = createFileRoute("/_authenticated/subathons/$id/rules")({
@@ -67,6 +73,7 @@ function RulesPage() {
   const { id } = Route.useParams();
   const queryClient = useQueryClient();
   const { data: workspace } = useWorkspace(user.id);
+  const { t } = useLanguage();
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     platform: "TWITCH" as Platform,
@@ -76,6 +83,10 @@ function RulesPage() {
     min_amount: "",
     max_seconds_per_event: "",
     priority: 100,
+  });
+  useApplyDefaultPlatform(workspace?.profile?.default_platform, (platform) => {
+    if (!PLATFORMS.includes(platform)) return;
+    setDraft((prev) => ({ ...prev, platform, event_type: eventForPlatform(platform, prev.event_type) }));
   });
 
   const rules = useQuery({
@@ -182,9 +193,14 @@ function RulesPage() {
             <DarkSelect
               className="mt-2"
               value={draft.platform}
-              onValueChange={(next) =>
-                setDraft((prev) => ({ ...prev, platform: next as Platform }))
-              }
+              onValueChange={(next) => {
+                const platform = next as Platform;
+                setDraft((prev) => ({
+                  ...prev,
+                  platform,
+                  event_type: eventForPlatform(platform, prev.event_type),
+                }));
+              }}
               options={PLATFORMS.map((platform) => ({ value: platform, label: platform }))}
             />
           </label>
@@ -196,14 +212,17 @@ function RulesPage() {
               onValueChange={(next) =>
                 setDraft((prev) => ({ ...prev, event_type: next as EventType }))
               }
-              options={EVENT_TYPES.map((eventType) => ({
+              options={eventsForPlatform(draft.platform).map((eventType) => ({
                 value: eventType,
-                label: eventType.replace("_", " "),
+                label: t(triggerKey(draft.platform, eventType)),
               }))}
             />
           </label>
           <label>
-            <span className={labelClass}>Per units</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              Per units
+              <InfoTip text={t("tooltips.rules.perUnits")} />
+            </span>
             <input
               type="number"
               min={1}
@@ -215,7 +234,10 @@ function RulesPage() {
             />
           </label>
           <label>
-            <span className={labelClass}>Seconds</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              Seconds
+              <InfoTip text={t("tooltips.rules.timeAdded")} />
+            </span>
             <input
               type="number"
               min={0}
@@ -227,7 +249,10 @@ function RulesPage() {
             />
           </label>
           <label>
-            <span className={labelClass}>Min amount</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              Min amount
+              <InfoTip text={t("tooltips.rules.minAmount")} />
+            </span>
             <input
               type="number"
               min={0}
@@ -238,7 +263,10 @@ function RulesPage() {
             />
           </label>
           <label>
-            <span className={labelClass}>Max / event</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              Max / event
+              <InfoTip text={t("tooltips.rules.maxPerEvent")} />
+            </span>
             <input
               type="number"
               min={0}
@@ -276,7 +304,7 @@ function RulesPage() {
             >
               <div className="min-w-0">
                 <p className="font-semibold">
-                  {rule.platform} · {rule.event_type.replace("_", " ")}
+                  {rule.platform} · {t(triggerKey(rule.platform, rule.event_type))}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   every {rule.unit_amount} {UNIT_LABEL[rule.event_type]} → +{rule.seconds_per_unit}s

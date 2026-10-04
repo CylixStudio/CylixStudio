@@ -8,8 +8,10 @@ import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { StudioPageTabs } from "@/components/layout/StudioPageTabs";
 import { DarkSelect } from "@/components/ui/dark-select";
+import { InfoTip } from "@/components/ui/info-tip";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { alternatePlatform, useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 import { useLanguage } from "@/lib/i18n";
 import {
   searchTwitchChannels,
@@ -288,7 +290,7 @@ function PlatformSelect({
       onValueChange={(next) => onPlatform(next as CounterPlatform)}
       aria-label={ariaLabel}
       className={className ?? "h-11 w-[12.5rem] shrink-0"}
-      options={platforms.filter((entry) => !entry.comingSoon).map((entry) => ({
+      options={platforms.map((entry) => ({
         value: entry.id,
         label: (
           <span className="flex items-center gap-2">
@@ -336,7 +338,7 @@ function ChannelSearchField({
   const typed = value.trim().replace(/^@/, "");
   const debounced = useDebounced(typed, 280);
   const canSearchTwitch =
-    debounced.length >= 2 && (platform === "ALL" || platform === "TWITCH");
+    debounced.length >= 1 && (platform === "ALL" || platform === "TWITCH");
 
   const twitchQuery = useQuery({
     queryKey: ["live-counter-search", debounced.toLowerCase(), platform],
@@ -345,7 +347,8 @@ function ChannelSearchField({
     retry: 0,
     queryFn: async () => {
       try {
-        return (await searchTwitch({ data: { query: debounced } })) as ChannelSearchHit[];
+        const result = await searchTwitch({ data: { query: debounced } });
+        return Array.isArray(result) ? result : [];
       } catch {
         // Guest sessions and missing Twitch credentials should not break typing.
         return [] as ChannelSearchHit[];
@@ -368,9 +371,11 @@ function ChannelSearchField({
       next.push(item);
     };
 
-    for (const item of localSuggestions) push(item);
+    const locals = Array.isArray(localSuggestions) ? localSuggestions : [];
+    for (const item of locals) push(item);
     if (platform === "ALL" || platform === "TWITCH") {
-      for (const hit of twitchQuery.data ?? []) {
+      const hits = Array.isArray(twitchQuery.data) ? twitchQuery.data : [];
+      for (const hit of hits) {
         push({
           platform: "TWITCH",
           username: hit.username,
@@ -555,6 +560,7 @@ function SearchBar({
         localSuggestions={localSuggestions}
       />
       <PlatformSelect value={platform} onPlatform={onPlatform} ariaLabel={t("counter.aria.platform")} />
+      <InfoTip text={t("tooltips.counter.search")} />
       <button
         type="submit"
         className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
@@ -781,12 +787,19 @@ function errorText(error: unknown, fallback: string): string | null {
   return error instanceof Error ? error.message : fallback;
 }
 
-function SocialCounterSection() {
+function SocialCounterSection({
+  preferred,
+  localSuggestions,
+}: {
+  preferred: string | null;
+  localSuggestions: ChannelSuggestion[];
+}) {
   const { t } = useLanguage();
   const [accounts, setAccounts] = useState<Saved[]>([]);
   const [input, setInput] = useState("");
   const [platform, setPlatform] = useState<Exclude<CounterPlatform, "ALL">>("TWITCH");
-  const inputRef = useRef<HTMLInputElement>(null);
+  useApplyDefaultPlatform(preferred, (next) => setPlatform(next));
+  const inputRef = useRef<HTMLFormElement>(null);
 
   const socialPlatforms: { id: Exclude<CounterPlatform, "ALL">; label: string; comingSoon?: boolean }[] = [
     { id: "KICK", label: t("counter.platform.kick") },
@@ -827,7 +840,6 @@ function SocialCounterSection() {
   const addAccount = () => {
     const username = input.trim().replace(/^@/, "");
     if (!username) return;
-    if (platform === "TIKTOK") return;
     const key = `${platform}:${username.toLowerCase()}`;
     if (accounts.some((item) => `${item.platform}:${item.username.toLowerCase()}` === key)) {
       setInput("");
@@ -841,33 +853,37 @@ function SocialCounterSection() {
   };
 
   const focusAdd = () => {
-    inputRef.current?.focus();
+    const field = inputRef.current?.querySelector("input");
+    if (field instanceof HTMLInputElement) field.focus();
     inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   return (
     <div className="space-y-4">
       <form
+        ref={inputRef}
         className="flex flex-wrap items-center gap-2"
         onSubmit={(event) => {
           event.preventDefault();
           addAccount();
         }}
       >
-        <input
-          ref={inputRef}
+        <ChannelSearchField
           value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder={t("counter.social.usernamePlaceholder")}
-          className={`${field} min-w-[180px] flex-1`}
-          dir="auto"
+          platform={platform}
+          onValue={setInput}
+          onPlatform={(next) => {
+            if (next !== "ALL") setPlatform(next);
+          }}
+          label={t("counter.social.usernamePlaceholder")}
+          localSuggestions={localSuggestions}
         />
         <DarkSelect
           value={platform}
           onValueChange={(next) => setPlatform(next as Exclude<CounterPlatform, "ALL">)}
           aria-label={t("counter.aria.socialPlatform")}
           className="h-11 w-[11.5rem] shrink-0"
-          options={socialPlatforms.filter((entry) => !entry.comingSoon).map((entry) => ({
+          options={socialPlatforms.map((entry) => ({
             value: entry.id,
             label: (
               <span className="flex items-center gap-2">
@@ -1046,15 +1062,33 @@ function LiveCounterPage() {
   const [input, setInput] = useState("");
   const [platform, setPlatform] = useState<CounterPlatform>("ALL");
   const [target, setTarget] = useState<Target | null>(null);
-  const main = useChannel(target);
-
-  // VS mode
-  const [inputA, setInputA] = useState("");
   const [platformA, setPlatformA] = useState<CounterPlatform>("ALL");
+  const [inputA, setInputA] = useState("");
   const [targetA, setTargetA] = useState<Target | null>(null);
   const [inputB, setInputB] = useState("");
   const [platformB, setPlatformB] = useState<CounterPlatform>("ALL");
   const [targetB, setTargetB] = useState<Target | null>(null);
+  useApplyDefaultPlatform(workspace?.profile?.default_platform, (next) => {
+    setPlatform(next);
+    setPlatformA(next);
+    setPlatformB(alternatePlatform(next));
+  });
+  const debouncedInput = useDebounced(normalizeUsername(input), 450);
+  const debouncedA = useDebounced(normalizeUsername(inputA), 450);
+  const debouncedB = useDebounced(normalizeUsername(inputB), 450);
+
+  useEffect(() => {
+    if (!debouncedInput) return;
+    setTarget({ platform, username: debouncedInput });
+  }, [debouncedInput, platform]);
+
+  useEffect(() => {
+    if (!debouncedA || !debouncedB) return;
+    setTargetA({ platform: platformA, username: debouncedA });
+    setTargetB({ platform: platformB, username: debouncedB });
+  }, [debouncedA, debouncedB, platformA, platformB]);
+  const main = useChannel(target);
+
   const sideA = useChannel(vsMode ? targetA : null);
   const sideB = useChannel(vsMode ? targetB : null);
 
@@ -1178,6 +1212,7 @@ function LiveCounterPage() {
           <button type="button" className={toggleClass(vsMode)} onClick={() => setVsMode(true)}>
             <Swords className="size-4" aria-hidden /> {t("counter.vsMode")}
           </button>
+          <InfoTip text={t("tooltips.counter.vs")} />
         </div>
 
         {!vsMode ? (
@@ -1302,6 +1337,7 @@ function LiveCounterPage() {
 
             {targetA && targetB ? (
               <>
+                <p className="text-sm font-semibold">{t("counter.compare.title")}</p>
                 <div className="grid gap-4 lg:grid-cols-2">
                   <ChannelCard
                     snapshot={sideA.data}
@@ -1320,10 +1356,10 @@ function LiveCounterPage() {
                 {gap !== null ? (
                   <div className="border-t border-white/5 p-6 text-center">
                     {gap === 0 ? (
-                      <p className="text-lg font-semibold">{t("counter.deadHeat")}</p>
+                      <p className="text-lg font-semibold">{t("counter.compare.tie")}</p>
                     ) : (
                       <>
-                        <p className="text-sm text-muted-foreground">{t("counter.liveDifference")}</p>
+                        <p className="text-sm text-muted-foreground">{t("counter.compare.difference")}</p>
                         <div className="flex justify-center">
                           <RollingCounter value={Math.abs(gap)} size="text-5xl" />
                         </div>
@@ -1333,13 +1369,13 @@ function LiveCounterPage() {
                               t("counter.channelFallback")}
                           </span>
                           {" "}
-                          {t("counter.leadsBy")}
+                          {t("counter.compare.lead")}
                           {" "}
                           <span dir="ltr" className="tabular-nums">
                             {Math.abs(gap).toLocaleString("en-US")}
                           </span>
                           {" "}
-                          {t("counter.leadsByUnit")}
+                          {t("counter.compare.leadUnit")}
                         </p>
                         {(() => {
                           const a = sideA.data?.followers ?? 0;
@@ -1384,7 +1420,10 @@ function LiveCounterPage() {
         )}
       </div>
       ) : (
-        <SocialCounterSection />
+        <SocialCounterSection
+          preferred={workspace?.profile?.default_platform ?? null}
+          localSuggestions={localSuggestions}
+        />
       )}
     </AppShell>
   );

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ingestStreamElementsEvent } from "@/lib/connections.functions";
 
-type SeEventType = "DONATION" | "SUBSCRIPTION" | "GIFT_SUB" | "BITS" | "FOLLOW" | "RAID";
+type SeEventType = "DONATION" | "SUBSCRIPTION" | "GIFT_SUB" | "BITS" | "FOLLOW" | "RAID" | "LIKE";
 
 export type StreamElementsSocketStatus = "idle" | "connecting" | "live" | "error";
 
@@ -20,9 +20,13 @@ function mapType(type: string): SeEventType | null {
     case "tip":
     case "donation":
     case "merch":
+    case "superchat":
+    case "superchatmessage":
       return "DONATION";
     case "subscriber":
     case "resub":
+    case "membership":
+    case "sponsor":
       return "SUBSCRIPTION";
     case "communityGiftPurchase":
     case "subgift":
@@ -35,9 +39,23 @@ function mapType(type: string): SeEventType | null {
     case "raid":
     case "host":
       return "RAID";
+    case "like":
+    case "likes":
+      return "LIKE";
+    case "gift":
+      return "DONATION";
     default:
       return null;
   }
+}
+
+function relayOrigin(raw: SeRaw, eventType: SeEventType): string | null {
+  const provider = (raw.provider ?? "").toString().trim();
+  if (provider) return provider;
+  const type = (raw.type ?? "").toString().toLowerCase();
+  if (type.includes("superchat") || type === "membership" || type === "sponsor") return "youtube";
+  if (eventType === "LIKE" || type === "gift") return "tiktok";
+  return null;
 }
 
 type SeRaw = {
@@ -90,8 +108,12 @@ export function useStreamElementsSocket(token: string | null) {
               str(payload["displayName"]) ?? str(payload["username"]) ?? "Anonymous",
             amount: num(payload["amount"]),
             currency: str(payload["currency"]) ?? null,
-            quantity: Math.max(num(payload["quantity"]) ?? num(payload["amount"]) ?? 1, 1),
+            quantity:
+              eventType === "SUBSCRIPTION" || eventType === "GIFT_SUB"
+                ? Math.max(num(payload["quantity"]) ?? num(payload["months"]) ?? 1, 1)
+                : Math.max(num(payload["quantity"]) ?? 1, 1),
             message: str(payload["message"]) ?? null,
+            origin: relayOrigin(raw, eventType),
           },
         });
       } catch {

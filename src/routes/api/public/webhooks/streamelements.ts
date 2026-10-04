@@ -26,6 +26,7 @@ export const Route = createFileRoute("/api/public/webhooks/streamelements")({
         const { jsonResponse, receivePlatformEvent, listConnections } = await import(
           "@/lib/webhooks/ingest.server"
         );
+        const { resolveRelaySource } = await import("@/lib/platformEvents");
         const { verifyStreamElementsJwt } = await import("@/lib/webhooks/verify.server");
 
         const rawBody = await request.text();
@@ -70,13 +71,20 @@ export const Route = createFileRoute("/api/public/webhooks/streamelements")({
         if (!matched) return new Response("Invalid token", { status: 401 });
 
         const type = (body.type ?? "").toLowerCase();
-        if (type !== "tip" && type !== "donation") {
+        if (type !== "tip" && type !== "donation" && type !== "superchat") {
           return jsonResponse({ status: "ignored", reason: "unsupported_type" });
         }
 
-        const normalized: NormalizedEvent = {
-          platform: "STREAMELEMENTS",
+        const resolved = resolveRelaySource({
+          relay: "STREAMELEMENTS",
+          origin: body.provider ?? (type === "superchat" ? "youtube" : null),
           eventType: "DONATION",
+        });
+        if (!resolved) return jsonResponse({ status: "ignored", reason: "unsupported_type" });
+
+        const normalized: NormalizedEvent = {
+          platform: resolved.platform,
+          eventType: resolved.eventType,
           providerEventId: body._id ?? body.data?.tipId ?? null,
           actorName: body.data?.displayName ?? body.data?.username ?? "Anonymous",
           actorPlatformId: body.data?.providerId ?? null,

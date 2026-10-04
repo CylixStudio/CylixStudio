@@ -141,14 +141,61 @@ function extractKickChat(body: KickPayload): KickChatFields {
 function isKickChatEvent(type: string, chat: KickChatFields): boolean {
   const normalized = type.toLowerCase().replace(/_/g, ".");
   if (normalized === "chat.message.sent" || normalized.includes("chat.message")) return true;
+  // Follows, subs, kicks, and raids can carry a message. They are not chat.
+  if (
+    normalized.startsWith("channel.") ||
+    normalized.startsWith("kicks.") ||
+    normalized === "follow" ||
+    normalized === "subscription" ||
+    normalized === "raid" ||
+    normalized.startsWith("gifted.")
+  ) {
+    return false;
+  }
   return Boolean(chat.rawText && chat.username !== "Kick viewer");
 }
 
+/** Kick sometimes wraps the event in `data` / `payload`. Chat uses the outer body. */
+function unwrapKickEvent(body: KickPayload): KickPayload {
+  const nested = [asRecord(body["data"]), asRecord(body["payload"])].filter(
+    (source): source is KickPayload => source != null,
+  );
+  for (const source of nested) {
+    if (
+      source["follower"] ||
+      source["subscriber"] ||
+      source["gifter"] ||
+      source["broadcaster"] ||
+      source["sender"] ||
+      source["gift"] ||
+      source["raider"]
+    ) {
+      return source;
+    }
+  }
+  return body;
+}
+
+/** Subscription length in months. A seconds-sized value must not become the unit count. */
+function subscriptionMonths(value: unknown): number {
+  const months = Number(value ?? 1);
+  if (!Number.isFinite(months) || months < 1 || months > 36) return 1;
+  return Math.round(months);
+}
+
+function boundedCount(value: number): number {
+  if (!Number.isFinite(value) || value < 1) return 1;
+  return Math.min(Math.round(value), 500);
+}
+
 function normalize(type: string, messageId: string, body: KickPayload): NormalizedEvent | null {
+  const kind = type.toLowerCase().replace(/_/g, ".");
+  const gift = asRecord(body["gift"]);
+  const giftMessage = pickString(gift ?? {}, "message") ?? pickString(body, "message");
   const base = {
     platform: "KICK" as const,
     providerEventId: messageId,
-    rawPayload: body,
+    rawPayload: giftMessage ? { ...body, message: giftMessage } : body,
     amount: null as number | null,
     currency: null as string | null,
   };
@@ -156,13 +203,17 @@ function normalize(type: string, messageId: string, body: KickPayload): Normaliz
     pickString(body, "follower", "username") ??
     pickString(body, "subscriber", "username") ??
     pickString(body, "gifter", "username") ??
-    pickString(body, "sender", "username");
+    pickString(body, "sender", "username") ??
+    pickString(body, "raider", "username") ??
+    pickString(body, "user", "username");
   const actorPlatformId =
     pickString(body, "follower", "user_id") ??
     pickString(body, "subscriber", "user_id") ??
-    pickString(body, "gifter", "user_id");
+    pickString(body, "gifter", "user_id") ??
+    pickString(body, "sender", "user_id") ??
+    pickString(body, "raider", "user_id");
 
-  switch (type) {
+  switch (kind) {
     case "channel.followed":
     case "follow":
       return { ...base, eventType: "FOLLOW" as EventType, actorName, actorPlatformId, quantity: 1 };
@@ -174,19 +225,41 @@ function normalize(type: string, messageId: string, body: KickPayload): Normaliz
         eventType: "SUBSCRIPTION" as EventType,
         actorName,
         actorPlatformId,
-        quantity: Math.max(Number(body["duration"] ?? 1) || 1, 1),
+        quantity: subscriptionMonths(body["duration"]),
       };
     case "channel.subscription.gifts":
-    case "gifted_subscriptions":
+    case "gifted.subscriptions":
       return {
         ...base,
         eventType: "GIFT_SUB" as EventType,
         actorName: actorName ?? "Anonymous",
         actorPlatformId,
-        quantity: Math.max(
+        quantity: boundedCount(
           Array.isArray(body["giftees"]) ? (body["giftees"] as unknown[]).length : Number(body["quantity"] ?? 1) || 1,
-          1,
         ),
+      };
+    case "kicks.gifted":
+    case "channel.kicks.gifted": {
+      const amount = Number(gift?.["amount"] ?? body["amount"] ?? 0);
+      return {
+        ...base,
+        eventType: "BITS" as EventType,
+        actorName,
+        actorPlatformId,
+        amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+        quantity: 1,
+      };
+    }
+    case "channel.raid":
+    case "livestream.raid":
+    case "raid":
+      return {
+        ...base,
+        eventType: "RAID" as EventType,
+        actorName,
+        actorPlatformId,
+        amount: null,
+        quantity: 1,
       };
     default:
       return null;
@@ -438,13 +511,17 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           return jsonResponse({ ...result, command: commandResult });
         }
 
-        const normalized = normalize(type, messageId ?? "", body);
+        const eventBody = unwrapKickEvent(body);
+        const normalized = normalize(type, messageId ?? "", eventBody);
         if (!normalized) {
           console.log("[kick-webhook] ignored unsupported event", { messageId, eventType: type || null });
           return jsonResponse({ status: "ignored", reason: "unsupported_type" });
         }
 
         const broadcasterId =
+          pickString(eventBody, "broadcaster", "user_id") ??
+          pickString(eventBody, "broadcaster", "channel_id") ??
+          pickString(eventBody, "channel_id") ??
           pickString(body, "broadcaster", "user_id") ??
           pickString(body, "broadcaster", "channel_id") ??
           pickString(body, "channel_id");

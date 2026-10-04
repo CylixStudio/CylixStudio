@@ -67,11 +67,6 @@ export async function ensureTwitchEventSub(args: {
       version: "1",
       condition: { broadcaster_user_id: broadcasterId },
     },
-    {
-      type: "channel.subscription.message",
-      version: "1",
-      condition: { broadcaster_user_id: broadcasterId },
-    },
     { type: "channel.cheer", version: "1", condition: { broadcaster_user_id: broadcasterId } },
     { type: "channel.raid", version: "1", condition: { to_broadcaster_user_id: broadcasterId } },
   ];

@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { createWidget } from "@/lib/createWidget";
+import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { WIDGET_LABEL, WIDGET_TYPES, type WidgetType } from "@/lib/widgets";
 import { DarkSelect } from "@/components/ui/dark-select";
 
@@ -106,7 +107,7 @@ function WidgetHub() {
       toast.error("Enable the widget before copying an OBS URL.");
       return;
     }
-    const url = `${window.location.origin}/overlay/${token}`;
+    const url = widgetOverlayUrl(window.location.origin, token);
     await navigator.clipboard.writeText(url);
     setCopied(token);
     toast.success("OBS URL copied");

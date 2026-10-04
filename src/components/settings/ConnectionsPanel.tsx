@@ -11,7 +11,9 @@ import {
   connectStreamlabsSocket,
   startPlatformLink,
 } from "@/lib/connections.functions";
+import { InfoTip } from "@/components/ui/info-tip";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
+import { STUDIO_PLATFORMS, parseStudioPlatform, type StudioPlatform } from "@/lib/defaultPlatform";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 
 type OAuthProviderId = "twitch" | "kick" | "tiktok";
@@ -184,6 +186,36 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
   const connections = data?.connections ?? [];
   const findConnection = (platform: string) => connections.find((c) => c.platform === platform);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["workspace", userId] });
+  const savedPlatform = parseStudioPlatform(data?.profile?.default_platform);
+
+  const saveDefaultPlatform = async (platform: StudioPlatform) => {
+    if (platform === savedPlatform) return;
+    setBusy("default-platform");
+    setError(null);
+    const { data: updated, error: writeError } = await supabase
+      .from("users")
+      .update({ default_platform: platform })
+      .eq("id", userId)
+      .select("id");
+    if (writeError) {
+      setBusy(null);
+      setError(writeError.message);
+      return;
+    }
+    if (!updated?.length) {
+      const { error: insertError } = await supabase
+        .from("users")
+        .upsert({ id: userId, default_platform: platform }, { onConflict: "id" });
+      if (insertError) {
+        setBusy(null);
+        setError(insertError.message);
+        return;
+      }
+    }
+    setBusy(null);
+    toast.success(t("settings.defaultPlatform.saved"));
+    void refresh();
+  };
 
   const startOAuth = async (provider: OAuthProviderId) => {
     const blocked = OAUTH_PLATFORMS.find((entry) => entry.provider === provider);
@@ -268,15 +300,18 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
 
   const connectedActions = (connection: { id: string; is_active: boolean }) => (
     <>
-      <button
-        type="button"
-        onClick={() => toggleActive(connection.id, !connection.is_active)}
-        className={quietBtn}
-      >
-        {connection.is_active
-          ? t("settings.connections.pause")
-          : t("settings.connections.resume")}
-      </button>
+      <span className="inline-flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => toggleActive(connection.id, !connection.is_active)}
+          className={quietBtn}
+        >
+          {connection.is_active
+            ? t("settings.connections.pause")
+            : t("settings.connections.resume")}
+        </button>
+        <InfoTip text={t("tooltips.settings.pause")} />
+      </span>
       <button type="button" onClick={() => disconnect(connection.id)} className={dangerBtn}>
         {t("settings.connections.disconnect")}
       </button>
@@ -361,6 +396,49 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
       <p className="mt-1 max-w-2xl text-[0.78rem] text-muted-foreground">
         {t("settings.connections.hint")}
       </p>
+
+      <div className="mt-6 max-w-2xl rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold">{t("settings.defaultPlatform.label")}</h3>
+          <InfoTip text={t("tooltips.settings.defaultPlatform")} />
+        </div>
+        <p className="mt-1 text-[0.75rem] leading-relaxed text-muted-foreground">
+          {t("settings.defaultPlatform.hint")}
+        </p>
+        <div
+          role="radiogroup"
+          aria-label={t("settings.defaultPlatform.aria")}
+          className="mt-3 flex flex-wrap gap-2"
+        >
+          {STUDIO_PLATFORMS.map((platform) => {
+            const active = savedPlatform === platform;
+            return (
+              <button
+                key={platform}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                disabled={busy === "default-platform"}
+                onClick={() => void saveDefaultPlatform(platform)}
+                className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[0.78rem] font-medium transition-colors disabled:opacity-50 ${
+                  active
+                    ? "border-primary/60 bg-primary/15 text-foreground"
+                    : "border-white/10 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <PlatformIcon platform={platform} size={14} />
+                {platform === "KICK"
+                  ? "Kick"
+                  : platform === "TWITCH"
+                    ? "Twitch"
+                    : platform === "YOUTUBE"
+                      ? "YouTube"
+                      : "TikTok"}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
 

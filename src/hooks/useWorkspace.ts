@@ -34,7 +34,8 @@ async function profileFromAuth(userId: string) {
       name: null as string | null,
       email: null as string | null,
       image: null as string | null,
-      timezone: null as string | null,
+      timezone: "UTC",
+      default_platform: null as string | null,
     };
   }
   const meta = user.user_metadata ?? {};
@@ -51,7 +52,8 @@ async function profileFromAuth(userId: string) {
       (typeof meta.picture === "string" && meta.picture) ||
       (typeof meta.image === "string" && meta.image) ||
       null,
-    timezone: null as string | null,
+    timezone: "UTC",
+    default_platform: null as string | null,
   };
 }
 
@@ -59,6 +61,7 @@ async function profileFromAuth(userId: string) {
 export function useWorkspace(userId: string) {
   return useQuery({
     queryKey: ["workspace", userId],
+    enabled: userId.length > 0,
     queryFn: async () => {
       if (isTestMode()) {
         return {
@@ -67,6 +70,7 @@ export function useWorkspace(userId: string) {
             email: "test@creovixstudio.local",
             image: null,
             timezone: null,
+            default_platform: null,
           },
           connections: [],
           subathons: [] as Subathon[],
@@ -74,7 +78,11 @@ export function useWorkspace(userId: string) {
       }
 
       const [profile, connections, subathons] = await Promise.all([
-        supabase.from("users").select("name, email, image, timezone").eq("id", userId).maybeSingle(),
+        supabase
+          .from("users")
+          .select("name, email, image, timezone, default_platform")
+          .eq("id", userId)
+          .maybeSingle(),
         supabase
           .from("platform_connections")
           .select(

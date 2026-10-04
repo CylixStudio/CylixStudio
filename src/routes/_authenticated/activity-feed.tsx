@@ -15,14 +15,17 @@ import {
 
 
 import { AppShell } from "@/components/layout/AppShell";
+import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { TestEventMenu, type InjectedFeedEvent } from "@/components/activity/TestEventMenu";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { isAllowedPlatformEvent, triggerPhrase } from "@/lib/platformEvents";
 import { isTestMode } from "@/lib/testMode";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 
 export const Route = createFileRoute("/_authenticated/activity-feed")({
   head: () => ({
@@ -70,30 +73,9 @@ const PLATFORM_COLOR: Record<string, string> = {
   MANUAL: "#A1A1AA",
 };
 
-const EVENT_LABEL: Record<string, TranslationKey> = {
-  FOLLOW: "activity.type.FOLLOW",
-  SUBSCRIPTION: "activity.type.SUBSCRIPTION",
-  GIFT_SUB: "activity.type.GIFT_SUB",
-  BITS: "activity.type.BITS",
-  DONATION: "activity.type.DONATION",
-  RAID: "activity.type.RAID",
-  LIKE: "activity.type.LIKE",
-};
-
-/**
- * Strict source routing — mirrors the server-side ingest allowlist so older
- * relayed rows (a Streamlabs copy of a Twitch follow) never reach the feed.
- */
-const ALLOWED_BY_PLATFORM: Record<string, string[]> = {
-  TWITCH: ["FOLLOW", "SUBSCRIPTION", "GIFT_SUB", "BITS", "RAID"],
-  KICK: ["FOLLOW", "SUBSCRIPTION", "GIFT_SUB", "RAID"],
-  TIKTOK: ["FOLLOW", "DONATION", "LIKE"],
-  YOUTUBE: ["FOLLOW", "SUBSCRIPTION", "DONATION"],
-  X: ["FOLLOW"],
-  STREAMELEMENTS: ["DONATION"],
-  STREAMLABS: ["DONATION"],
-  MANUAL: ["FOLLOW", "SUBSCRIPTION", "GIFT_SUB", "BITS", "DONATION", "RAID"],
-};
+function activityLabelKey(platform: string, eventType: string): TranslationKey {
+  return `activity.type.${triggerPhrase(platform, eventType)}` as TranslationKey;
+}
 
 
 type FilterGroup = {
@@ -257,6 +239,10 @@ function ActivityFeedPage() {
   const [live, setLive] = useState<FeedEvent[]>([]);
   const [freshIds, setFreshIds] = useState<Set<string>>(() => new Set());
   const [active, setActive] = useState<string[]>(() => FILTER_GROUPS.map((g) => g.id));
+  useApplyDefaultPlatform(workspace?.profile?.default_platform, (platform) => {
+    const id = platform.toLowerCase();
+    if (FILTER_GROUPS.some((group) => group.id === id)) setActive([id]);
+  });
   const [filterOpen, setFilterOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
@@ -408,31 +394,36 @@ function ActivityFeedPage() {
     const map = new Map<string, FeedEvent>();
     for (const item of [...live, ...(query.data ?? [])]) map.set(item.id, item);
     const sorted = [...map.values()]
-      // Strict source routing: only keep events the platform actually owns.
-      .filter((event) =>
-        (ALLOWED_BY_PLATFORM[event.platform] ?? []).includes(event.event_type),
-      )
+      .filter((event) => isAllowedPlatformEvent(event.platform, event.event_type))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // The same follow/sub can still arrive twice from one platform (socket +
-    // webhook). Same user, same action, same moment => keep one row only.
-    const NATIVE = ["TWITCH", "KICK", "TIKTOK", "YOUTUBE"];
+    // A relay (Streamlabs / StreamElements) can echo a native event. Keep the
+    // native row. Two events from the same platform always both stay.
+    const NATIVE = new Set(["TWITCH", "KICK", "TIKTOK", "YOUTUBE"]);
+    const RELAY = new Set(["STREAMLABS", "STREAMELEMENTS"]);
     const kept: FeedEvent[] = [];
     for (const event of sorted) {
-      const key = `${(event.actor_name ?? "").trim().toLowerCase()}|${event.event_type}`;
+      const actor = (event.actor_name ?? "").trim().toLowerCase();
       const time = new Date(event.created_at).getTime();
-      const twinIndex = kept.findIndex(
-        (other) =>
-          `${(other.actor_name ?? "").trim().toLowerCase()}|${other.event_type}` === key &&
-          Math.abs(new Date(other.created_at).getTime() - time) <= 10_000,
-      );
+      const twinIndex =
+        actor.length === 0
+          ? -1
+          : kept.findIndex((other) => {
+              if ((other.actor_name ?? "").trim().toLowerCase() !== actor) return false;
+              if (other.event_type !== event.event_type) return false;
+              if (other.platform === event.platform) return false;
+              if (Math.abs(new Date(other.created_at).getTime() - time) > 10_000) return false;
+              const cross =
+                (NATIVE.has(event.platform) && RELAY.has(other.platform)) ||
+                (RELAY.has(event.platform) && NATIVE.has(other.platform));
+              return cross;
+            });
       if (twinIndex === -1) {
         kept.push(event);
         continue;
       }
       const twin = kept[twinIndex]!;
-      // Prefer the platform-native record over the third-party relay.
-      if (NATIVE.includes(event.platform) && !NATIVE.includes(twin.platform)) {
+      if (NATIVE.has(event.platform) && RELAY.has(twin.platform)) {
         kept[twinIndex] = event;
       }
     }
@@ -470,7 +461,7 @@ function ActivityFeedPage() {
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">
 
-        <div ref={filterRef} className="relative">
+        <div ref={filterRef} className="relative flex items-center gap-2">
           <button
             type="button"
             onClick={() => setFilterOpen((open) => !open)}
@@ -484,6 +475,7 @@ function ActivityFeedPage() {
               aria-hidden
             />
           </button>
+          <InfoTip text={t("tooltips.activity.filter")} />
 
           {filterOpen ? (
             <div
@@ -580,15 +572,14 @@ function ActivityFeedPage() {
           <ul className="divide-y divide-white/5">
             {visible.map((event) => {
               const color = PLATFORM_COLOR[event.platform] ?? "#A1A1AA";
-              const typeKey = EVENT_LABEL[event.event_type];
-              const label = typeKey ? t(typeKey) : event.event_type.replace("_", " ");
+              const label = t(activityLabelKey(event.platform, event.event_type));
               const amount =
                 event.event_type === "DONATION" && event.amount
                   ? `${event.currency === "USD" || !event.currency ? "$" : ""}${event.amount}${
                       event.currency && event.currency !== "USD" ? ` ${event.currency}` : ""
                     }`
                   : event.event_type === "BITS" && event.amount
-                    ? `${event.amount} bits`
+                    ? `${event.amount} ${event.platform === "KICK" ? t("activity.type.KICKS") : t("activity.type.BITS")}`
                     : event.quantity > 1
                       ? `×${event.quantity}`
                       : null;

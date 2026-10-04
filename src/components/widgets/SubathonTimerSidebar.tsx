@@ -2,9 +2,11 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { DarkSelect } from "@/components/ui/dark-select";
+import { InfoTip } from "@/components/ui/info-tip";
 import { TestSimulatePanel } from "@/components/widgets/TestSimulatePanel";
 import { SubathonElementControlPanel } from "@/components/widgets/SubathonElementControlPanel";
 import { WidgetRulesPanel } from "@/components/widgets/WidgetRulesPanel";
+import { useLanguage } from "@/lib/i18n";
 import { OVERLAY_LAYOUTS, OVERLAY_TIME_FORMATS, parseOverlayTheme } from "@/lib/overlayTheme";
 import type { TimerFrame } from "@/lib/timer";
 
@@ -45,6 +47,7 @@ export function SubathonTimerSidebar({
   lang: "ar" | "en";
 }) {
   const [tab, setTab] = useState<TabId>("general");
+  const { t } = useLanguage();
   const theme = parseOverlayTheme(config);
 
   const tabs: { id: TabId; label: string }[] = [
@@ -116,7 +119,10 @@ export function SubathonTimerSidebar({
           </div>
 
           <label className="block">
-            <span className={labelClass}>{"Layout Style"}</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              {"Layout Style"}
+              <InfoTip text={t("tooltips.subathon.layout")} />
+            </span>
             <DarkSelect
               className="mt-2 text-foreground"
               contentClassName="bg-popover text-popover-foreground"
@@ -130,7 +136,10 @@ export function SubathonTimerSidebar({
           </label>
 
           <label className="block">
-            <span className={labelClass}>{"Time format"}</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              {"Time format"}
+              <InfoTip text={t("tooltips.subathon.timeFormat")} />
+            </span>
             <DarkSelect
               className="mt-2 text-foreground"
               contentClassName="bg-popover text-popover-foreground"
@@ -168,8 +177,9 @@ export function SubathonTimerSidebar({
           </div>
 
           <label className="block">
-            <span className={labelClass}>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
               {"Background opacity"} ({theme.backgroundOpacity}%)
+              <InfoTip text={t("tooltips.subathon.opacity")} />
             </span>
             <input
               type="range"
@@ -256,7 +266,7 @@ export function SubathonTimerSidebar({
               {"Copy OBS URL"}
             </button>
             <code className="mt-3 block break-all text-xs text-muted-foreground">
-              {`/overlay/subathon-timer?token=${publicToken}&layout=${theme.layout}`}
+              {`/overlay/${publicToken}`}
             </code>
           </div>
         </div>

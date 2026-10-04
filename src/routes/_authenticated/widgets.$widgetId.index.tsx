@@ -21,7 +21,9 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { parseOverlayTheme } from "@/lib/overlayTheme";
 import { useLanguage } from "@/lib/i18n";
 import { ensureWidgetSubathon } from "@/lib/createWidget";
+import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { DarkSelect } from "@/components/ui/dark-select";
+import { InfoTip } from "@/components/ui/info-tip";
 import {
   CHAT_LAYOUTS,
   WIDGET_LABEL,
@@ -279,11 +281,7 @@ function WidgetBuilder() {
       toast.error("TikTok overlays are Coming Soon until OAuth is ready.");
       return;
     }
-    const timerLayout = parseOverlayTheme(config).layout;
-    const url =
-      widget.type === "SUBATHON_TIMER"
-        ? `${window.location.origin}/overlay/subathon-timer?token=${widget.public_token}&layout=${timerLayout}`
-        : `${window.location.origin}/overlay/${widget.public_token}`;
+    const url = widgetOverlayUrl(window.location.origin, widget.public_token);
     await navigator.clipboard.writeText(url);
     setCopied(true);
     toast.success("OBS URL copied");
@@ -390,8 +388,9 @@ function WidgetBuilder() {
             {widget.type !== "CHAT_BOX" ? (
               <div className="space-y-4 rounded-xl border border-border bg-background p-4">
                 <label className="block">
-                  <span className={labelClass}>
+                  <span className={`${labelClass} inline-flex items-center gap-1.5`}>
                     {"Font size"} ({style.fontSize}px)
+                    <InfoTip text={t("tooltips.widget.fontSize")} />
                   </span>
                   <input
                     type="range"
@@ -446,7 +445,10 @@ function WidgetBuilder() {
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   <label>
-                    <span className={labelClass}>Unit</span>
+                    <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+                      Unit
+                      <InfoTip text={t("tooltips.widget.goalUnit")} />
+                    </span>
                     <input
                       className={`${fieldClass} mt-2`}
                       value={goalDraft.unit}
@@ -456,7 +458,10 @@ function WidgetBuilder() {
                     />
                   </label>
                   <label>
-                    <span className={labelClass}>Target</span>
+                    <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+                      Target
+                      <InfoTip text={t("tooltips.widget.goalTarget")} />
+                    </span>
                     <input
                       type="number"
                       className={`${fieldClass} mt-2`}
@@ -467,7 +472,10 @@ function WidgetBuilder() {
                     />
                   </label>
                   <label>
-                    <span className={labelClass}>Current</span>
+                    <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+                      Current
+                      <InfoTip text={t("tooltips.widget.goalCurrent")} />
+                    </span>
                     <input
                       type="number"
                       className={`${fieldClass} mt-2`}
@@ -617,8 +625,9 @@ function WidgetBuilder() {
                 </label>
 
                 <label className="block">
-                  <span className={labelClass}>
+                  <span className={`${labelClass} inline-flex items-center gap-1.5`}>
                     Messages shown ({parseChatConfig(config).maxMessages})
+                    <InfoTip text={t("tooltips.widget.chatMax")} />
                   </span>
                   <input
                     type="range"
@@ -631,9 +640,10 @@ function WidgetBuilder() {
                 </label>
 
                 <label className="block">
-                  <span className={labelClass}>
+                  <span className={`${labelClass} inline-flex items-center gap-1.5`}>
                     {"Message spacing"} (
                     {parseChatConfig(config).messageGap}px)
+                    <InfoTip text={t("tooltips.widget.chatGap")} />
                   </span>
                   <input
                     type="range"
@@ -857,8 +867,9 @@ function WidgetBuilder() {
                   />
                 </label>
                 <label className="block">
-                  <span className={labelClass}>
+                  <span className={`${labelClass} inline-flex items-center gap-1.5`}>
                     Emotes per event ({parseEmoteRainConfig(config).burst})
+                    <InfoTip text={t("tooltips.widget.emoteBurst")} />
                   </span>
                   <input
                     type="range"
@@ -883,8 +894,9 @@ function WidgetBuilder() {
                   />
                 </label>
                 <label className="block">
-                  <span className={labelClass}>
+                  <span className={`${labelClass} inline-flex items-center gap-1.5`}>
                     Fall duration ({Math.round(parseEmoteRainConfig(config).fallMs / 1000)}s)
+                    <InfoTip text={t("tooltips.widget.fallDuration")} />
                   </span>
                   <input
                     type="range"

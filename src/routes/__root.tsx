@@ -75,12 +75,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@100;200;300;400;500;600;700&family=Press+Start+2P&display=swap",
       },
-      // Official Cylix mark for browser / editor tabs.
-      { rel: "icon", href: "/favicon.ico", sizes: "any" },
-      { rel: "icon", href: "/favicon.png", type: "image/png", sizes: "32x32" },
-      { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
-      { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
-      { rel: "shortcut icon", href: "/favicon.ico" },
+      // Official Cylix mark (src/assets/Logo/cylix-studio.png). ?v= busts the tab-icon cache.
+      { rel: "icon", href: "/favicon.ico?v=2", sizes: "16x16 32x32" },
+      { rel: "icon", href: "/favicon.png?v=2", type: "image/png", sizes: "32x32" },
+      { rel: "icon", href: "/favicon.svg?v=2", type: "image/svg+xml" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png?v=2", sizes: "180x180" },
+      { rel: "shortcut icon", href: "/favicon.ico?v=2" },
     ],
   }),
   shellComponent: RootShell,

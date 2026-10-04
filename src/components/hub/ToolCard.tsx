@@ -1,10 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Check, Copy, Lock, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 import { PLATFORM_META, sortHubPlatforms, type PlatformId } from "@/components/hub/platforms";
 import { HubPlatformDot } from "@/components/hub/HubPlatformDot";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLanguage } from "@/lib/i18n";
+import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 
 export type ToolCardProps = {
   name: string;
@@ -56,13 +59,20 @@ export function ToolCard({
   const previewLocked = locked || comingSoon;
   const overlayLabel = comingSoon ? t("home.comingSoon") : lockLabel;
 
+  const copyLabel = t("home.copyObs");
+
   const copy = async () => {
     if (previewLocked || disabled || status === "Paused") return;
     const origin = typeof window === "undefined" ? "" : window.location.origin;
-    const url = overlayUrl ?? (publicToken ? `${origin}/overlay/${publicToken}` : null);
+    const url = overlayUrl ?? (publicToken ? widgetOverlayUrl(origin, publicToken) : null);
     if (!url) return;
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      return;
+    }
     setCopied(true);
+    toast.success(t("common.copied"));
     setTimeout(() => setCopied(false), 1600);
   };
 
@@ -72,6 +82,18 @@ export function ToolCard({
         removing ? "pointer-events-none scale-95 opacity-0" : "scale-100 opacity-100"
       } ${comingSoon ? "pointer-events-none opacity-60" : ""}`}
     >
+      {onDelete && !locked && !comingSoon ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`${resolvedDeleteLabel}: ${name}`}
+          title={resolvedDeleteLabel}
+          className="absolute top-3 start-3 z-20 rounded-xl border border-[oklch(1_0_0/0.1)] bg-black/70 p-1.5 text-muted-foreground shadow-sm transition-opacity hover:text-red-400"
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+        </button>
+      ) : null}
+
       <div className="relative h-[132px] overflow-hidden rounded-xl border border-[oklch(1_0_0/0.06)] bg-[oklch(1_0_0/0.02)]">
         <div className={`h-full overflow-hidden ${previewLocked ? "blur-[3px] saturate-50" : ""}`}>
           {preview}
@@ -142,29 +164,23 @@ export function ToolCard({
 
         <div className="flex items-center gap-1.5">
           {(publicToken || overlayUrl) && !locked && !comingSoon && !disabled && status !== "Paused" ? (
-            <button
-              type="button"
-              onClick={copy}
-              aria-label={`Copy OBS browser source URL for ${name}`}
-              className="rounded-xl border border-[oklch(1_0_0/0.08)] p-1.5 text-muted-foreground transition-opacity hover:opacity-80"
-            >
-              {copied ? (
-                <Check className="size-3.5 text-primary" aria-hidden />
-              ) : (
-                <Copy className="size-3.5" aria-hidden />
-              )}
-            </button>
-          ) : null}
-          {onDelete && !locked && !comingSoon ? (
-            <button
-              type="button"
-              onClick={onDelete}
-              aria-label={`${resolvedDeleteLabel}: ${name}`}
-              title={resolvedDeleteLabel}
-              className="rounded-xl bg-[oklch(1_0_0/0.05)] p-1.5 text-muted-foreground transition-opacity hover:opacity-80 hover:text-red-400"
-            >
-              <Trash2 className="size-3.5" aria-hidden />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => void copy()}
+                  aria-label={copyLabel}
+                  className="rounded-xl border border-[oklch(1_0_0/0.08)] p-1.5 text-muted-foreground transition-opacity hover:opacity-80"
+                >
+                  {copied ? (
+                    <Check className="size-3.5 text-primary" aria-hidden />
+                  ) : (
+                    <Copy className="size-3.5" aria-hidden />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{copyLabel}</TooltipContent>
+            </Tooltip>
           ) : null}
 
           <button

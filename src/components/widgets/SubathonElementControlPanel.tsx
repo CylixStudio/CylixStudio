@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { ExternalLink, Pause, Play, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { adjustTimer, pauseTimer, resetTimer, setTimer, startTimer } from "@/lib/timer.functions";
+import { useLanguage } from "@/lib/i18n";
 import { formatDuration, type TimerFrame } from "@/lib/timer";
 
 const ADJUSTMENTS = [
@@ -52,6 +54,7 @@ export function SubathonElementControlPanel({
   const reset = useServerFn(resetTimer);
   const adjust = useServerFn(adjustTimer);
   const setTime = useServerFn(setTimer);
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,7 +211,10 @@ export function SubathonElementControlPanel({
         </Button>
 
         <div>
-          <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{"Change Duration"}</p>
+          <p className="mb-2 inline-flex items-center gap-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            {"Change Duration"}
+            <InfoTip text={t("tooltips.subathon.changeDuration")} />
+          </p>
           <div className="grid grid-cols-3 gap-2">
             {ADJUSTMENTS.map((entry) => (
               <Button key={entry.seconds} type="button" variant="outline" disabled={busy || !subathonId} onClick={() => void run(() => adjust({ data: { ...payload, seconds: entry.seconds } }))}>

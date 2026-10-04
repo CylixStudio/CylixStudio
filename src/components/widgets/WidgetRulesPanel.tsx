@@ -4,7 +4,12 @@ import { Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { DarkSelect } from "@/components/ui/dark-select";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ensureWidgetSubathon } from "@/lib/createWidget";
+import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
+import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { eventsForPlatform, triggerPhrase, type StreamEventType } from "@/lib/platformEvents";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { supabase } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
@@ -16,20 +21,22 @@ type Rule = Database["public"]["Tables"]["rules"]["Row"];
 const PLATFORMS: { value: Platform; label: string }[] = [
   { value: "TWITCH", label: "🟣 Twitch" },
   { value: "KICK", label: "🟢 Kick" },
+  { value: "YOUTUBE", label: "🔴 YouTube" },
   { value: "TIKTOK", label: "🎵 TikTok" },
   { value: "STREAMLABS", label: "🧪 Streamlabs" },
   { value: "STREAMELEMENTS", label: "🔹 StreamElements" },
   { value: "MANUAL", label: "⚙️ Manual" },
 ];
 
-const EVENTS: { value: EventType; label: string }[] = [
-  { value: "FOLLOW", label: "Follow" },
-  { value: "SUBSCRIPTION", label: "Subscribe" },
-  { value: "GIFT_SUB", label: "Gift sub" },
-  { value: "BITS", label: "Bits / Coins" },
-  { value: "DONATION", label: "Tip / Donation" },
-  { value: "RAID", label: "Raid" },
-];
+function triggerKey(platform: string, eventType: string): TranslationKey {
+  return `rules.event.${triggerPhrase(platform, eventType)}` as TranslationKey;
+}
+
+function eventForPlatform(platform: Platform, current: EventType): EventType {
+  const allowed = eventsForPlatform(platform);
+  if (allowed.includes(current as StreamEventType)) return current;
+  return (allowed[0] ?? "FOLLOW") as EventType;
+}
 
 const PLATFORM_STYLE: Record<Platform, string> = {
   TWITCH: "border-violet-500/40 bg-violet-500/10 text-violet-300",
@@ -51,7 +58,7 @@ const PRESETS: {
 }[] = [
   { label: "🟣 Twitch Follow +60s", platform: "TWITCH", event_type: "FOLLOW", seconds: 60, min_amount: null },
   { label: "🟢 Kick Sub +300s", platform: "KICK", event_type: "SUBSCRIPTION", seconds: 300, min_amount: null },
-  { label: "🎵 TikTok Gift +5s", platform: "TIKTOK", event_type: "GIFT_SUB", seconds: 5, min_amount: 1 },
+  { label: "🎵 TikTok Gift +5s", platform: "TIKTOK", event_type: "DONATION", seconds: 5, min_amount: 1 },
   { label: "🧪 Streamlabs Tip $1 +60s", platform: "STREAMLABS", event_type: "DONATION", seconds: 60, min_amount: 1 },
   { label: "🟣 Twitch Raid +30s", platform: "TWITCH", event_type: "RAID", seconds: 30, min_amount: null },
 ];
@@ -80,6 +87,13 @@ export function WidgetRulesPanel({
   compact?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
+  const sessionUser = useQuery({
+    queryKey: ["auth-user-id"],
+    staleTime: 60_000,
+    queryFn: async () => (await supabase.auth.getUser()).data.user?.id ?? "",
+  });
+  const workspace = useWorkspace(sessionUser.data ?? "");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState({
@@ -93,6 +107,14 @@ export function WidgetRulesPanel({
   });
   const [linkedSubathonId, setLinkedSubathonId] = useState<string | null>(subathonId);
   const [linking, setLinking] = useState(false);
+  useApplyDefaultPlatform(workspace.data?.profile?.default_platform, (platform) => {
+    if (!PLATFORMS.some((entry) => entry.value === platform)) return;
+    setDraft((prev) => ({
+      ...prev,
+      platform,
+      event_type: eventForPlatform(platform, prev.event_type),
+    }));
+  });
 
   useEffect(() => {
     setLinkedSubathonId(subathonId);
@@ -308,11 +330,12 @@ export function WidgetRulesPanel({
               value={draft.platform}
               onValueChange={(next) => {
                 const platform = next as Platform;
+                const eventType = eventForPlatform(platform, draft.event_type);
                 const match = rulesQuery.data?.find(
-                  (rule) => rule.platform === platform && rule.event_type === draft.event_type,
+                  (rule) => rule.platform === platform && rule.event_type === eventType,
                 );
                 if (match) loadIntoForm(match);
-                else setDraft((prev) => ({ ...prev, platform }));
+                else setDraft((prev) => ({ ...prev, platform, event_type: eventType }));
               }}
               options={PLATFORMS}
             />
@@ -330,11 +353,17 @@ export function WidgetRulesPanel({
                 if (match) loadIntoForm(match);
                 else setDraft((prev) => ({ ...prev, event_type: eventType }));
               }}
-              options={EVENTS}
+              options={eventsForPlatform(draft.platform).map((eventType) => ({
+                value: eventType,
+                label: t(triggerKey(draft.platform, eventType)),
+              }))}
             />
           </label>
           <label>
-            <span className={labelClass}>Time added</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              Time added
+              <InfoTip text={t("tooltips.rules.timeAdded")} />
+            </span>
             <div className="relative mt-2">
               <input
                 type="number"
@@ -351,7 +380,10 @@ export function WidgetRulesPanel({
             </div>
           </label>
           <label>
-            <span className={labelClass}>Goal +</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              Goal +
+              <InfoTip text={t("tooltips.rules.goalIncrement")} />
+            </span>
             <input
               type="number"
               min={0}
@@ -364,7 +396,10 @@ export function WidgetRulesPanel({
             />
           </label>
           <label>
-            <span className={labelClass}>Min amount</span>
+            <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+              Min amount
+              <InfoTip text={t("tooltips.rules.minAmount")} />
+            </span>
             <input
               type="number"
               min={0}
@@ -407,7 +442,7 @@ export function WidgetRulesPanel({
                   {PLATFORMS.find((p) => p.value === rule.platform)?.label ?? rule.platform}
                 </span>
                 <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {rule.event_type.replace("_", " ")}
+                  {t(triggerKey(rule.platform, rule.event_type))}
                 </span>
                 <span className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-primary">
                   {formatSeconds(rule.seconds_per_unit)}

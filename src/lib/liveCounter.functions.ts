@@ -554,7 +554,7 @@ export const searchTwitchChannels = createServerFn({ method: "POST" })
   .inputValidator((input: { query: string }) => input)
   .handler(async ({ data }): Promise<ChannelSearchHit[]> => {
     const query = data.query.trim().replace(/^@/, "");
-    if (query.length < 2) return [];
+    if (!query) return [];
 
     const clientId = process.env["TWITCH_CLIENT_ID"];
     const token = await twitchAppToken();

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ingestStreamlabsSocketEvent } from "@/lib/connections.functions";
 
-type SlEventType = "DONATION" | "SUBSCRIPTION" | "GIFT_SUB" | "BITS" | "FOLLOW" | "RAID";
+type SlEventType = "DONATION" | "SUBSCRIPTION" | "GIFT_SUB" | "BITS" | "FOLLOW" | "RAID" | "LIKE";
 
 type SlRaw = {
   type?: string;
@@ -27,6 +27,7 @@ function mapType(type: string): SlEventType | null {
     case "donation":
     case "streamlabscharitydonation":
     case "merch":
+    case "superchat":
       return "DONATION";
     case "subscription":
     case "resub":
@@ -44,9 +45,21 @@ function mapType(type: string): SlEventType | null {
     case "raid":
     case "host":
       return "RAID";
+    case "like":
+    case "likes":
+      return "LIKE";
     default:
       return null;
   }
+}
+
+function relayOrigin(raw: SlRaw, eventType: SlEventType): string | null {
+  const tagged = (raw.for ?? "").toString().trim();
+  if (tagged) return tagged;
+  const type = (raw.type ?? "").toString().toLowerCase();
+  if (type === "superchat" || type === "membership") return "youtube";
+  if (eventType === "LIKE") return "tiktok";
+  return null;
 }
 
 /**
@@ -102,11 +115,12 @@ export function useStreamlabsSocket(token: string | null) {
                 str(msg["from"]) ?? str(msg["name"]) ?? str(msg["display_name"]) ?? "Anonymous",
               amount: amount ?? bits,
               currency: str(msg["currency"]) ?? null,
-              quantity: Math.max(
-                num(msg["months"]) ?? num(msg["amount"]) ?? num(msg["viewers"]) ?? 1,
-                1,
-              ),
+              quantity:
+                eventType === "SUBSCRIPTION" || eventType === "GIFT_SUB"
+                  ? Math.max(num(msg["months"]) ?? 1, 1)
+                  : 1,
               message: str(msg["message"]) ?? str(msg["comment"]) ?? null,
+              origin: relayOrigin(raw, eventType),
             },
           });
         } catch {
