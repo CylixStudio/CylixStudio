@@ -225,7 +225,10 @@ function FeatureList({ items }: { items: Bullet[] }) {
             </TooltipTrigger>
             <TooltipContent
               side="top"
-              className="max-w-[17.5rem] border border-zinc-700 bg-zinc-950 p-3 text-start text-[0.72rem] leading-relaxed text-zinc-100 shadow-xl"
+              align="end"
+              sideOffset={10}
+              collisionPadding={16}
+              className="w-[min(18rem,calc(100vw-1.5rem))] border-zinc-600 bg-zinc-950 p-3.5 text-start text-[0.8125rem] leading-relaxed text-zinc-50 shadow-[0_20px_50px_-16px_rgba(0,0,0,0.95)]"
             >
               <p>{t(item.tipKey)}</p>
               <FeaturePreviewThumb id={item.preview} />
