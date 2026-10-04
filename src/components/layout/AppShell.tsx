@@ -184,23 +184,18 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
               ) : (
                 <span className="flex min-w-0 items-center gap-2">
                   <BrandLogo showWordmark size="sm" />
-                  <span dir="ltr" className="flex shrink-0 items-center gap-1">
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-md border border-primary/35 bg-primary/10",
-                        "px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase leading-none tracking-[0.14em]",
-                        "text-primary",
-                      )}
-                    >
+                  <span
+                    dir="ltr"
+                    className={cn(
+                      "inline-flex shrink-0 items-center rounded-md border border-primary/35 bg-primary/10",
+                      "text-primary",
+                    )}
+                  >
+                    <span className="px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase leading-none tracking-[0.14em]">
                       Beta
                     </span>
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-md border border-primary/35 bg-primary/10",
-                        "px-1.5 py-0.5 text-[0.58rem] font-semibold normal-case leading-none tracking-[0.14em]",
-                        "text-primary",
-                      )}
-                    >
+                    <span className="h-2.5 w-px shrink-0 bg-primary/40" aria-hidden />
+                    <span className="px-1.5 py-0.5 text-[0.58rem] font-semibold normal-case leading-none tracking-[0.14em]">
                       v0.2
                     </span>
                   </span>

@@ -201,21 +201,6 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
     </div>
   );
 
-  const copyFooter = (
-    <footer className="flex justify-center border-t border-white/10 pt-8">
-      <Button
-        type="button"
-        variant="outline"
-        className="min-h-11"
-        disabled={!publicUrl}
-        onClick={() => void copyPublicUrl()}
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        {copied ? t("linkInBio.copied") : t("linkInBio.copyLink")}
-      </Button>
-    </footer>
-  );
-
   if (!editing) {
     return (
       <div className="space-y-6">
@@ -232,7 +217,6 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
             <LinkInBioPage data={preview} preview />
           </div>
         </button>
-        {copyFooter}
       </div>
     );
   }
@@ -502,8 +486,6 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
           <LinkInBioPage data={preview} preview />
         </div>
       </div>
-
-      {copyFooter}
     </div>
   );
 }
