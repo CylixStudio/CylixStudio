@@ -47,6 +47,7 @@ export type FulfillProPurchaseResult =
       sms: { delivered: boolean; error?: string };
       idempotent: boolean;
       activation: "direct" | "pending_manual_redeem";
+      emailedTo: string | null;
       expiresAt?: string | null;
     }
   | { ok: false; error: string };
@@ -151,6 +152,102 @@ async function activateProDirectly(
   }
 
   return { ok: true, expiresAt, isLifetime: lifetime };
+}
+
+function paymentRef(provider: string, providerPaymentId: string): string {
+  return `direct:${provider}:${providerPaymentId}`.slice(0, 64);
+}
+
+function metadataRecord(value: Json | null | undefined): Record<string, Json> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return { ...(value as Record<string, Json>) };
+  }
+  return {};
+}
+
+/** Legacy rows set activated_at only after a successful grant. In-flight claims set the flag false. */
+function entitlementAlreadyApplied(
+  metadata: Record<string, Json>,
+  activatedAt: string | null,
+): boolean {
+  if (metadata["entitlement_applied"] === true) return true;
+  if (metadata["entitlement_applied"] === false) return false;
+  return Boolean(activatedAt);
+}
+
+async function readSubscription(admin: AdminClient, userId: string) {
+  const { data, error } = await admin
+    .from("user_subscriptions")
+    .select("subscription_status, expires_at, active_code, is_lifetime")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.error("[pro-purchase] subscription lookup failed", error);
+    return { error: "subscription_lookup_failed" as const, row: null };
+  }
+  return { error: null, row: data };
+}
+
+function subscriptionIsLive(row: {
+  subscription_status: string;
+  expires_at: string | null;
+  is_lifetime: boolean;
+} | null): boolean {
+  if (!row || row.subscription_status !== "active") return false;
+  if (row.is_lifetime) return true;
+  return Boolean(row.expires_at && Date.parse(row.expires_at) > Date.now());
+}
+
+async function claimEntitlement(
+  admin: AdminClient,
+  purchaseId: string,
+  metadata: Record<string, Json>,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const next: Record<string, Json> = {
+    ...metadata,
+    entitlement_applied: false,
+    entitlement_claimed_at: now,
+  };
+  const { data, error } = await admin
+    .from("pro_purchases")
+    .update({ activated_at: now, metadata: next as Json, updated_at: now })
+    .eq("id", purchaseId)
+    .is("activated_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("[pro-purchase] claim entitlement failed", { message: error.message });
+    return false;
+  }
+  return Boolean(data);
+}
+
+async function markEntitlementApplied(
+  admin: AdminClient,
+  purchaseId: string,
+  metadata: Record<string, Json>,
+): Promise<void> {
+  const next: Record<string, Json> = { ...metadata, entitlement_applied: true };
+  const { error } = await admin
+    .from("pro_purchases")
+    .update({ metadata: next as Json, updated_at: new Date().toISOString() })
+    .eq("id", purchaseId);
+  if (error) console.error("[pro-purchase] mark entitlement failed", { message: error.message });
+}
+
+async function releaseEntitlementClaim(
+  admin: AdminClient,
+  purchaseId: string,
+  metadata: Record<string, Json>,
+): Promise<void> {
+  const next = { ...metadata };
+  delete next["entitlement_applied"];
+  delete next["entitlement_claimed_at"];
+  await admin
+    .from("pro_purchases")
+    .update({ activated_at: null, metadata: next as Json, updated_at: new Date().toISOString() })
+    .eq("id", purchaseId);
 }
 
 async function pause(ms: number): Promise<void> {
@@ -322,6 +419,160 @@ async function resolveBuyerUserId(
   return profile?.id ?? null;
 }
 
+async function grantDirectEntitlement(
+  admin: AdminClient,
+  args: {
+    purchaseId: string;
+    userId: string;
+    activatedAt: string | null;
+    metadata: Json | null;
+    codeDeliveredAt: string | null;
+    durationDays: number;
+    provider: string;
+    providerPaymentId: string;
+    email: string;
+    interval: FulfillProPurchaseInput["interval"];
+    siteUrl: string;
+    locale: "ar" | "en";
+    idempotent: boolean;
+  },
+): Promise<FulfillProPurchaseResult> {
+  const meta = metadataRecord(args.metadata);
+  const ref = paymentRef(args.provider, args.providerPaymentId);
+  let applied = entitlementAlreadyApplied(meta, args.activatedAt);
+  let expiresAt: string | null = null;
+
+  const finishEmail = async (expires: string | null, idempotent: boolean): Promise<FulfillProPurchaseResult> => {
+    let emailStatus: { delivered: boolean; error?: string } = {
+      delivered: Boolean(args.codeDeliveredAt),
+    };
+    if (!args.codeDeliveredAt) {
+      emailStatus = await deliverDirectConfirmation({
+        toEmail: args.email,
+        interval: args.interval,
+        durationDays: args.durationDays,
+        siteUrl: args.siteUrl,
+        locale: args.locale,
+        purchaseId: args.purchaseId,
+        expiresAt: expires,
+      });
+      if (emailStatus.delivered) {
+        await admin
+          .from("pro_purchases")
+          .update({ code_delivered_at: new Date().toISOString() })
+          .eq("id", args.purchaseId);
+      }
+    }
+    return {
+      ok: true,
+      purchaseId: args.purchaseId,
+      purchaseType: "direct",
+      code: null,
+      durationDays: args.durationDays,
+      email: emailStatus,
+      sms: idempotent
+        ? { delivered: false, error: "skipped_idempotent" }
+        : { delivered: false },
+      idempotent,
+      activation: "direct",
+      emailedTo: args.email,
+      expiresAt: expires,
+    };
+  };
+
+  if (!applied) {
+    const current = await readSubscription(admin, args.userId);
+    if (current.error) return { ok: false, error: current.error };
+    if (current.row?.active_code === ref) {
+      await markEntitlementApplied(admin, args.purchaseId, meta);
+      applied = true;
+      expiresAt = current.row.expires_at;
+    }
+  }
+
+  if (!applied && args.activatedAt) {
+    const claimedAt = Date.parse(String(meta["entitlement_claimed_at"] ?? args.activatedAt));
+    const age = Number.isFinite(claimedAt) ? Date.now() - claimedAt : 0;
+    if (age < 15_000) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await pause(400);
+        const again = await readSubscription(admin, args.userId);
+        if (again.row?.active_code === ref) {
+          await markEntitlementApplied(admin, args.purchaseId, meta);
+          return finishEmail(again.row.expires_at, true);
+        }
+      }
+      return { ok: false, error: "activation_in_progress" };
+    }
+  }
+
+  if (!applied) {
+    let claimed = false;
+    if (!args.activatedAt) {
+      claimed = await claimEntitlement(admin, args.purchaseId, meta);
+    } else {
+      const now = new Date().toISOString();
+      const next: Record<string, Json> = {
+        ...meta,
+        entitlement_applied: false,
+        entitlement_claimed_at: now,
+      };
+      const { data, error } = await admin
+        .from("pro_purchases")
+        .update({ activated_at: now, metadata: next as Json, updated_at: now })
+        .eq("id", args.purchaseId)
+        .eq("activated_at", args.activatedAt)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        console.error("[pro-purchase] reclaim entitlement failed", { message: error.message });
+      }
+      claimed = Boolean(data);
+    }
+    if (!claimed) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await pause(400);
+        const again = await readSubscription(admin, args.userId);
+        if (again.row?.active_code === ref) {
+          await markEntitlementApplied(admin, args.purchaseId, meta);
+          return finishEmail(again.row.expires_at, true);
+        }
+      }
+      return { ok: false, error: "activation_in_progress" };
+    }
+
+    const activated = await activateProDirectly(admin, {
+      userId: args.userId,
+      durationDays: args.durationDays,
+      paymentRef: `${args.provider}:${args.providerPaymentId}`,
+    });
+    if (!activated.ok) {
+      await releaseEntitlementClaim(admin, args.purchaseId, meta);
+      return activated;
+    }
+    await markEntitlementApplied(admin, args.purchaseId, {
+      ...meta,
+      entitlement_applied: false,
+      entitlement_claimed_at: new Date().toISOString(),
+    });
+    expiresAt = activated.expiresAt;
+    console.info("[pro-purchase] fulfilled (direct activation)", {
+      purchaseId: args.purchaseId,
+      userId: args.userId,
+      durationDays: args.durationDays,
+      idempotent: args.idempotent,
+    });
+    return finishEmail(expiresAt, args.idempotent);
+  }
+
+  if (!expiresAt) {
+    const current = await readSubscription(admin, args.userId);
+    if (current.error) return { ok: false, error: current.error };
+    expiresAt = current.row?.expires_at ?? null;
+  }
+  return finishEmail(expiresAt, true);
+}
+
 /**
  * After a successful Pro payment:
  * - emailActivationCode → unique code emailed to the buyer; Pro stays off until redeem
@@ -350,7 +601,7 @@ export async function fulfillProPurchase(
   const { data: existing, error: existingError } = await admin
     .from("pro_purchases")
     .select(
-      "id, activation_code_id, code_delivered_at, purchase_type, activated_at, gift_recipient_email, gift_message, user_id",
+      "id, activation_code_id, code_delivered_at, purchase_type, activated_at, gift_recipient_email, gift_message, user_id, metadata",
     )
     .eq("provider", provider)
     .eq("provider_payment_id", providerPaymentId)
@@ -408,42 +659,29 @@ export async function fulfillProPurchase(
           sms: { delivered: false, error: "skipped_idempotent" },
           idempotent: true,
           activation: "pending_manual_redeem",
+          emailedTo: email,
         };
       }
     }
 
     if (existingType === "direct") {
-      let emailStatus: { delivered: boolean; error?: string } = {
-        delivered: Boolean(existing.code_delivered_at),
-      };
-      if (!existing.code_delivered_at) {
-        emailStatus = await deliverDirectConfirmation({
-          toEmail: email,
-          interval: input.interval,
-          durationDays,
-          siteUrl: input.siteUrl,
-          locale,
-          purchaseId: existing.id,
-          expiresAt: null,
-        });
-        if (emailStatus.delivered) {
-          await admin
-            .from("pro_purchases")
-            .update({ code_delivered_at: new Date().toISOString() })
-            .eq("id", existing.id);
-        }
-      }
-      return {
-        ok: true,
+      const buyerId = existing.user_id ?? (await resolveBuyerUserId(admin, input, email));
+      if (!buyerId) return { ok: false, error: "direct_requires_user" };
+      return grantDirectEntitlement(admin, {
         purchaseId: existing.id,
-        purchaseType: "direct",
-        code: null,
+        userId: buyerId,
+        activatedAt: existing.activated_at,
+        metadata: existing.metadata,
+        codeDeliveredAt: existing.code_delivered_at,
         durationDays,
-        email: emailStatus,
-        sms: { delivered: false, error: "skipped_idempotent" },
+        provider,
+        providerPaymentId,
+        email,
+        interval: input.interval,
+        siteUrl: input.siteUrl,
+        locale,
         idempotent: true,
-        activation: "direct",
-      };
+      });
     }
 
     if (existing.activation_code_id) {
@@ -509,6 +747,7 @@ export async function fulfillProPurchase(
           sms: { delivered: false, error: "skipped_idempotent" },
           idempotent: true,
           activation: "pending_manual_redeem",
+          emailedTo: deliverTo,
         };
       }
     }
@@ -599,18 +838,12 @@ export async function fulfillProPurchase(
       sms: { delivered: false },
       idempotent: false,
       activation: "pending_manual_redeem",
+      emailedTo: email,
     };
   }
 
   if (purchaseType === "direct") {
     if (!userId) return { ok: false, error: "direct_requires_user" };
-
-    const activated = await activateProDirectly(admin, {
-      userId,
-      durationDays,
-      paymentRef: `${provider}:${providerPaymentId}`,
-    });
-    if (!activated.ok) return activated;
 
     const { data: purchase, error: purchaseError } = await admin
       .from("pro_purchases")
@@ -625,57 +858,62 @@ export async function fulfillProPurchase(
         provider_payment_id: providerPaymentId,
         status: "paid",
         purchase_type: "direct",
-        activated_at: new Date().toISOString(),
+        activated_at: null,
         gift_recipient_email: null,
         gift_message: null,
         activation_code_id: null,
         metadata: (input.metadata ?? {}) as Json,
       })
-      .select("id")
+      .select("id, activated_at, metadata, code_delivered_at")
       .single();
+
+    if (purchaseError && /duplicate|unique/i.test(purchaseError.message)) {
+      const { data: raced, error: racedError } = await admin
+        .from("pro_purchases")
+        .select("id, activated_at, metadata, code_delivered_at, user_id")
+        .eq("provider", provider)
+        .eq("provider_payment_id", providerPaymentId)
+        .maybeSingle();
+      if (racedError || !raced) {
+        return { ok: false, error: "purchase_insert_failed" };
+      }
+      return grantDirectEntitlement(admin, {
+        purchaseId: raced.id,
+        userId: raced.user_id ?? userId,
+        activatedAt: raced.activated_at,
+        metadata: raced.metadata,
+        codeDeliveredAt: raced.code_delivered_at,
+        durationDays,
+        provider,
+        providerPaymentId,
+        email,
+        interval: input.interval,
+        siteUrl: input.siteUrl,
+        locale,
+        idempotent: true,
+      });
+    }
 
     if (purchaseError || !purchase) {
       console.error("[pro-purchase] insert direct purchase failed", purchaseError);
       return { ok: false, error: purchaseError?.message ?? "purchase_insert_failed" };
     }
 
-    const emailStatus = await deliverDirectConfirmation({
-      toEmail: email,
-      interval: input.interval,
-      durationDays,
-      siteUrl: input.siteUrl,
-      locale,
-      purchaseId: purchase.id,
-      expiresAt: activated.expiresAt,
-    });
-
-    if (emailStatus.delivered) {
-      await admin
-        .from("pro_purchases")
-        .update({ code_delivered_at: new Date().toISOString() })
-        .eq("id", purchase.id);
-    }
-
-    console.info("[pro-purchase] fulfilled (direct activation)", {
+    return grantDirectEntitlement(admin, {
       purchaseId: purchase.id,
       userId,
+      activatedAt: purchase.activated_at,
+      metadata: purchase.metadata,
+      codeDeliveredAt: purchase.code_delivered_at,
+      durationDays,
+      provider,
+      providerPaymentId,
       email,
-      durationDays,
-      emailDelivered: emailStatus.delivered,
-    });
-
-    return {
-      ok: true,
-      purchaseId: purchase.id,
-      purchaseType: "direct",
-      code: null,
-      durationDays,
-      email: emailStatus,
-      sms: { delivered: false },
+      interval: input.interval,
+      siteUrl: input.siteUrl,
+      locale,
       idempotent: false,
-      activation: "direct",
-      expiresAt: activated.expiresAt,
-    };
+    });
   }
 
   // ── Gift / code path ─────────────────────────────────────────────────────
@@ -788,5 +1026,6 @@ export async function fulfillProPurchase(
     sms: smsResult,
     idempotent: false,
     activation: "pending_manual_redeem",
+    emailedTo: deliverTo,
   };
 }

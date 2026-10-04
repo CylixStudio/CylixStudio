@@ -29,6 +29,15 @@ import {
   TimerPreview,
 } from "@/components/hub/previews";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { startStreamPayCheckout } from "@/lib/streampay.functions";
@@ -480,6 +489,9 @@ export function GatewayPlansPanel({
   const navigate = useNavigate();
   const [compareOpen, setCompareOpen] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [giftOpen, setGiftOpen] = useState(false);
+  const [giftEmail, setGiftEmail] = useState("");
+  const [giftMessage, setGiftMessage] = useState("");
   const [proBilling, setProBilling] = useState<ProBillingInterval>(DEFAULT_PRO_BILLING);
 
   const goDashboard = () => {
@@ -489,16 +501,27 @@ export function GatewayPlansPanel({
 
   const continueFree = onContinueFree ?? goDashboard;
 
-  const activateOnAccount = () => {
+  const beginCheckout = (
+    purchaseType: "direct" | "gift",
+    gift?: { recipientEmail: string | null; message: string | null },
+  ) => {
     if (checkoutBusy) return;
     prepareProCheckout(proBilling, {
-      purchaseType: "direct",
+      purchaseType,
       userId: user.id,
       buyerEmail: user.email ?? null,
+      giftRecipientEmail: gift?.recipientEmail ?? null,
+      giftMessage: gift?.message ?? null,
     });
     setCheckoutBusy(true);
     void startStreamPayCheckout({
-      data: { interval: proBilling, purchaseType: "direct", locale: lang },
+      data: {
+        interval: proBilling,
+        purchaseType,
+        locale: lang,
+        giftRecipientEmail: gift?.recipientEmail ?? null,
+        giftMessage: gift?.message ?? null,
+      },
     })
       .then((result) => {
         if (!result.ok) {
@@ -516,8 +539,21 @@ export function GatewayPlansPanel({
       });
   };
 
-  const openGiftOrCode = () => {
-    void navigate({ to: "/settings", search: { setup: "subscription" } });
+  const activateOnAccount = () => beginCheckout("direct");
+
+  const openGiftOrCode = () => setGiftOpen(true);
+
+  const submitGift = () => {
+    const recipient = giftEmail.trim();
+    if (recipient && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      toast.error(t("gateway.gift.invalidEmail"));
+      return;
+    }
+    setGiftOpen(false);
+    beginCheckout("gift", {
+      recipientEmail: recipient ? recipient.toLowerCase() : null,
+      message: giftMessage.trim() || null,
+    });
   };
 
   return (
@@ -563,6 +599,51 @@ export function GatewayPlansPanel({
         </div>
 
         <PlanCompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
+
+        <Dialog open={giftOpen} onOpenChange={setGiftOpen}>
+          <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t("gateway.gift.title")}</DialogTitle>
+              <DialogDescription>{t("gateway.gift.recipientHint")}</DialogDescription>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                submitGift();
+              }}
+            >
+              <label className="block space-y-1.5 text-sm">
+                <span className="text-zinc-300">{t("gateway.gift.recipientLabel")}</span>
+                <Input
+                  type="email"
+                  value={giftEmail}
+                  onChange={(event) => setGiftEmail(event.target.value)}
+                  placeholder={t("gateway.gift.recipientPlaceholder")}
+                  autoComplete="email"
+                />
+              </label>
+              <label className="block space-y-1.5 text-sm">
+                <span className="text-zinc-300">{t("gateway.gift.messageLabel")}</span>
+                <Textarea
+                  value={giftMessage}
+                  onChange={(event) => setGiftMessage(event.target.value)}
+                  placeholder={t("gateway.gift.messagePlaceholder")}
+                  maxLength={500}
+                  rows={3}
+                />
+              </label>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="outline" onClick={() => setGiftOpen(false)}>
+                  {t("gateway.gift.cancel")}
+                </Button>
+                <Button type="submit" disabled={checkoutBusy}>
+                  {t("gateway.gift.submit")}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   );

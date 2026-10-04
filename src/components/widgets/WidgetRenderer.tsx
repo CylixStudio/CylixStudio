@@ -318,7 +318,7 @@ export function ChatBoxView({
   config: unknown;
   /** Public chat coordinates (Twitch login / Kick chatroom id). */
   chat?: ChatSources | null;
-  /** Messages injected by the dashboard "Test & Simulate" panel. */
+  /** Chat lines pushed by the dashboard test-event control. */
   testMessages?: ChatMessage[];
 }) {
   const style = parseChatConfig(config);

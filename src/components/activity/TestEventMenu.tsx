@@ -207,7 +207,7 @@ export function TestEventMenu({
                   className="me-2 size-1.5 shrink-0 rounded-full"
                   style={{ background: activeGroup.color }}
                 />
-                {t(event.labelKey)}
+                <span dir="ltr">{t(event.labelKey)}</span>
               </DropdownMenuItem>
             ))}
           </div>

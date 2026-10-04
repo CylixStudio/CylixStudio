@@ -249,7 +249,7 @@ export function SubathonTimerSidebar({
 
       {tab === "test" ? (
         <div className="space-y-4">
-          <TestSimulatePanel widgetId={widgetId} type="SUBATHON_TIMER" lang={lang} />
+          <TestSimulatePanel widgetId={widgetId} />
 
           <div className="rounded-xl border border-border bg-background p-4">
             <p className={labelClass}>OBS browser source</p>

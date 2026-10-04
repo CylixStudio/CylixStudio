@@ -936,7 +936,7 @@ function WidgetBuilder() {
             ) : null}
 
             {widget.type === "STREAM_EVENTS_SCHEDULE" ? null : (
-              <TestSimulatePanel widgetId={widget.id} type={widget.type} lang={"en"} />
+              <TestSimulatePanel widgetId={widget.id} />
             )}
 
             <div className="rounded-xl border border-border bg-background p-4">

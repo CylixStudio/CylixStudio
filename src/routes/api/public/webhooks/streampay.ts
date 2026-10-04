@@ -1,7 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import type { ProBillingInterval, ProPurchaseType } from "@/lib/plans";
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -12,18 +10,15 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function metadataFrom(payload: Record<string, unknown>, payment: Record<string, unknown> | null) {
+function metadataFrom(payload: Record<string, unknown>) {
+  const data = asRecord(payload["data"]);
   return (
-    asRecord(payment?.["custom_metadata"]) ??
-    asRecord(payment?.["metadata"]) ??
-    asRecord(asRecord(payload["data"])?.["metadata"]) ??
+    asRecord(data?.["metadata"]) ??
+    asRecord(data?.["custom_metadata"]) ??
+    asRecord(payload["metadata"]) ??
+    asRecord(payload["custom_metadata"]) ??
     null
   );
-}
-
-function intervalOf(value: string | null): ProBillingInterval | null {
-  if (value === "monthly" || value === "six_months" || value === "yearly") return value;
-  return null;
 }
 
 /**
@@ -37,7 +32,7 @@ export const Route = createFileRoute("/api/public/webhooks/streampay")({
       POST: async ({ request }) => {
         const { fulfillProPurchase } = await import("@/lib/proPurchase.server");
         const { publicSiteUrl } = await import("@/lib/siteUrl.server");
-        const { fetchStreamPayPayment, verifyStreamPaySignature } = await import("@/lib/streampay.server");
+        const { verifyStreamPaySignature } = await import("@/lib/streampay.server");
         const { supabaseAdmin, assertSupabaseAdminConfigured } = await import(
           "@/lib/supabase/client.server"
         );
@@ -65,26 +60,38 @@ export const Route = createFileRoute("/api/public/webhooks/streampay")({
           return Response.json({ ok: true, ignored: eventType });
         }
 
-        const paymentId = text(payload["entity_id"]) ?? text(asRecord(payload["data"])?.["id"]);
+        const data = asRecord(payload["data"]);
+        const paymentId =
+          text(payload["entity_id"]) ??
+          text(asRecord(data?.["payment"])?.["id"]) ??
+          text(data?.["id"]);
         if (!paymentId) return Response.json({ error: "missing_payment" }, { status: 400 });
 
-        const payment = await fetchStreamPayPayment(paymentId);
-        const status = (text(payment?.["status"]) ?? text(payload["status"]) ?? "").toUpperCase();
-        if (status && !["SUCCEEDED", "PAID", "COMPLETED", "MARKED_AS_PAID"].includes(status)) {
-          console.warn("[streampay] payment not successful", { paymentId, status });
-          return Response.json({ ok: true, ignored: status });
+        const invoiceId = text(asRecord(data?.["invoice"])?.["id"]);
+        const paymentLinkId = text(asRecord(data?.["payment_link"])?.["id"]);
+        const signedMetadata = metadataFrom(payload);
+
+        const { resolveConfirmedStreamPayCheckout } = await import("@/lib/streampay.server");
+        const confirmed = await resolveConfirmedStreamPayCheckout({
+          paymentId,
+          invoiceId,
+          paymentLinkId,
+          signedEvent: {
+            status: text(payload["status"]),
+            metadata: signedMetadata,
+            paymentId,
+          },
+        });
+        if (!confirmed.ok) {
+          const retry = confirmed.error === "unconfirmed";
+          console.warn("[streampay] payment not confirmed", { paymentId, error: confirmed.error });
+          return Response.json(
+            { ok: !retry, ignored: confirmed.error },
+            { status: retry ? 503 : 200 },
+          );
         }
 
-        const metadata = metadataFrom(payload, payment);
-        const userId = text(metadata?.["user_id"]);
-        const email = text(metadata?.["email"]);
-        const interval = intervalOf(text(metadata?.["interval"]));
-        const purchaseType: ProPurchaseType =
-          text(metadata?.["purchase_type"]) === "gift" ? "gift" : "direct";
-        if (!email || !interval || (purchaseType === "direct" && !userId)) {
-          console.warn("[streampay] payment missing checkout metadata", { paymentId, eventType });
-          return Response.json({ ok: true, ignored: "missing_metadata" });
-        }
+        const checkout = confirmed.checkout;
 
         try {
           await assertSupabaseAdminConfigured();
@@ -93,20 +100,28 @@ export const Route = createFileRoute("/api/public/webhooks/streampay")({
           return Response.json({ error: "database_not_configured" }, { status: 503 });
         }
 
-        const amount = Number(metadata?.["amount"]);
         const result = await fulfillProPurchase(supabaseAdmin, {
-          email,
-          userId,
-          interval,
-          amountCents: Number.isFinite(amount) ? Math.round(amount * 100) : null,
-          currency: text(metadata?.["currency"]) ?? "SAR",
+          email: checkout.email,
+          userId: checkout.userId,
+          interval: checkout.interval,
+          amountCents:
+            checkout.amountSar != null && Number.isFinite(checkout.amountSar)
+              ? Math.round(checkout.amountSar * 100)
+              : null,
+          currency: checkout.currency,
           provider: "streampay",
-          providerPaymentId: paymentId,
+          providerPaymentId: checkout.paymentId,
           siteUrl: publicSiteUrl(request),
-          locale: text(metadata?.["locale"]) === "en" ? "en" : "ar",
-          purchaseType,
-          buyerName: text(metadata?.["buyer_name"]),
-          metadata: { event_type: eventType, streampay_status: status || null },
+          locale: checkout.locale,
+          purchaseType: checkout.purchaseType,
+          buyerName: checkout.buyerName,
+          ...(checkout.giftRecipientEmail ? { giftRecipientEmail: checkout.giftRecipientEmail } : {}),
+          ...(checkout.giftMessage ? { giftMessage: checkout.giftMessage } : {}),
+          metadata: {
+            event_type: eventType,
+            streampay_invoice_id: checkout.invoiceId,
+            streampay_payment_id: checkout.paymentId,
+          },
         });
 
         if (!result.ok) {

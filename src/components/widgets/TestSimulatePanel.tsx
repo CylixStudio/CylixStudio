@@ -1,224 +1,143 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { FlaskConical, MessageSquare, Radio, Zap } from "lucide-react";
 
-import { sendTestChatMessage, simulateStreamEvent } from "@/lib/simulate.functions";
-import { syncTwitchEventSub } from "@/lib/eventsub.functions";
-import type { WidgetType } from "@/lib/widgets";
+import { TestEventPlatformTabs } from "@/components/activity/TestEventPlatformTabs";
+import { fireTestEvent, sendTestChatMessage, type TestEventInput } from "@/lib/simulate.functions";
+import { TEST_EVENT_GROUPS, type TestEventSpec } from "@/lib/testEvents";
+import { useLanguage, type TranslationKey } from "@/lib/i18n";
+
+const CHAT_KEY: Record<TestEventInput["eventType"], TranslationKey> = {
+  FOLLOW: "activity.chat.FOLLOW",
+  DONATION: "activity.chat.DONATION",
+  SUBSCRIPTION: "activity.chat.SUBSCRIPTION",
+  BITS: "activity.chat.BITS",
+  GIFT_SUB: "activity.chat.GIFT_SUB",
+  RAID: "activity.chat.RAID",
+  LIKE: "activity.chat.LIKE",
+};
+
+function actorFor(type: TestEventInput["eventType"]): string {
+  const stamp = Math.floor(Math.random() * 900 + 100);
+  if (type === "DONATION") return `TestDonor${stamp}`;
+  if (type === "SUBSCRIPTION") return `TestSub${stamp}`;
+  if (type === "GIFT_SUB") return `TestGifter${stamp}`;
+  if (type === "BITS") return `TestCheer${stamp}`;
+  if (type === "RAID") return `TestRaider${stamp}`;
+  if (type === "LIKE") return `TestFan${stamp}`;
+  return `TestFan${stamp}`;
+}
 
 /**
- * Lets a creator fire real payloads through the production pipeline so they
- * can confirm the OBS browser source reacts instantly — no real viewers,
- * no waiting for a live stream.
+ * Widget test control. Same platform-icon tabs and per-platform event list
+ * as the Activity "Test Event" menu.
  */
-export function TestSimulatePanel({
-  widgetId,
-  type,
-  lang,
-}: {
-  widgetId: string;
-  type: WidgetType;
-  lang: "ar" | "en";
-}) {
-  const simulate = useServerFn(simulateStreamEvent);
+export function TestSimulatePanel({ widgetId }: { widgetId: string }) {
+  const { t } = useLanguage();
+  const fire = useServerFn(fireTestEvent);
   const testChat = useServerFn(sendTestChatMessage);
-  const syncEvents = useServerFn(syncTwitchEventSub);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [customText, setCustomText] = useState("");
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [tab, setTab] = useState<TestEventInput["platform"]>(TEST_EVENT_GROUPS[0]!.platform);
 
-  const isChat = type === "CHAT_BOX";
+  const activeGroup = useMemo(
+    () => TEST_EVENT_GROUPS.find((group) => group.platform === tab) ?? TEST_EVENT_GROUPS[0]!,
+    [tab],
+  );
 
-  const run = async (key: string, action: () => Promise<unknown>, success: string) => {
-    setBusy(key);
-    setMessage(null);
+  const pick = async (platform: TestEventInput["platform"], spec: TestEventSpec) => {
+    if (pending) return;
+    setPending(true);
+    setNotice(null);
+    const actor = actorFor(spec.type);
+    const amount =
+      spec.amount ?? (spec.type === "DONATION" ? 5 : spec.type === "BITS" ? 100 : null);
+    const quantity = Math.max(1, Math.round(spec.quantity ?? 1));
     try {
-      const result = (await action()) as { ok?: boolean; error?: string };
-      if (result && result.ok === false) {
-        setMessage(
-          result.error === "no_subathon"
-            ? "Create a subathon first so rules can apply."
-            : `⚠️ ${result.error}`,
-        );
-      } else {
-        setMessage(success);
+      const response = (await fire({
+        data: {
+          platform,
+          eventType: spec.type,
+          amount,
+          actorName: actor,
+          message: spec.message ?? null,
+          quantity,
+        },
+      })) as
+        | { ok: true; result: { status: string } }
+        | { ok: false; error: string };
+
+      if (!response.ok) {
+        setNotice(response.error);
+        return;
       }
+
+      void testChat({
+        data: {
+          widgetId,
+          author: actor,
+          text: `${actor} ${t(CHAT_KEY[spec.type])}`,
+        },
+      }).catch(() => {
+        /* overlay chat is best-effort; the event already went through ingest */
+      });
+      setNotice(t(spec.labelKey));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed");
+      setNotice(error instanceof Error ? error.message : "Failed");
     } finally {
-      setBusy(null);
+      setPending(false);
     }
   };
 
-  const buttonClass =
-    "flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5 text-xs font-semibold transition-colors hover:border-primary/50 hover:bg-primary/10 disabled:opacity-50";
-  const inputClass =
-    "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary";
-
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-background p-4">
-      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        <FlaskConical className="size-4 text-primary" aria-hidden />
-        {"🧪 Test & Simulate"}
-      </p>
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[rgba(10,10,12,0.96)] shadow-2xl shadow-black/60">
+      <div className="border-b border-white/8 px-3 pb-3 pt-3">
+        <p className="mb-2.5 text-start text-[0.62rem] font-semibold tracking-[0.02em] text-muted-foreground">
+          {t("settings.test.platformsAria")}
+        </p>
+        <TestEventPlatformTabs activePlatform={activeGroup.platform} onSelect={setTab} />
+      </div>
 
-      {isChat ? (
-        <div className="space-y-2">
-          <input
-            type="text"
-            value={customText}
-            onChange={(event) => setCustomText(event.target.value)}
-            placeholder={"Type a test message…"}
-            className={inputClass}
-            dir="auto"
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && customText.trim()) {
-                void run(
-                  "chat",
-                  () =>
-                    testChat({
-                      data: { widgetId, text: customText.trim() },
-                    }),
-                  "Message sent ✅",
-                );
-                setCustomText("");
-              }
-            }}
+      <div
+        key={activeGroup.platform}
+        role="tabpanel"
+        className="animate-in fade-in-0 slide-in-from-top-1 p-3 duration-200"
+      >
+        <div className="mb-2.5 flex items-center gap-2">
+          <span
+            className="size-1.5 rounded-full"
+            style={{ background: activeGroup.color }}
+            aria-hidden
           />
-          <button
-            type="button"
-            disabled={busy !== null || !customText.trim()}
-            className={buttonClass}
-            onClick={() => {
-              void run(
-                "chat",
-                () =>
-                  testChat({
-                    data: { widgetId, text: customText.trim() },
-                  }),
-                "Message sent ✅",
-              );
-              setCustomText("");
-            }}
+          <p
+            className="text-start text-[0.72rem] font-semibold tracking-[0.02em] text-muted-foreground"
+            dir="ltr"
           >
-            <MessageSquare className="size-4" aria-hidden />
-            {busy === "chat"
-              ? "…"
-              : "Send Test Chat Message"}
-          </button>
+            {t(activeGroup.headingKey)}
+          </p>
         </div>
-      ) : type === "TIKTOK_TAPPERS" ? (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {["hala_live", "mvp_gamer", "noorx"].map((tapper) => (
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+          {activeGroup.events.map((event) => (
             <button
-              key={tapper}
+              key={`${activeGroup.platform}-${event.type}-${event.labelKey}`}
               type="button"
-              disabled={busy !== null}
-              className={buttonClass}
-              onClick={() =>
-                void run(
-                  tapper,
-                  () =>
-                    simulate({
-                      data: {
-                        widgetId,
-                        platform: "TIKTOK",
-                        eventType: "LIKE",
-                        actorName: tapper,
-                        quantity: 25 + Math.floor(Math.random() * 120),
-                      },
-                    }),
-                  "Taps sent ✅",
-                )
-              }
+              disabled={pending}
+              onClick={() => void pick(activeGroup.platform, event)}
+              className="flex cursor-pointer items-center rounded-xl border border-transparent px-3 py-2.5 text-start text-[0.82rem] transition-colors hover:border-white/8 hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-60"
             >
-              <Zap className="size-4" aria-hidden />
-              {busy === tapper ? "…" : `Send taps as ${tapper}`}
+              <span
+                className="me-2 size-1.5 shrink-0 rounded-full"
+                style={{ background: activeGroup.color }}
+              />
+              <span dir="ltr">{t(event.labelKey)}</span>
             </button>
           ))}
         </div>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            disabled={busy !== null}
-            className={buttonClass}
-            onClick={() =>
-              void run(
-                "twitch",
-                () =>
-                  simulate({
-                    data: { widgetId, platform: "TWITCH", eventType: "FOLLOW" },
-                  }),
-                "Twitch follow sent ✅",
-              )
-            }
-          >
-            <Zap className="size-4" aria-hidden />
-            {busy === "twitch"
-              ? "…"
-              : "Simulate Twitch Follow"}
-          </button>
-
-          <button
-            type="button"
-            disabled={busy !== null}
-            className={buttonClass}
-            onClick={() =>
-              void run(
-                "kick",
-                () =>
-                  simulate({
-                    data: { widgetId, platform: "KICK", eventType: "SUBSCRIPTION" },
-                  }),
-                "Kick sub sent ✅",
-              )
-            }
-          >
-            <Zap className="size-4" aria-hidden />
-            {busy === "kick" ? "…" : "Simulate Kick Sub"}
-          </button>
-
-          <button
-            type="button"
-            disabled={busy !== null}
-            className={buttonClass}
-            onClick={() =>
-              void run(
-                "chat",
-                () => testChat({ data: { widgetId } }),
-                "Test chat message sent ✅",
-              )
-            }
-          >
-            <MessageSquare className="size-4" aria-hidden />
-            {busy === "chat" ? "…" : "Send Test Chat Message"}
-          </button>
-
-          <button
-            type="button"
-            disabled={busy !== null}
-            className={buttonClass}
-            onClick={() =>
-              void run(
-                "eventsub",
-                () => syncEvents({}),
-                "Twitch live events enabled ✅",
-              )
-            }
-          >
-            <Radio className="size-4" aria-hidden />
-            {busy === "eventsub"
-              ? "…"
-              : "Enable Twitch live events"}
-          </button>
-        </div>
-      )}
-
-      {message ? <p className="text-xs text-muted-foreground">{message}</p> : null}
-      <p className="text-[11px] text-muted-foreground">
-        {"Every button runs the real ingest pipeline and broadcasts instantly to OBS."}
-      </p>
+        {notice ? (
+          <p className="mt-2 text-xs text-muted-foreground" dir="ltr">
+            {notice}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
