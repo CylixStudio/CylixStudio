@@ -56,14 +56,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "CylixStudio" },
       {
         name: "description",
-        content:
-          "CylixStudio builds live stream overlays: subathon timer, goals, chat box and more for Twitch, Kick and TikTok.",
+        content: "Sign in with Twitch or Kick to run your subathon timer, rules and overlays.",
       },
       { name: "author", content: "CylixStudio" },
       { property: "og:title", content: "CylixStudio" },
       {
         property: "og:description",
-        content: "Subathon timer, goals, chat box and overlays for Twitch, Kick and TikTok.",
+        content: "Sign in with Twitch or Kick to run your subathon timer, rules and overlays.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

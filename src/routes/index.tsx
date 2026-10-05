@@ -18,21 +18,20 @@ export const Route = createFileRoute("/")({
       },
       {
         name: "description",
-        content:
-          "Multi-platform streaming studio: Twitch, Kick, YouTube and TikTok widgets, commands and overlays.",
+        content: "Sign in with Twitch or Kick to run your subathon timer, rules and overlays.",
       },
       { property: "og:title", content: "CylixStudio" },
       {
         property: "og:description",
-        content: "Sign in to pick Free or Pro and run your multi-platform stream tools.",
+        content: "Sign in with Twitch or Kick to run your subathon timer, rules and overlays.",
       },
       {
         "script:ld+json": {
           "@context": "https://schema.org",
           "@type": "Organization",
           name: "CylixStudio",
-          url: "https://cylixstudio.com",
-          logo: "https://cylixstudio.com/Logo.svg",
+          url: "https://www.cylixstudio.com",
+          logo: "https://www.cylixstudio.com/Logo.svg",
         },
       },
     ],
