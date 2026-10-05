@@ -3,6 +3,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { ExternalLink, Pause, Play, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
+import { widgetErrorText } from "@/lib/createWidget";
 import { InfoTip } from "@/components/ui/info-tip";
 import {
   AlertDialog,
@@ -107,7 +109,7 @@ export function SubathonElementControlPanel({
       const result = await action();
       publishFrame(result as TimerFrame);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Action failed");
+      setError(widgetErrorText(caught, "Action failed"));
     } finally {
       setBusy(false);
     }
@@ -233,7 +235,7 @@ export function SubathonElementControlPanel({
         </div>
       </div>
 
-      {error ? <p className="mx-4 mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p> : null}
+      <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} className="mx-4 mb-4 text-xs" />
 
       <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
         <AlertDialogContent>

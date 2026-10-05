@@ -1118,6 +1118,7 @@ const DICT = {
   "settings.admin.version.invalid": "اكتب رقم إصدار أولاً",
   "settings.admin.version.broadcastResult": "تم الإرسال إلى {sent} · تعذّر {failed}",
   "settings.admin.version.forbidden": "هذا الإجراء للمسؤول فقط",
+  "widget.signedOut": "سجّل الدخول لعرض هذا الويدجت.",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

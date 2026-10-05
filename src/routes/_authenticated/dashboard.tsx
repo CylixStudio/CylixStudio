@@ -20,6 +20,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SaudiBusinessSeal } from "@/components/brand/SaudiBusinessSeal";
 import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/lib/supabase/client";
 import { ToolCard } from "@/components/hub/ToolCard";
@@ -76,7 +77,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getMediaRequestDashboard } from "@/lib/mediaRequests.functions";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { createWidget, errorMessage } from "@/lib/createWidget";
+import { createWidget, widgetErrorText } from "@/lib/createWidget";
 import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 import type { WidgetType } from "@/lib/widgets";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
@@ -318,7 +319,7 @@ function HomePage() {
       await queryClient.invalidateQueries({ queryKey: ["widgets"] });
       setRemovingId(null);
     } catch (err) {
-      setError(errorMessage(err, "Could not delete this widget."));
+      setError(widgetErrorText(err, "Could not delete this widget."));
       setPendingDelete(null);
     } finally {
       setDeleting(false);
@@ -352,7 +353,7 @@ function HomePage() {
       await openWidget(widget.id);
     } catch (err) {
       console.error("[dashboard] create goal failed", err);
-      setError(errorMessage(err, "Could not create this goal."));
+      setError(widgetErrorText(err, "Could not create this goal."));
     } finally {
       setBusy(null);
     }
@@ -373,7 +374,7 @@ function HomePage() {
         await navigate({ to: "/media-requests" });
       } catch (err) {
         console.error("[dashboard] open media-requests failed", err);
-        setError(errorMessage(err, "Could not open this tool."));
+        setError(widgetErrorText(err, "Could not open this tool."));
       }
       return;
     }
@@ -382,7 +383,7 @@ function HomePage() {
         await navigate({ to: "/giveaway" });
       } catch (err) {
         console.error("[dashboard] open giveaway failed", err);
-        setError(errorMessage(err, "Could not open this tool."));
+        setError(widgetErrorText(err, "Could not open this tool."));
       }
       return;
     }
@@ -398,7 +399,7 @@ function HomePage() {
         await openWidget(existing.id);
       } catch (err) {
         console.error("[dashboard] navigate to widget failed", err);
-        setError(errorMessage(err, "Could not open this tool."));
+        setError(widgetErrorText(err, "Could not open this tool."));
       }
       return;
     }
@@ -417,7 +418,7 @@ function HomePage() {
       await openWidget(widget.id);
     } catch (err) {
       console.error("[dashboard] open tool failed", { toolId: tool.id, err });
-      setError(errorMessage(err, "Could not open this tool."));
+      setError(widgetErrorText(err, "Could not open this tool."));
     } finally {
       setBusy(null);
     }
@@ -430,7 +431,7 @@ function HomePage() {
       title={t("home.title")}
       subtitle={t("home.subtitle")}
     >
-      {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
+      <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} boxed={false} />
 
       {needsPro ? (
         <div className="glass-3d mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-primary/25 p-4">

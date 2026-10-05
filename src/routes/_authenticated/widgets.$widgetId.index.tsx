@@ -21,7 +21,9 @@ import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { parseOverlayTheme } from "@/lib/overlayTheme";
 import { useLanguage } from "@/lib/i18n";
-import { ensureWidgetSubathon } from "@/lib/createWidget";
+import { ensureWidgetSubathon, widgetErrorText } from "@/lib/createWidget";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { DarkSelect } from "@/components/ui/dark-select";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -163,7 +165,7 @@ function WidgetBuilder() {
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not prepare the subathon timer.");
+        if (!cancelled) setError(widgetErrorText(err, "Could not prepare the subathon timer."));
       });
     return () => {
       cancelled = true;
@@ -193,8 +195,9 @@ function WidgetBuilder() {
       });
     },
     onError: (err: Error) => {
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not save this widget.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: async () => {
       setError(null);
@@ -214,8 +217,9 @@ function WidgetBuilder() {
     },
     onError: (err: Error) => {
       setConfirmDelete(false);
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not delete this widget.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: async () => {
       setConfirmDelete(false);
@@ -228,8 +232,9 @@ function WidgetBuilder() {
   const syncFollowers = useMutation({
     mutationFn: async () => runSyncFollowers({ data: { widgetId } }),
     onError: (err: Error) => {
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not sync followers.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: async (result) => {
       setError(null);
@@ -255,8 +260,9 @@ function WidgetBuilder() {
       return result;
     },
     onError: (err: Error) => {
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not spin the wheel.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
   });
 
@@ -266,7 +272,9 @@ function WidgetBuilder() {
     setGoalDraft((prev) => ({ ...prev, current: next }));
     const { error: writeError } = await supabase.from("goals").update({ current_value: next }).eq("id", goalRow.id);
     if (writeError) {
-      toast.error(writeError.message);
+      const message = widgetErrorText(writeError, "Could not update the goal.");
+      if (isMissingViewerSession(message)) setError(message);
+      else toast.error(message);
       return;
     }
     await queryClient.invalidateQueries({ queryKey: ["widget", widgetId] });
@@ -344,14 +352,15 @@ function WidgetBuilder() {
         ) : null
       }
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <SessionAwareError
+        error={error ?? (widgetQuery.error ? widgetErrorText(widgetQuery.error, "Could not load this widget.") : null)}
+        signedOutLabel={t("widget.signedOut")}
+      />
 
       {!widget ? (
-        <p className="text-sm text-muted-foreground">Loading widget…</p>
+        isMissingViewerSession(widgetQuery.error) ? null : widgetQuery.isError ? null : (
+          <p className="text-sm text-muted-foreground">Loading widget…</p>
+        )
       ) : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,380px)_1fr]">
           <section className="space-y-4 rounded-2xl border border-border bg-card p-5">

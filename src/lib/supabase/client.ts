@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 import { createSupabaseFetch } from "./fetch";
 import { getPublicSupabaseEnv } from "./env";
+import { isUserJwt, writeSessionCookie } from "./sessionCookie";
 
 type AppSupabaseClient = SupabaseClient<Database>;
 
@@ -14,7 +15,7 @@ function createSupabaseClient(): AppSupabaseClient {
     throw new Error(message);
   }
 
-  return createClient<Database>(env.url, env.key, {
+  const client = createClient<Database>(env.url, env.key, {
     global: {
       fetch: createSupabaseFetch(env.key),
     },
@@ -24,6 +25,15 @@ function createSupabaseClient(): AppSupabaseClient {
       autoRefreshToken: true,
     },
   });
+
+  if (typeof window !== "undefined") {
+    client.auth.onAuthStateChange((_event, session) => {
+      const token = session?.access_token;
+      writeSessionCookie(isUserJwt(token) ? token : null, session?.expires_at ?? null);
+    });
+  }
+
+  return client;
 }
 
 let _supabase: AppSupabaseClient | undefined;

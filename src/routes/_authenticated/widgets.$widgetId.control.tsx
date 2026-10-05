@@ -5,6 +5,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 
 import { SubathonElementControlPanel } from "@/components/widgets/SubathonElementControlPanel";
+import { widgetErrorText } from "@/lib/createWidget";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { supabase } from "@/lib/supabase/client";
 import { saveWidgetSettings } from "@/lib/widgets.functions";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
@@ -47,7 +49,10 @@ function TimerControlPopout() {
       toast.success("Saved");
       void queryClient.invalidateQueries({ queryKey: ["widget-control", widgetId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not save"),
+    onError: (error: Error) => {
+      const message = widgetErrorText(error, "Could not save");
+      if (!isMissingViewerSession(message)) toast.error(message);
+    },
   });
 
   if (!widget) return <main className="min-h-screen bg-background p-4 text-sm text-muted-foreground">Loading control panel…</main>;

@@ -4,7 +4,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { GoalBarView } from "@/components/widgets/WidgetRenderer";
+import { widgetErrorText } from "@/lib/createWidget";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { useLanguage } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
@@ -32,6 +36,7 @@ export const Route = createFileRoute("/_authenticated/widgets/$widgetId/goal")({
 const QUICK = [1, 5, 10, 25, 50, 100];
 
 function GoalControl() {
+  const { t } = useLanguage();
   const { user } = Route.useRouteContext();
   const { widgetId } = Route.useParams();
   const queryClient = useQueryClient();
@@ -77,8 +82,9 @@ function GoalControl() {
       if (writeError) throw writeError;
     },
     onError: (err: Error) => {
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not update this goal.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: async () => {
       setError(null);
@@ -117,11 +123,7 @@ function GoalControl() {
         </Link>
       }
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} />
 
       {!goal ? (
         <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">

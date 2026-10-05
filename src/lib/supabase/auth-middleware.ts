@@ -3,6 +3,8 @@ import { getRequest } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 import { createSupabaseFetch } from "./fetch";
+import { isMissingViewerSession } from "./sessionError";
+import { accessTokenFromRequest } from "./sessionCookie";
 
 /** Thrown (or returned) so Start/Nitro surfaces a clean 401 JSON body. */
 export class UnauthorizedError extends Error {
@@ -54,13 +56,9 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
 
     if (!request?.headers) unauthorized("no_request_headers");
 
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader) unauthorized("missing_authorization");
-    if (!authHeader.startsWith("Bearer ")) unauthorized("invalid_scheme");
-
-    const token = authHeader.replace("Bearer ", "");
-    if (!token) unauthorized("empty_token");
-    if (token.split(".").length !== 3) unauthorized("malformed_jwt");
+    // Bearer from the client middleware, or the session cookie the browser sends.
+    const token = accessTokenFromRequest(request);
+    if (!token) unauthorized("missing_authorization");
 
     const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       global: {
@@ -76,7 +74,17 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
       },
     });
 
-    const { data, error } = await supabase.auth.getClaims(token);
+    let data: Awaited<ReturnType<typeof supabase.auth.getClaims>>["data"];
+    let error: Awaited<ReturnType<typeof supabase.auth.getClaims>>["error"];
+    try {
+      const claims = await supabase.auth.getClaims(token);
+      data = claims.data;
+      error = claims.error;
+    } catch (caught) {
+      if (isMissingViewerSession(caught)) unauthorized("missing_session");
+      throw caught;
+    }
+    if (isMissingViewerSession(error)) unauthorized("missing_session");
     if (error || !data?.claims) unauthorized("invalid_token");
     if (!data.claims.sub) unauthorized("missing_sub");
 

@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 
 import { TestEventPlatformTabs } from "@/components/activity/TestEventPlatformTabs";
+import { widgetErrorText } from "@/lib/createWidget";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { fireTestEvent, sendTestChatMessage, type TestEventInput } from "@/lib/simulate.functions";
 import { TEST_EVENT_GROUPS, type TestEventSpec } from "@/lib/testEvents";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
@@ -82,7 +84,8 @@ export function TestSimulatePanel({ widgetId }: { widgetId: string }) {
       });
       setNotice(t(spec.labelKey));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Failed");
+      const message = widgetErrorText(error, "Failed");
+      setNotice(isMissingViewerSession(message) ? t("widget.signedOut") : message);
     } finally {
       setPending(false);
     }

@@ -8,7 +8,10 @@ import { AppShell } from "@/components/layout/AppShell";
 import { supabase } from "@/lib/supabase/client";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { createWidget } from "@/lib/createWidget";
+import { createWidget, widgetErrorText } from "@/lib/createWidget";
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { useLanguage } from "@/lib/i18n";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { WIDGET_LABEL, WIDGET_TYPES, type WidgetType } from "@/lib/widgets";
 import { DarkSelect } from "@/components/ui/dark-select";
@@ -40,6 +43,7 @@ export const Route = createFileRoute("/_authenticated/widgets/")({
 });
 
 function WidgetHub() {
+  const { t } = useLanguage();
   const { user } = Route.useRouteContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -61,9 +65,9 @@ function WidgetHub() {
       return createWidget({ userId: user.id, subathonId, type, name });
     },
     onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err);
+      const message = widgetErrorText(err, "Could not create this widget.");
       setError(message);
-      toast.error(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: async (widget) => {
       setError(null);
@@ -82,9 +86,9 @@ function WidgetHub() {
       if (writeError) throw writeError;
     },
     onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err);
+      const message = widgetErrorText(err, "Could not update this widget.");
       setError(message);
-      toast.error(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: () => void invalidate(),
   });
@@ -95,9 +99,9 @@ function WidgetHub() {
       if (writeError) throw writeError;
     },
     onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err);
+      const message = widgetErrorText(err, "Could not delete this widget.");
       setError(message);
-      toast.error(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: () => void invalidate(),
   });
@@ -125,11 +129,7 @@ function WidgetHub() {
       title="Widget hub"
       subtitle="Every widget gets its own OBS browser-source URL."
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} />
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">

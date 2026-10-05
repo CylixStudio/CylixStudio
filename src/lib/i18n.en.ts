@@ -1049,4 +1049,5 @@ export const EN = {
   "settings.admin.version.invalid": "Enter a version first",
   "settings.admin.version.broadcastResult": "Sent to {sent} · failed {failed}",
   "settings.admin.version.forbidden": "Only an admin can do this",
+  "widget.signedOut": "Sign in to load this widget.",
 } as const;

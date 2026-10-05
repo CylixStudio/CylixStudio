@@ -1,4 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
+import { SIGNED_OUT_ERROR, isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { isTestMode } from "@/lib/testMode";
 import { DEFAULT_OVERLAY_THEME } from "@/lib/overlayTheme";
 import { goalTypePreset, type GoalTypeId } from "@/lib/goalTypes";
 import { mintWidgetPublicToken } from "@/lib/widgetOverlayUrl";
@@ -56,19 +58,34 @@ export function errorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Missing viewer session becomes a stable sentinel. Every other error keeps its message. */
+export function widgetErrorText(err: unknown, fallback: string): string {
+  if (isMissingViewerSession(err)) return SIGNED_OUT_ERROR;
+  return errorMessage(err, fallback);
+}
+
+export class SignedOutError extends Error {
+  readonly code = "signed_out";
+
+  constructor() {
+    super(SIGNED_OUT_ERROR);
+    this.name = "SignedOutError";
+  }
+}
+
 /**
  * widgets.user_id → public.users(id). Auth users from OAuth can exist without a
  * public.users row if the callback upsert failed — ensure the row before insert.
  */
 export async function ensureUserProfile(userId: string): Promise<void> {
+  if (isTestMode()) throw new SignedOutError();
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
+  if (isMissingViewerSession(authError)) throw new SignedOutError();
   if (authError) throw authError;
-  if (!user || user.id !== userId) {
-    throw new Error("You must be signed in to open this tool.");
-  }
+  if (!user || user.id !== userId) throw new SignedOutError();
 
   const meta = user.user_metadata ?? {};
   const { error } = await supabase.from("users").upsert(
@@ -180,12 +197,14 @@ export async function ensureWidgetSubathon(
   widgetId: string,
   options?: { seedTimer?: boolean },
 ): Promise<string> {
+  if (isTestMode()) throw new SignedOutError();
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
+  if (isMissingViewerSession(authError)) throw new SignedOutError();
   if (authError) throw authError;
-  if (!user) throw new Error("You must be signed in.");
+  if (!user) throw new SignedOutError();
 
   const { data: widget, error: widgetError } = await supabase
     .from("widgets")

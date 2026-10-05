@@ -13,6 +13,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { widgetErrorText } from "@/lib/createWidget";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
+
 import {
   clampDurationSeconds,
   formatCountdown,
@@ -98,7 +101,8 @@ export function StreamEventsScheduleControlPanel({
       await action();
       await queryClient.invalidateQueries({ queryKey: ["widget", widgetId] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Action failed");
+      const message = widgetErrorText(err, "Action failed");
+      if (!isMissingViewerSession(message)) toast.error(message);
     } finally {
       setBusy(null);
     }

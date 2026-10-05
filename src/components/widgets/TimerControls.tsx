@@ -2,6 +2,10 @@ import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
+import { widgetErrorText } from "@/lib/createWidget";
+import { useLanguage } from "@/lib/i18n";
+
 import { useTimerStream } from "@/hooks/useTimerStream";
 import { formatDuration } from "@/lib/timer";
 import {
@@ -38,6 +42,7 @@ export function TimerControls({
   subathonId: string;
   publicToken: string | null;
 }) {
+  const { t } = useLanguage();
   const { frame, remaining, status } = useTimerStream(publicToken);
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
@@ -58,7 +63,7 @@ export function TimerControls({
       await action();
       void queryClient.invalidateQueries({ queryKey: ["subathon-stats", subathonId] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
+      setError(widgetErrorText(err, "Action failed"));
     } finally {
       setPending(false);
     }
@@ -176,7 +181,7 @@ export function TimerControls({
           </button>
         </form>
 
-        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+        <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} className="mt-3 text-sm" boxed={false} />
       </div>
     </section>
   );

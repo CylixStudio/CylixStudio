@@ -5,7 +5,9 @@ import { toast } from "sonner";
 
 import { DarkSelect } from "@/components/ui/dark-select";
 import { InfoTip } from "@/components/ui/info-tip";
-import { ensureWidgetSubathon } from "@/lib/createWidget";
+import { ensureWidgetSubathon, widgetErrorText } from "@/lib/createWidget";
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { eventsForPlatform, triggerPhrase, type StreamEventType } from "@/lib/platformEvents";
@@ -131,8 +133,8 @@ export function WidgetRulesPanel({
         void queryClient.invalidateQueries({ queryKey: ["widget", widgetId] });
         void queryClient.invalidateQueries({ queryKey: ["workspace"] });
       })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message || "Could not link this widget to a subathon.");
+      .catch((err: unknown) => {
+        if (!cancelled) setError(widgetErrorText(err, "Could not link this widget to a subathon."));
       })
       .finally(() => {
         if (!cancelled) setLinking(false);
@@ -197,8 +199,9 @@ export function WidgetRulesPanel({
     },
     onError: (err: Error) => {
       setNotice(null);
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not save this rule.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: (_data, input) => {
       setError(null);
@@ -213,8 +216,9 @@ export function WidgetRulesPanel({
       if (writeError) throw writeError;
     },
     onError: (err: Error) => {
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not update this rule.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: () => void invalidate(),
   });
@@ -225,8 +229,9 @@ export function WidgetRulesPanel({
       if (writeError) throw writeError;
     },
     onError: (err: Error) => {
-      setError(err.message);
-      toast.error(err.message);
+      const message = widgetErrorText(err, "Could not delete this rule.");
+      setError(message);
+      if (!isMissingViewerSession(message)) toast.error(message);
     },
     onSuccess: () => void invalidate(),
   });
@@ -249,11 +254,7 @@ export function WidgetRulesPanel({
 
   return (
     <div className={cn("space-y-4", !compact && "space-y-6")}>
-      {error ? (
-        <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} className="text-sm" />
       {notice ? (
         <p className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-primary">
           {notice}

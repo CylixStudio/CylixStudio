@@ -10,6 +10,9 @@ import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { clearSpotlightMessage, pinSpotlightMessage } from "@/lib/spotlight.functions";
 import { SPOTLIGHT_AUTO_HIDE, type SpotlightMessage } from "@/lib/widgets";
 import { DarkSelect } from "@/components/ui/dark-select";
+import { SessionAwareError } from "@/components/widgets/SessionAwareError";
+import { widgetErrorText } from "@/lib/createWidget";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Mod control panel for the Chat Spotlight overlay: a live chat feed where
@@ -32,6 +35,7 @@ export function SpotlightControlPanel({
   onAutoHideChange: (next: number) => void;
   lang: "ar" | "en";
 }) {
+  const { t } = useLanguage();
   const pin = useServerFn(pinSpotlightMessage);
   const clear = useServerFn(clearSpotlightMessage);
   const { messages } = useLiveChat(chat, 25);
@@ -56,7 +60,7 @@ export function SpotlightControlPanel({
     try {
       await action();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
+      setError(widgetErrorText(err, "Action failed"));
     } finally {
       setBusy(null);
     }
@@ -204,7 +208,7 @@ export function SpotlightControlPanel({
         )}
       </div>
 
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} className="text-xs" boxed={false} />
     </div>
   );
 }

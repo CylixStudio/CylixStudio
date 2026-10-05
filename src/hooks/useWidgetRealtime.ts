@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { supabase } from "@/lib/supabase/client";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 
 export type WidgetBroadcast = {
   event: string;
@@ -21,18 +22,25 @@ export function useWidgetRealtime(
 
   useEffect(() => {
     if (!widgetId) return;
-    const channel = supabase
-      .channel(`widget_${widgetId}`, { config: { broadcast: { self: true } } })
-      .on("broadcast", { event: "*" }, (message) => {
-        handler.current({
-          event: String(message["event"] ?? "refresh"),
-          payload: (message["payload"] ?? {}) as Record<string, unknown>,
-        });
-      })
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`widget_${widgetId}`, { config: { broadcast: { self: true } } })
+        .on("broadcast", { event: "*" }, (message) => {
+          handler.current({
+            event: String(message["event"] ?? "refresh"),
+            payload: (message["payload"] ?? {}) as Record<string, unknown>,
+          });
+        })
+        .subscribe();
+    } catch (error) {
+      // Public overlays authorize with the URL token. A missing browser session is not a failure.
+      if (isMissingViewerSession(error)) return;
+      throw error;
+    }
 
     return () => {
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [widgetId]);
 }
