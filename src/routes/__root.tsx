@@ -74,13 +74,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@100;200;300;400;500;600;700&family=Press+Start+2P&display=swap",
       },
-      // Stable icon URLs (no cache-bust query) so crawlers fetch the official mark.
-      { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
+      // Single ICO so browsers do not prefer the black-plate SVG/PNG marks.
       { rel: "icon", href: "/favicon.ico", sizes: "any" },
-      { rel: "icon", type: "image/png", href: "/favicon.png", sizes: "48x48" },
-      { rel: "icon", type: "image/svg+xml", href: "/Logo.svg" },
-      { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
-      { rel: "shortcut icon", href: "/favicon.ico" },
     ],
   }),
   shellComponent: RootShell,
