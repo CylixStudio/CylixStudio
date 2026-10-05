@@ -1,7 +1,7 @@
 /**
- * Persists the studio version, then emails registered users.
+ * Persists the studio version, posts one Make notice, then emails registered users.
  * Callers must already have confirmed the admin role. This module does not
- * send on import.
+ * send on import. A failed Make POST does not undo the save or skip the email.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -91,6 +91,13 @@ export async function saveAndBroadcastStudioVersion(
   if (!version) return { ok: false, error: "invalid_version" };
   const saved = await saveVersion(admin, version);
   if (!saved) return { ok: false, error: "save_failed" };
+  const { notifyUpdateSaved, studioVersionDescription } = await import("@/lib/updateWebhook.server");
+  await notifyUpdateSaved({
+    type: "version",
+    name: "CylixStudio",
+    version,
+    description: studioVersionDescription(version),
+  });
   const broadcast = await broadcastVersion(admin, version);
   return { ok: true, saved: true, ...broadcast };
 }

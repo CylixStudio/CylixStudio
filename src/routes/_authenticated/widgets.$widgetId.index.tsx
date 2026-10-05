@@ -16,6 +16,7 @@ import { parseSpotlightConfig, parseStreamEventsScheduleState } from "@/lib/widg
 import { supabase } from "@/lib/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { syncGoalFollowers } from "@/lib/goals.functions";
+import { saveWidgetSettings } from "@/lib/widgets.functions";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { parseOverlayTheme } from "@/lib/overlayTheme";
@@ -170,26 +171,26 @@ function WidgetBuilder() {
   }, [queryClient, widget, widgetId]);
 
   const stream = useWidgetStream(widget?.is_enabled ? (widget?.public_token ?? null) : null);
+  const saveWidget = useServerFn(saveWidgetSettings);
 
   const save = useMutation({
     mutationFn: async () => {
-      const { error: writeError } = await supabase
-        .from("widgets")
-        .update({ name: name.trim() || WIDGET_LABEL[widget!.type], config: config as never })
-        .eq("id", widgetId);
-      if (writeError) throw writeError;
-      if (goalRow) {
-        const { error: goalError } = await supabase
-          .from("goals")
-          .update({
-            title: goalDraft.title,
-            unit: goalDraft.unit,
-            target_value: goalDraft.target,
-            current_value: goalDraft.current,
-          })
-          .eq("id", goalRow.id);
-        if (goalError) throw goalError;
-      }
+      await saveWidget({
+        data: {
+          widgetId,
+          name: name.trim() || WIDGET_LABEL[widget!.type],
+          config,
+          goal: goalRow
+            ? {
+                id: goalRow.id,
+                title: goalDraft.title,
+                unit: goalDraft.unit,
+                target: goalDraft.target,
+                current: goalDraft.current,
+              }
+            : null,
+        },
+      });
     },
     onError: (err: Error) => {
       setError(err.message);

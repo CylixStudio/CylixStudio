@@ -13,6 +13,7 @@ import { parseStreamEventsScheduleConfig, parseStreamEventsScheduleState } from 
 type WidgetRow = {
   id: string;
   user_id: string;
+  name: string;
   type: string;
   config: unknown;
   state: unknown;
@@ -22,7 +23,7 @@ async function loadOwnedScheduleWidget(widgetId: string, userId: string): Promis
   const { supabaseAdmin } = await import("@/lib/supabase/client.server");
   const { data: widget } = await supabaseAdmin
     .from("widgets")
-    .select("id, user_id, type, config, state")
+    .select("id, user_id, name, type, config, state")
     .eq("id", widgetId)
     .maybeSingle();
   if (!widget || widget.user_id !== userId) throw new Error("Widget not found");
@@ -138,5 +139,8 @@ export const saveStreamEventsList = createServerFn({ method: "POST" })
     }
     if (typeof data.showUptime === "boolean") patch["showUptime"] = data.showUptime;
 
-    return persistRuntime(widget, runtime, patch);
+    const saved = await persistRuntime(widget, runtime, patch);
+    const { notifyWidgetSaved } = await import("@/lib/updateWebhook.server");
+    await notifyWidgetSaved(widget.name);
+    return saved;
   });

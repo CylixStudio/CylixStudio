@@ -14,7 +14,7 @@ import { ErrorFallback } from "@/components/layout/ErrorFallback";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { LanguageProvider } from "@/lib/i18n";
+import { LanguageProvider, useLanguage } from "@/lib/i18n";
 import "@/styles.css";
 
 function NotFoundComponent() {
@@ -86,18 +86,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="ar" dir="rtl">
+    <LanguageProvider>
+      <DocumentShell>{children}</DocumentShell>
+    </LanguageProvider>
+  );
+}
+
+function DocumentShell({ children }: { children: ReactNode }) {
+  const { lang, dir } = useLanguage();
+  return (
+    <html lang={lang} dir={dir}>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              "try{var l=localStorage.getItem('creovix.lang');if(l==='en'){document.documentElement.lang='en';document.documentElement.dir='ltr';}}catch(e){}",
-          }}
-        />
         <HeadContent />
       </head>
       <body className="font-sans antialiased">
-        <LanguageProvider>{children}</LanguageProvider>
+        {children}
         <Scripts />
       </body>
     </html>
@@ -107,6 +110,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+  const { dir } = useLanguage();
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
@@ -124,7 +128,7 @@ function RootComponent() {
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
       </AppErrorBoundary>
-      <Toaster position="top-center" />
+      <Toaster position="top-center" dir={dir} />
     </QueryClientProvider>
   );
 }
