@@ -26,6 +26,15 @@ export const Route = createFileRoute("/")({
         property: "og:description",
         content: "Sign in to pick Free or Pro and run your multi-platform stream tools.",
       },
+      {
+        "script:ld+json": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          name: "CylixStudio",
+          url: "https://cylixstudio.com",
+          logo: "https://cylixstudio.com/Logo.svg",
+        },
+      },
     ],
   }),
   component: AuthGate,
