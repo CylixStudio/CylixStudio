@@ -1,10 +1,14 @@
 import type { ProBillingInterval } from "@/lib/plans";
-import { formatActivationCode, intervalLabel } from "@/lib/proPurchase";
+import { formatActivationCode } from "@/lib/proPurchase";
 import {
+  EMAIL_FOOTER_LINE,
+  EMAIL_SIGN_OFF,
   escapeHtml,
-  renderMasterEmailLayout,
-  renderSubscriptionEmailLayout,
+  renderEventEmail,
+  STUDIO_CONNECTIONS_URL,
   SUBSCRIPTION_DASHBOARD_URL,
+  type EmailHero,
+  type PlatformStatusCard,
 } from "@/lib/email/layout";
 
 export type EmailLocale = "ar" | "en";
@@ -62,102 +66,200 @@ export type DirectActivatedTemplateInput = {
   locale?: EmailLocale;
 };
 
-/** Buyer's own activation code — dark receipt layout, dashboard CTA. */
+export type PlatformConnectionTemplateInput = {
+  siteUrl: string;
+  platform: "KICK" | "TWITCH" | "YOUTUBE";
+  username?: string | null;
+  locale?: EmailLocale;
+};
+
+export type PlatformDisconnectedTemplateInput = {
+  siteUrl: string;
+  platform: "KICK" | "TWITCH" | "YOUTUBE";
+  username?: string | null;
+  locale?: EmailLocale;
+};
+
+export type VersionBroadcastTemplateInput = {
+  siteUrl: string;
+  version: string;
+  locale?: EmailLocale;
+};
+
+const DASHBOARD_URL = SUBSCRIPTION_DASHBOARD_URL;
+
+function closeText(lines: Array<string | null>): string {
+  return [...lines.filter((line): line is string => Boolean(line)), "", EMAIL_SIGN_OFF, EMAIL_FOOTER_LINE].join("\n");
+}
+
+function planPhrase(
+  interval: ProBillingInterval | "lifetime" | "custom",
+  durationDays: number,
+  locale: EmailLocale,
+): string {
+  const resolved: ProBillingInterval | "lifetime" | "custom" =
+    interval === "lifetime" || durationDays >= 36500
+      ? "lifetime"
+      : interval === "yearly" || durationDays >= 365
+        ? "yearly"
+        : interval === "six_months" || durationDays >= 180
+          ? "six_months"
+          : interval === "monthly" || durationDays >= 30
+            ? "monthly"
+            : interval;
+  if (locale === "en") {
+    if (resolved === "monthly") return "Monthly Plan";
+    if (resolved === "six_months") return "6 months";
+    if (resolved === "yearly") return "Yearly Plan";
+    if (resolved === "lifetime") return "Lifetime Plan";
+    return "Pro Plan";
+  }
+  if (resolved === "monthly") return "الخطة الشهرية";
+  if (resolved === "six_months") return "6 أشهر";
+  if (resolved === "yearly") return "الخطة السنوية";
+  if (resolved === "lifetime") return "مدى الحياة";
+  return "خطة Pro";
+}
+
+function humanExpiry(value: string | null | undefined, locale: EmailLocale): string | null {
+  if (!value || Number.isNaN(Date.parse(value))) return null;
+  const date = new Date(value);
+  if (locale === "ar") {
+    return new Intl.DateTimeFormat("ar", { day: "numeric", month: "long", year: "numeric" }).format(date);
+  }
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+
+function knownTransactionId(value: string | null | undefined): string | null {
+  const id = value?.trim();
+  return id ? id : null;
+}
+
+/** One quiet payment line. Omitted when fulfillment has no id. */
+function paymentLine(locale: EmailLocale, transactionId: string | null | undefined): string {
+  const id = knownTransactionId(transactionId);
+  if (!id) return "";
+  const label = locale === "ar" ? "رقم العملية" : "Payment";
+  return `<p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#bdbdbd;">${label} <span style="direction:ltr;unicode-bidi:embed;">${escapeHtml(id)}</span></p>`;
+}
+
+function codeBlock(label: string, pretty: string): string {
+  return `<div style="margin:18px 0 0;padding:18px 16px;border-radius:16px;background:#3c3c3c;text-align:center;">
+    <p style="margin:0 0 8px;font-size:12px;color:#bdbdbd;">${escapeHtml(label)}</p>
+    <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:22px;letter-spacing:0.14em;color:#bee1fc;font-weight:700;direction:ltr;">${escapeHtml(pretty)}</p>
+  </div>`;
+}
+
+function studioCta(locale: EmailLocale): { label: string; href: string } {
+  return { label: locale === "ar" ? "فتح الاستوديو" : "Open Studio", href: DASHBOARD_URL };
+}
+
+function platformName(platform: "KICK" | "TWITCH" | "YOUTUBE"): string {
+  if (platform === "KICK") return "Kick";
+  if (platform === "TWITCH") return "Twitch";
+  return "YouTube";
+}
+
+function platformHero(platform: "KICK" | "TWITCH" | "YOUTUBE"): EmailHero {
+  if (platform === "KICK") return "kick";
+  if (platform === "TWITCH") return "twitch";
+  return "youtube";
+}
+
+function statusCard(
+  platform: "KICK" | "TWITCH" | "YOUTUBE",
+  username: string | null | undefined,
+  locale: EmailLocale,
+  connected: boolean,
+): PlatformStatusCard {
+  const status = connected
+    ? locale === "ar"
+      ? "● متصل"
+      : "● Connected"
+    : locale === "ar"
+      ? "● غير متصل"
+      : "● Disconnected";
+  const card: PlatformStatusCard = {
+    platform: platformName(platform),
+    status,
+    connected,
+  };
+  const name = username?.trim();
+  if (name) card.username = name;
+  return card;
+}
+
+const CONNECTED_HEADLINE: Record<"KICK" | "TWITCH" | "YOUTUBE", string> = {
+  KICK: "تم ربط Kick. صار حسابك جاهز.",
+  TWITCH: "تم ربط Twitch. صار حسابك جاهز.",
+  YOUTUBE: "تم ربط YouTube. صار حسابك جاهز.",
+};
+
+/** Buyer's own activation code. Pro stays off until the code is redeemed. */
 export function buildProActivationTemplate(input: ProActivationTemplateInput): BuiltEmail {
   const locale = input.locale ?? "ar";
   const pretty = formatActivationCode(input.code);
-  const duration = intervalLabel(input.interval, input.durationDays);
-  const dashboardUrl = SUBSCRIPTION_DASHBOARD_URL;
+  const duration = planPhrase(input.interval, input.durationDays, locale);
+  const subject = "تفاصيل تفعيل حسابك في CylixStudio";
+  const payment = knownTransactionId(input.transactionId);
 
   if (locale === "en") {
-    const subject = "تفاصيل تفعيل حسابك في CylixStudio";
     const bodyHtml = `
-      <p style="margin:0 0 16px;">Payment confirmed. Your <strong style="color:#f4f4f5;">CylixStudio Pro</strong> plan (<strong style="color:#f4f4f5;">${escapeHtml(duration)}</strong>) is ready to activate. The plan stays inactive until you redeem this code.</p>
-      ${giftCodeBlock("Activation code", pretty)}
-      <p style="margin:0 0 8px;font-weight:700;color:#f4f4f5;">How to activate</p>
-      <ol style="margin:0;padding-inline-start:18px;">
-        <li>Sign in to CylixStudio</li>
-        <li>Open <strong style="color:#f4f4f5;">Settings → Account &amp; subscription</strong></li>
-        <li>Choose <strong style="color:#f4f4f5;">Enter activation code</strong> and paste the code</li>
-      </ol>
-      <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">Do not share this code. It can only be used once.</p>
-      ${invoiceLine("en", input.transactionId)}
+      <p style="margin:0;">Payment confirmed. Your CylixStudio Pro code is ready. The plan stays inactive until you redeem it.</p>
+      <p style="margin:14px 0 0;color:#f7f7f7;font-weight:700;">${escapeHtml(duration)}</p>
+      ${codeBlock("Activation code", pretty)}
+      <p style="margin:18px 0 0;">Sign in, open Settings, and paste the code. It works once.</p>
+      ${paymentLine("en", input.transactionId)}
     `;
-    const text = [
-      subject,
-      "",
-      "Payment confirmed.",
-      "Plan: CylixStudio Pro",
-      `Interval: ${duration}`,
-      "Status: awaiting activation",
-      `Code: ${pretty}`,
-      "",
-      "Sign in, open Settings → Account & subscription, and enter the code.",
-      dashboardUrl,
-      knownTransactionId(input.transactionId)
-        ? `Invoice: ${knownTransactionId(input.transactionId)}`
-        : null,
-      "",
-      "The code works once. Pro stays inactive until you redeem it.",
-    ].join("\n");
-
     return {
       subject,
-      text,
-      html: renderSubscriptionEmailLayout({
+      text: closeText([
+        subject,
+        "",
+        "Payment confirmed. Redeem the code to turn Pro on.",
+        duration,
+        `Code: ${pretty}`,
+        payment ? `Payment ${payment}` : null,
+        DASHBOARD_URL,
+      ]),
+      html: renderEventEmail({
         siteUrl: input.siteUrl,
         locale: "en",
-        eyebrow: "Account activation",
-        title: "Your account activation details",
+        hero: "studio",
+        title: "Your activation code is ready.",
         preheader: subject,
         bodyHtml,
-        cta: { label: "Open dashboard", href: dashboardUrl },
+        cta: studioCta("en"),
       }),
     };
   }
 
-  const subject = "تفاصيل تفعيل حسابك في CylixStudio";
   const bodyHtml = `
-    <p style="margin:0 0 16px;">تم تأكيد الدفع. خطة <strong style="color:#f4f4f5;">CylixStudio Pro</strong> لمدة <strong style="color:#f4f4f5;">${escapeHtml(duration)}</strong> جاهزة للتفعيل. تبقى الخطة غير نشطة حتى تدخل الرمز.</p>
-    ${giftCodeBlock("رمز التفعيل", pretty)}
-    <p style="margin:0 0 8px;font-weight:700;color:#f4f4f5;">طريقة التفعيل</p>
-    <ol style="margin:0;padding-inline-start:18px;">
-      <li>سجّل الدخول إلى CylixStudio</li>
-      <li>افتح <strong style="color:#f4f4f5;">الإعدادات ← الحساب والاشتراك</strong></li>
-      <li>اختر <strong style="color:#f4f4f5;">إدخال رمز التفعيل</strong> والصق الرمز</li>
-    </ol>
-    <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">لا تشارك هذا الرمز. يُستخدم مرة واحدة فقط.</p>
-    ${invoiceLine("ar", input.transactionId)}
+    <p style="margin:0;">تم تأكيد الدفع. رمز CylixStudio Pro جاهز، والخطة تبقى غير نشطة حتى تدخل الرمز.</p>
+    <p style="margin:14px 0 0;color:#f7f7f7;font-weight:700;">${escapeHtml(duration)}</p>
+    ${codeBlock("رمز التفعيل", pretty)}
+    <p style="margin:18px 0 0;">سجّل الدخول، افتح الإعدادات، والصق الرمز. يُستخدم مرة واحدة.</p>
+    ${paymentLine("ar", input.transactionId)}
   `;
-  const text = [
-    subject,
-    "",
-    "تم تأكيد الدفع.",
-    "الخطة: CylixStudio Pro",
-    `المدة: ${duration}`,
-    "الحالة: بانتظار التفعيل",
-    `الرمز: ${pretty}`,
-    "",
-    "سجّل الدخول، ثم من الإعدادات ← الحساب والاشتراك أدخل الرمز.",
-    dashboardUrl,
-    knownTransactionId(input.transactionId)
-      ? `رقم العملية: ${knownTransactionId(input.transactionId)}`
-      : null,
-    "",
-    "الرمز لمرة واحدة. تبقى الخطة غير نشطة حتى التفعيل.",
-  ].join("\n");
-
   return {
     subject,
-    text,
-    html: renderSubscriptionEmailLayout({
+    text: closeText([
+      subject,
+      "",
+      "تم تأكيد الدفع. فعّل الرمز ليبدأ Pro.",
+      duration,
+      `الرمز: ${pretty}`,
+      payment ? `رقم العملية ${payment}` : null,
+      DASHBOARD_URL,
+    ]),
+    html: renderEventEmail({
       siteUrl: input.siteUrl,
       locale: "ar",
-      eyebrow: "تفعيل الحساب",
-      title: "تفاصيل تفعيل حسابك",
+      hero: "studio",
+      title: "رمز التفعيل جاهز.",
       preheader: subject,
       bodyHtml,
-      cta: { label: "فتح لوحة التحكم", href: dashboardUrl },
+      cta: studioCta("ar"),
     }),
   };
 }
@@ -169,41 +271,33 @@ export function buildWelcomeTemplate(input: WelcomeTemplateInput): BuiltEmail {
 
   if (locale === "en") {
     const subject = "Welcome to CylixStudio";
-    const bodyHtml = `
-      <p style="margin:0 0 12px;">Hi ${escapeHtml(name)},</p>
-      <p style="margin:0;">You’re in. Connect Kick or Twitch, build your overlays, and go live with CylixStudio.</p>
-    `;
     return {
       subject,
-      text: `Welcome to CylixStudio, ${name}. Open ${site}/dashboard to get started.`,
-      html: renderMasterEmailLayout({
+      text: closeText([`Welcome to CylixStudio, ${name}.`, DASHBOARD_URL]),
+      html: renderEventEmail({
         siteUrl: site,
         locale: "en",
-        eyebrow: "Welcome",
+        hero: "studio",
         title: "You’re ready to stream",
-        preheader: "Welcome to CylixStudio",
-        bodyHtml,
-        cta: { label: "Open dashboard", href: `${site}/dashboard` },
+        preheader: subject,
+        bodyHtml: `<p style="margin:0;">Hi ${escapeHtml(name)}. Connect Kick, Twitch, or YouTube and open the studio.</p>`,
+        cta: studioCta("en"),
       }),
     };
   }
 
   const subject = "مرحبًا بك في CylixStudio";
-  const bodyHtml = `
-    <p style="margin:0 0 12px;">أهلًا ${escapeHtml(name)}،</p>
-    <p style="margin:0;">تم إنشاء حسابك. اربط Kick أو Twitch وابنِ أدواتك المباشرة من لوحة التحكم.</p>
-  `;
   return {
     subject,
-    text: `مرحبًا بك في CylixStudio. ابدأ من: ${site}/dashboard`,
-    html: renderMasterEmailLayout({
+    text: closeText([`مرحبًا بك في CylixStudio.`, DASHBOARD_URL]),
+    html: renderEventEmail({
       siteUrl: site,
       locale: "ar",
-      eyebrow: "ترحيب",
+      hero: "studio",
       title: "حسابك جاهز للبث",
-      preheader: "مرحبًا بك في CylixStudio",
-      bodyHtml,
-      cta: { label: "فتح لوحة التحكم", href: `${site}/dashboard` },
+      preheader: subject,
+      bodyHtml: `<p style="margin:0;">أهلًا ${escapeHtml(name)}. اربط Kick أو Twitch أو YouTube وافتح الاستوديو.</p>`,
+      cta: studioCta("ar"),
     }),
   };
 }
@@ -211,304 +305,214 @@ export function buildWelcomeTemplate(input: WelcomeTemplateInput): BuiltEmail {
 export function buildInvoiceNoticeTemplate(input: InvoiceNoticeTemplateInput): BuiltEmail {
   const locale = input.locale ?? "ar";
   const site = input.siteUrl.replace(/\/$/, "");
-
-  if (locale === "en") {
-    const subject = `Payment received — ${input.amountLabel}`;
-    const bodyHtml = `
-      <p style="margin:0 0 12px;">We received your payment of <strong style="color:#e4e4e7;">${escapeHtml(input.amountLabel)}</strong> for <strong style="color:#e4e4e7;">${escapeHtml(input.intervalLabel)}</strong>.</p>
-      <p style="margin:0;font-size:12px;color:#71717a;direction:ltr;">Reference: ${escapeHtml(input.paymentId)}</p>
-      <p style="margin:16px 0 0;">Your Pro activation code is sent in a separate email (or the same checkout flow).</p>
-    `;
-    return {
-      subject,
-      text: `Payment ${input.amountLabel} for ${input.intervalLabel}. Ref: ${input.paymentId}`,
-      html: renderMasterEmailLayout({
-        siteUrl: site,
-        locale: "en",
-        eyebrow: "Billing",
-        title: "Payment confirmed",
-        preheader: subject,
-        bodyHtml,
-      }),
-    };
-  }
-
-  const subject = `تم استلام الدفع — ${input.amountLabel}`;
-  const bodyHtml = `
-    <p style="margin:0 0 12px;">استلمنا دفعتك بمبلغ <strong style="color:#e4e4e7;">${escapeHtml(input.amountLabel)}</strong> لمدة <strong style="color:#e4e4e7;">${escapeHtml(input.intervalLabel)}</strong>.</p>
-    <p style="margin:0;font-size:12px;color:#71717a;direction:ltr;">Reference: ${escapeHtml(input.paymentId)}</p>
-    <p style="margin:16px 0 0;">رمز تفعيل Pro يُرسل في بريد منفصل ضمن نفس عملية الشراء.</p>
-  `;
+  const subject = locale === "en" ? `Payment received — ${input.amountLabel}` : `تم استلام الدفع — ${input.amountLabel}`;
+  const bodyHtml =
+    locale === "en"
+      ? `<p style="margin:0;">We received ${escapeHtml(input.amountLabel)} for ${escapeHtml(input.intervalLabel)}.</p>${paymentLine("en", input.paymentId)}`
+      : `<p style="margin:0;">استلمنا ${escapeHtml(input.amountLabel)} مقابل ${escapeHtml(input.intervalLabel)}.</p>${paymentLine("ar", input.paymentId)}`;
   return {
     subject,
-    text: `تم الدفع ${input.amountLabel} — ${input.intervalLabel}. المرجع: ${input.paymentId}`,
-    html: renderMasterEmailLayout({
+    text: closeText([subject, input.paymentId, DASHBOARD_URL]),
+    html: renderEventEmail({
       siteUrl: site,
-      locale: "ar",
-      eyebrow: "الفواتير",
-      title: "تأكيد الدفع",
+      locale,
+      hero: "studio",
+      title: locale === "en" ? "Payment confirmed" : "تم تأكيد الدفع",
       preheader: subject,
       bodyHtml,
+      cta: studioCta(locale),
     }),
   };
 }
 
-function billingPhrase(
-  interval: ProBillingInterval | "lifetime" | "custom",
-  durationDays: number,
-  locale: EmailLocale,
-): string {
-  if (locale === "en") return intervalLabel(interval, durationDays);
-  if (interval === "lifetime" || durationDays >= 36500) return "مدى الحياة";
-  if (interval === "yearly" || durationDays >= 365) return "سنة واحدة";
-  if (interval === "six_months" || durationDays >= 180) return "6 أشهر";
-  if (interval === "monthly" || durationDays >= 30) return "شهر واحد";
-  return `${durationDays} يومًا`;
-}
-
-function knownTransactionId(value: string | null | undefined): string | null {
-  const id = value?.trim();
-  return id ? id : null;
-}
-
-/** Quiet reference line. Omitted when fulfillment has no transaction id. */
-function invoiceLine(locale: EmailLocale, transactionId: string | null | undefined): string {
-  const id = knownTransactionId(transactionId);
-  if (!id) return "";
-  const label = locale === "ar" ? "رقم العملية" : "Invoice";
-  return `<p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#a1a1aa;">${label}: <span style="color:#f4f4f5;font-weight:700;direction:ltr;unicode-bidi:embed;">${escapeHtml(id)}</span></p>`;
-}
-
-function giftCodeBlock(label: string, pretty: string): string {
-  return `<div style="margin:0 0 20px;padding:18px 16px;border-radius:12px;background:#0d0d0d;border:1px solid rgba(34,197,94,0.45);text-align:center;">
-        <p style="margin:0 0 6px;font-size:11px;letter-spacing:0.08em;color:#a1a1aa;">${escapeHtml(label)}</p>
-        <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:22px;letter-spacing:0.16em;color:#22c55e;font-weight:700;direction:ltr;">${escapeHtml(pretty)}</p>
-      </div>`;
-}
-
-/** Gift activation code — personal message + dashboard redeem CTA. */
+/** Gift code mail. Does not activate Pro for the buyer. */
 export function buildGiftActivationTemplate(input: GiftActivationTemplateInput): BuiltEmail {
   const locale = input.locale ?? "ar";
   const pretty = formatActivationCode(input.code);
-  const duration = billingPhrase(input.interval, input.durationDays, locale);
-  const dashboardUrl = SUBSCRIPTION_DASHBOARD_URL;
+  const duration = planPhrase(input.interval, input.durationDays, locale);
   const fromLabel = input.fromName?.trim() || "";
   const message = input.giftMessage?.trim();
-
+  const payment = knownTransactionId(input.transactionId);
   const messageBlock = message
-    ? locale === "en"
-      ? `<blockquote style="margin:0 0 20px;padding:14px 16px;border-radius:12px;border:1px solid #2a2a2a;background:#0d0d0d;color:#f4f4f5;font-style:italic;line-height:1.65;">“${escapeHtml(message)}”</blockquote>
-         ${fromLabel ? `<p style="margin:0 0 16px;font-size:12px;color:#a1a1aa;">— ${escapeHtml(fromLabel)}</p>` : ""}`
-      : `<blockquote style="margin:0 0 20px;padding:14px 16px;border-radius:12px;border:1px solid #2a2a2a;background:#0d0d0d;color:#f4f4f5;font-style:italic;line-height:1.65;">«${escapeHtml(message)}»</blockquote>
-         ${fromLabel ? `<p style="margin:0 0 16px;font-size:12px;color:#a1a1aa;">— ${escapeHtml(fromLabel)}</p>` : ""}`
+    ? `<p style="margin:16px 0 0;padding:14px 16px;border-radius:16px;background:#3c3c3c;color:#f7f7f7;">${locale === "en" ? "“" : "«"}${escapeHtml(message)}${locale === "en" ? "”" : "»"}</p>${fromLabel ? `<p style="margin:8px 0 0;font-size:13px;color:#bdbdbd;">— ${escapeHtml(fromLabel)}</p>` : ""}`
     : "";
 
   if (locale === "en") {
     const subject = "Your CylixStudio gift details";
     const intro = fromLabel
-      ? `<p style="margin:0 0 16px;"><strong style="color:#f4f4f5;">${escapeHtml(fromLabel)}</strong> sent a <strong style="color:#f4f4f5;">CylixStudio Pro</strong> gift for <strong style="color:#f4f4f5;">${escapeHtml(duration)}</strong>. This code does not activate a plan by itself.</p>`
-      : `<p style="margin:0 0 16px;">Your <strong style="color:#f4f4f5;">CylixStudio Pro</strong> gift code for <strong style="color:#f4f4f5;">${escapeHtml(duration)}</strong> is ready. This purchase does not turn Pro on automatically.</p>`;
-    const bodyHtml = `
-      ${intro}
-      ${messageBlock}
-      ${giftCodeBlock("Gift code", pretty)}
-      <p style="margin:0 0 8px;font-weight:700;color:#f4f4f5;">How to redeem</p>
-      <ol style="margin:0;padding-inline-start:18px;">
-        <li>Open the dashboard and sign in, or create an account</li>
-        <li>Redeem this gift code on the account that should receive Pro</li>
-      </ol>
-      <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">The code works once. Don’t share it publicly.</p>
-      ${invoiceLine("en", input.transactionId)}
-    `;
-    const text = [
-      "CylixStudio Pro — gift code",
-      "",
-      fromLabel ? `From: ${fromLabel}` : null,
-      message ? `Message: ${message}` : null,
-      `Plan: CylixStudio Pro`,
-      `Interval: ${duration}`,
-      `Code: ${pretty}`,
-      "",
-      "This code does not activate Pro on its own.",
-      `Sign in and redeem at: ${dashboardUrl}`,
-      knownTransactionId(input.transactionId)
-        ? `Invoice: ${knownTransactionId(input.transactionId)}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
+      ? `<p style="margin:0;">${escapeHtml(fromLabel)} sent a CylixStudio Pro gift for ${escapeHtml(duration)}. This code does not turn Pro on by itself.</p>`
+      : `<p style="margin:0;">Your CylixStudio Pro gift code for ${escapeHtml(duration)} is ready. This purchase does not turn Pro on automatically.</p>`;
     return {
       subject,
-      text,
-      html: renderSubscriptionEmailLayout({
+      text: closeText([
+        "CylixStudio Pro gift code",
+        fromLabel ? `From: ${fromLabel}` : null,
+        message ? `Message: ${message}` : null,
+        duration,
+        `Code: ${pretty}`,
+        "This code does not activate Pro on its own.",
+        payment ? `Payment ${payment}` : null,
+        DASHBOARD_URL,
+      ]),
+      html: renderEventEmail({
         siteUrl: input.siteUrl,
         locale: "en",
-        eyebrow: "Gift",
-        title: "Your Pro gift code",
-        preheader: `Pro gift ${duration} — ${pretty}`,
-        bodyHtml,
-        cta: { label: "Open dashboard", href: dashboardUrl },
+        hero: "studio",
+        title: "A Pro gift is waiting.",
+        preheader: subject,
+        bodyHtml: `${intro}${messageBlock}${codeBlock("Gift code", pretty)}<p style="margin:18px 0 0;">Open the studio, sign in, and redeem the code on the account that should receive Pro.</p>${paymentLine("en", input.transactionId)}`,
+        cta: studioCta("en"),
       }),
     };
   }
 
   const subject = "تفاصيل هديتك في CylixStudio";
   const intro = fromLabel
-    ? `<p style="margin:0 0 16px;">أرسل <strong style="color:#f4f4f5;">${escapeHtml(fromLabel)}</strong> هدية <strong style="color:#f4f4f5;">CylixStudio Pro</strong> لمدة <strong style="color:#f4f4f5;">${escapeHtml(duration)}</strong>. الرمز وحده لا يفعّل الخطة.</p>`
-    : `<p style="margin:0 0 16px;">رمز هدية <strong style="color:#f4f4f5;">CylixStudio Pro</strong> لمدة <strong style="color:#f4f4f5;">${escapeHtml(duration)}</strong> جاهز. هذا الشراء لا يفعّل Pro تلقائيًا.</p>`;
-  const bodyHtml = `
-    ${intro}
-    ${messageBlock}
-    ${giftCodeBlock("رمز الهدية", pretty)}
-    <p style="margin:0 0 8px;font-weight:700;color:#f4f4f5;">طريقة التفعيل</p>
-    <ol style="margin:0;padding-inline-start:18px;">
-      <li>افتح لوحة التحكم وسجّل الدخول، أو أنشئ حسابًا</li>
-      <li>فعّل رمز الهدية على الحساب الذي يجب أن يحصل على Pro</li>
-    </ol>
-    <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">الرمز لمرة واحدة فقط. لا تنشره علنًا.</p>
-    ${invoiceLine("ar", input.transactionId)}
-  `;
-  const text = [
-    "CylixStudio Pro — رمز هدية",
-    "",
-    fromLabel ? `من: ${fromLabel}` : null,
-    message ? `الرسالة: ${message}` : null,
-    "الخطة: CylixStudio Pro",
-    `المدة: ${duration}`,
-    `الرمز: ${pretty}`,
-    "",
-    "الرمز لا يفعّل Pro من تلقاء نفسه.",
-    `سجّل الدخول وفعّل الرمز من: ${dashboardUrl}`,
-    knownTransactionId(input.transactionId)
-      ? `رقم العملية: ${knownTransactionId(input.transactionId)}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
+    ? `<p style="margin:0;">أرسل ${escapeHtml(fromLabel)} هدية CylixStudio Pro لمدة ${escapeHtml(duration)}. الرمز وحده لا يفعّل الخطة.</p>`
+    : `<p style="margin:0;">رمز هدية CylixStudio Pro لمدة ${escapeHtml(duration)} جاهز. هذا الشراء لا يفعّل Pro تلقائيًا.</p>`;
   return {
     subject,
-    text,
-    html: renderSubscriptionEmailLayout({
+    text: closeText([
+      "رمز هدية CylixStudio Pro",
+      fromLabel ? `من: ${fromLabel}` : null,
+      message ? `الرسالة: ${message}` : null,
+      duration,
+      `الرمز: ${pretty}`,
+      "الرمز لا يفعّل Pro من تلقاء نفسه.",
+      payment ? `رقم العملية ${payment}` : null,
+      DASHBOARD_URL,
+    ]),
+    html: renderEventEmail({
       siteUrl: input.siteUrl,
       locale: "ar",
-      eyebrow: "هدية",
-      title: "رمز هدية Pro",
-      preheader: `هدية Pro ${duration} — ${pretty}`,
-      bodyHtml,
-      cta: { label: "فتح لوحة التحكم", href: dashboardUrl },
+      hero: "studio",
+      title: "هدية Pro بانتظارك.",
+      preheader: subject,
+      bodyHtml: `${intro}${messageBlock}${codeBlock("رمز الهدية", pretty)}<p style="margin:18px 0 0;">افتح الاستوديو، سجّل الدخول، وفعّل الرمز على الحساب الذي يجب أن يحصل على Pro.</p>${paymentLine("ar", input.transactionId)}`,
+      cta: studioCta("ar"),
     }),
   };
 }
 
-function planFactRows(
-  rows: Array<{ label: string; value: string; ltr?: boolean }>,
-): string {
-  const cells = rows
-    .map((row) => {
-      const valueDir = row.ltr ? "direction:ltr;unicode-bidi:embed;" : "";
-      return `<tr>
-        <td style="padding:8px 0;color:#a1a1aa;font-size:13px;vertical-align:top;font-family:Tahoma,'Segoe UI',Arial,sans-serif;">${escapeHtml(row.label)}</td>
-        <td style="padding:8px 12px;color:#f4f4f5;font-size:13px;font-weight:700;vertical-align:top;font-family:Tahoma,'Segoe UI',Arial,sans-serif;${valueDir}">${escapeHtml(row.value)}</td>
-      </tr>`;
-    })
-    .join("");
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 16px;border-top:1px solid #2a2a2a;">${cells}</table>`;
-}
-
-/** Confirmation after direct Pro activation (no code). */
+/** Confirmation after verified direct Pro activation. */
 export function buildDirectActivatedTemplate(input: DirectActivatedTemplateInput): BuiltEmail {
   const locale = input.locale ?? "ar";
-  const duration = billingPhrase(input.interval, input.durationDays, locale);
-  const site = input.siteUrl.replace(/\/$/, "");
-  const dashUrl = SUBSCRIPTION_DASHBOARD_URL;
-  const expires =
-    input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
-      ? new Date(input.expiresAt).toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })
-      : null;
-
-  const invoice = knownTransactionId(input.transactionId);
-
-  if (locale === "en") {
-    const subject = "تفاصيل تفعيل حسابك في CylixStudio";
-    const rows = [
-      { label: "Plan", value: "CylixStudio Pro" },
-      { label: "Interval", value: duration },
-      { label: "Status", value: "Active" },
-      ...(expires ? [{ label: "Expires", value: expires }] : []),
-      ...(invoice ? [{ label: "Invoice", value: invoice, ltr: true }] : []),
-    ];
-    const bodyHtml = `
-      <p style="margin:0 0 16px;">Your payment succeeded. <strong style="color:#f4f4f5;">CylixStudio Pro</strong> is active on your account.</p>
-      ${planFactRows(rows)}
-      <p style="margin:0;">No activation code is required. Continue from the dashboard.</p>
-    `;
-    return {
-      subject,
-      text: [
-        "Payment succeeded.",
-        "Plan: CylixStudio Pro",
-        `Interval: ${duration}`,
-        "Status: Active",
-        expires ? `Expires: ${expires}` : null,
-        invoice ? `Invoice: ${invoice}` : null,
-        "",
-        dashUrl,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      html: renderSubscriptionEmailLayout({
-        siteUrl: site,
-        locale: "en",
-        eyebrow: "Payment succeeded",
-        title: "CylixStudio Pro is active",
-        preheader: subject,
-        bodyHtml,
-        cta: { label: "Open dashboard", href: dashUrl },
-      }),
-    };
-  }
-
+  const duration = planPhrase(input.interval, input.durationDays, locale);
+  const expires = humanExpiry(input.expiresAt, locale);
+  const payment = knownTransactionId(input.transactionId);
   const subject = "تفاصيل تفعيل حسابك في CylixStudio";
-  const rows = [
-    { label: "الخطة", value: "CylixStudio Pro" },
-    { label: "المدة", value: duration },
-    { label: "الحالة", value: "نشط" },
-    ...(expires ? [{ label: "ينتهي في", value: expires }] : []),
-    ...(invoice ? [{ label: "رقم العملية", value: invoice, ltr: true }] : []),
-  ];
+  const lead =
+    locale === "en"
+      ? "Your payment is verified. CylixStudio Pro is on and the studio tools are unlocked."
+      : "تم التحقق من الدفع. CylixStudio Pro صار نشط وكل أدوات الاستوديو مفتوحة.";
   const bodyHtml = `
-    <p style="margin:0 0 16px;">تم الدفع بنجاح. اشتراك <strong style="color:#f4f4f5;">CylixStudio Pro</strong> نشط الآن على حسابك.</p>
-    ${planFactRows(rows)}
-    <p style="margin:0;">لا تحتاج رمز تفعيل. تابع من لوحة التحكم.</p>
+    <p style="margin:0;">${lead}</p>
+    <p style="margin:16px 0 0;color:#f7f7f7;font-weight:700;">${escapeHtml(duration)}</p>
+    ${expires ? `<p style="margin:6px 0 0;color:#f7f7f7;">${escapeHtml(expires)}</p>` : ""}
+    ${paymentLine(locale, input.transactionId)}
   `;
   return {
     subject,
-    text: [
-      "تم الدفع بنجاح.",
-      "الخطة: CylixStudio Pro",
-      `المدة: ${duration}`,
-      "الحالة: نشط",
-      expires ? `ينتهي في: ${expires}` : null,
-      invoice ? `رقم العملية: ${invoice}` : null,
-      "",
-      dashUrl,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    html: renderSubscriptionEmailLayout({
-      siteUrl: site,
-      locale: "ar",
-      eyebrow: "تم الدفع بنجاح",
-      title: "اشتراك CylixStudio Pro نشط",
+    text: closeText([
+      "Pro is active. Everything is unlocked.",
+      lead,
+      duration,
+      expires,
+      payment ? (locale === "ar" ? `رقم العملية ${payment}` : `Payment ${payment}`) : null,
+      DASHBOARD_URL,
+      "Build. Stream. Create.",
+    ]),
+    html: renderEventEmail({
+      siteUrl: input.siteUrl,
+      locale,
+      hero: "pro",
+      title: "Pro is active. Everything is unlocked.",
       preheader: subject,
       bodyHtml,
-      cta: { label: "فتح لوحة التحكم", href: dashUrl },
+      cta: { label: "Open Studio", href: DASHBOARD_URL },
+      tagline: "Build. Stream. Create.",
+    }),
+  };
+}
+
+export function buildPlatformConnectedTemplate(input: PlatformConnectionTemplateInput): BuiltEmail {
+  const locale = input.locale ?? "ar";
+  const name = platformName(input.platform);
+  const headline =
+    locale === "ar"
+      ? CONNECTED_HEADLINE[input.platform]
+      : `${name} is connected. Your account is ready.`;
+  const lead =
+    locale === "ar"
+      ? `حساب ${name} صار مربوطًا بالاستوديو، وتقدر تكمل من لوحة التحكم.`
+      : `Your ${name} account is linked. You can go live from the studio.`;
+  const subject = headline;
+  return {
+    subject,
+    text: closeText([headline, lead, input.username?.trim() || null, DASHBOARD_URL]),
+    html: renderEventEmail({
+      siteUrl: input.siteUrl,
+      locale,
+      hero: platformHero(input.platform),
+      title: headline,
+      preheader: headline,
+      bodyHtml: `<p style="margin:0;">${escapeHtml(lead)}</p>`,
+      platformCard: statusCard(input.platform, input.username, locale, true),
+      cta: studioCta(locale),
+    }),
+  };
+}
+
+export function buildPlatformDisconnectedTemplate(input: PlatformDisconnectedTemplateInput): BuiltEmail {
+  const locale = input.locale ?? "ar";
+  const name = platformName(input.platform);
+  const headline = locale === "ar" ? `تم فصل ${name}.` : `${name} was disconnected.`;
+  const lead =
+    locale === "ar"
+      ? `الربط مع ${name} ما عاد نشط. تقدر ترجعه من الإعدادات متى ما تبي.`
+      : `The ${name} link is no longer active. You can connect it again from settings.`;
+  const subject = headline;
+  const cta =
+    locale === "ar"
+      ? { label: "فتح الإعدادات", href: STUDIO_CONNECTIONS_URL }
+      : { label: "Open settings", href: STUDIO_CONNECTIONS_URL };
+  return {
+    subject,
+    text: closeText([headline, lead, input.username?.trim() || null, STUDIO_CONNECTIONS_URL]),
+    html: renderEventEmail({
+      siteUrl: input.siteUrl,
+      locale,
+      hero: "disconnect",
+      title: headline,
+      preheader: headline,
+      bodyHtml: `<p style="margin:0;">${escapeHtml(lead)}</p>`,
+      platformCard: statusCard(input.platform, input.username, locale, false),
+      cta,
+    }),
+  };
+}
+
+export function buildVersionBroadcastTemplate(input: VersionBroadcastTemplateInput): BuiltEmail {
+  const locale = input.locale ?? "ar";
+  const version = input.version.trim();
+  const headline = locale === "ar" ? "نزل إصدار جديد من الاستوديو." : "A new studio version is out.";
+  const subject = locale === "ar" ? `إصدار جديد من Cylix Studio ${version}` : `Cylix Studio ${version} is out`;
+  const lead =
+    locale === "ar"
+      ? `الاستوديو صار على الإصدار ${version}. افتحه وكمّل البث من آخر نسخة.`
+      : `The studio is now on ${version}. Open it and keep streaming on the latest build.`;
+  return {
+    subject,
+    text: closeText([headline, version, lead, DASHBOARD_URL, "Build. Stream. Create."]),
+    html: renderEventEmail({
+      siteUrl: input.siteUrl,
+      locale,
+      hero: "version",
+      title: headline,
+      preheader: subject,
+      bodyHtml: `<p style="margin:0;">${escapeHtml(lead)}</p><p style="margin:16px 0 0;color:#f7f7f7;font-weight:800;font-size:22px;direction:ltr;unicode-bidi:embed;">${escapeHtml(version)}</p>`,
+      cta: { label: "Open Studio", href: DASHBOARD_URL },
+      tagline: "Build. Stream. Create.",
     }),
   };
 }
@@ -518,7 +522,10 @@ export type EmailTemplateId =
   | "welcome"
   | "invoice_notice"
   | "gift_activation"
-  | "direct_activated";
+  | "direct_activated"
+  | "platform_connected"
+  | "platform_disconnected"
+  | "version_broadcast";
 
 export type EmailTemplatePayload =
   | { template: "pro_activation"; data: ProActivationTemplateInput }
@@ -526,7 +533,21 @@ export type EmailTemplatePayload =
   | { template: "invoice_notice"; data: InvoiceNoticeTemplateInput }
   | { template: "gift_activation"; data: GiftActivationTemplateInput }
   | { template: "direct_activated"; data: DirectActivatedTemplateInput }
-  | { template: "custom"; data: { siteUrl: string; title: string; bodyHtml: string; subject: string; text: string; locale?: EmailLocale; cta?: { label: string; href: string } } };
+  | { template: "platform_connected"; data: PlatformConnectionTemplateInput }
+  | { template: "platform_disconnected"; data: PlatformDisconnectedTemplateInput }
+  | { template: "version_broadcast"; data: VersionBroadcastTemplateInput }
+  | {
+      template: "custom";
+      data: {
+        siteUrl: string;
+        title: string;
+        bodyHtml: string;
+        subject: string;
+        text: string;
+        locale?: EmailLocale;
+        cta?: { label: string; href: string };
+      };
+    };
 
 export function buildEmailFromTemplate(payload: EmailTemplatePayload): BuiltEmail {
   switch (payload.template) {
@@ -540,14 +561,21 @@ export function buildEmailFromTemplate(payload: EmailTemplatePayload): BuiltEmai
       return buildGiftActivationTemplate(payload.data);
     case "direct_activated":
       return buildDirectActivatedTemplate(payload.data);
+    case "platform_connected":
+      return buildPlatformConnectedTemplate(payload.data);
+    case "platform_disconnected":
+      return buildPlatformDisconnectedTemplate(payload.data);
+    case "version_broadcast":
+      return buildVersionBroadcastTemplate(payload.data);
     case "custom": {
       const locale = payload.data.locale ?? "ar";
       return {
         subject: payload.data.subject,
         text: payload.data.text,
-        html: renderMasterEmailLayout({
+        html: renderEventEmail({
           siteUrl: payload.data.siteUrl,
           locale,
+          hero: "studio",
           title: payload.data.title,
           bodyHtml: payload.data.bodyHtml,
           ...(payload.data.cta ? { cta: payload.data.cta } : {}),

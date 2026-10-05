@@ -1040,4 +1040,13 @@ export const EN = {
   "activity.group.count": "Repeated {count} times",
   "activity.group.entry": "Repeat",
   "alert.reply": "Reply",
+  "settings.admin.version.label": "Studio version",
+  "settings.admin.version.hint": "Shown beside BETA in the sidebar. Saving emails the update to every user.",
+  "settings.admin.version.placeholder": "v0.2",
+  "settings.admin.version.saveBroadcast": "Save & Broadcast to All Users",
+  "settings.admin.version.saving": "Saving…",
+  "settings.admin.version.saved": "Version saved",
+  "settings.admin.version.invalid": "Enter a version first",
+  "settings.admin.version.broadcastResult": "Sent to {sent} · failed {failed}",
+  "settings.admin.version.forbidden": "Only an admin can do this",
 } as const;

@@ -226,3 +226,40 @@ export const ingestStreamlabsSocketEvent = createServerFn({ method: "POST" })
     });
     return { status: "ok" as const, result };
   });
+
+/**
+ * Removes one of the signed-in user's platform links.
+ * Kick, Twitch, and YouTube send the disconnection email only after the row is gone.
+ * Pause / token refresh does not call this.
+ */
+export const disconnectPlatformConnection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: { id?: string }) => {
+    const id = (data?.id ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("invalid_connection");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await context.supabase
+      .from("platform_connections")
+      .select("id, platform, username")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    if (error || !row) return { ok: false as const, error: "not_found" as const };
+
+    const { error: deleteError } = await context.supabase
+      .from("platform_connections")
+      .delete()
+      .eq("id", row.id)
+      .eq("user_id", context.userId);
+    if (deleteError) return { ok: false as const, error: "delete_failed" as const };
+
+    const { notifyPlatformDisconnected } = await import("@/lib/connectionEmail.server");
+    await notifyPlatformDisconnected({
+      userId: context.userId,
+      platform: row.platform,
+      username: row.username,
+    });
+    return { ok: true as const };
+  });

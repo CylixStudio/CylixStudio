@@ -222,7 +222,13 @@ export async function handleOAuthCallback(request: Request, providerRaw: string)
       const socketToken =
         provider === "streamlabs" ? await fetchStreamlabsSocketToken(tokens.access_token) : null;
 
-      await supabaseAdmin.from("platform_connections").upsert(
+      const { data: priorLink, error: priorLinkError } = await supabaseAdmin
+        .from("platform_connections")
+        .select("id")
+        .eq("user_id", linkedUserId)
+        .eq("platform", config.platform)
+        .limit(1);
+      const { error: linkUpsertError } = await supabaseAdmin.from("platform_connections").upsert(
         {
           user_id: linkedUserId,
           platform: config.platform,
@@ -242,6 +248,19 @@ export async function handleOAuthCallback(request: Request, providerRaw: string)
         },
         { onConflict: "user_id,platform,platform_user_id" },
       );
+      if (linkUpsertError) {
+        console.error(
+          `[oauth:${provider}] platform_connections upsert failed`,
+          formatOAuthError(linkUpsertError),
+        );
+      } else if (!priorLinkError && (priorLink?.length ?? 0) === 0) {
+        const { notifyPlatformConnected } = await import("@/lib/connectionEmail.server");
+        await notifyPlatformConnected({
+          userId: linkedUserId,
+          platform: config.platform,
+          username: profile.username,
+        });
+      }
 
       if (provider === "kick") {
         const { ensureKickEventSubscriptions } = await import("@/lib/kickEvents.server");
@@ -373,6 +392,12 @@ export async function handleOAuthCallback(request: Request, providerRaw: string)
       console.error(`[oauth:${provider}] accounts upsert failed`, formatOAuthError(accountUpsertError));
     }
 
+    const { data: priorLogin, error: priorLoginError } = await supabaseAdmin
+      .from("platform_connections")
+      .select("id")
+      .eq("user_id", authUserId)
+      .eq("platform", config.platform)
+      .limit(1);
     const { error: connectionUpsertError } = await supabaseAdmin.from("platform_connections").upsert(
       {
         user_id: authUserId,
@@ -397,6 +422,13 @@ export async function handleOAuthCallback(request: Request, providerRaw: string)
         `[oauth:${provider}] platform_connections upsert failed`,
         formatOAuthError(connectionUpsertError),
       );
+    } else if (!priorLoginError && (priorLogin?.length ?? 0) === 0) {
+      const { notifyPlatformConnected } = await import("@/lib/connectionEmail.server");
+      await notifyPlatformConnected({
+        userId: authUserId,
+        platform: config.platform,
+        username: profile.username,
+      });
     }
 
     if (provider === "kick") {

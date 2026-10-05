@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { AdminCodesPanel } from "@/components/settings/AdminCodesPanel";
+import { AdminVersionPanel } from "@/components/settings/AdminVersionPanel";
 import { ConnectionsPanel } from "@/components/settings/ConnectionsPanel";
 import { EventTestPanel } from "@/components/settings/EventTestPanel";
 import { SettingsBackupPanel } from "@/components/settings/SettingsBackupPanel";
@@ -94,7 +95,12 @@ function SettingsPage() {
         ))}
       </div>
 
-      {tab === "Admin" && isAdmin.data ? <AdminCodesPanel /> : null}
+      {tab === "Admin" && isAdmin.data ? (
+        <>
+          <AdminVersionPanel />
+          <AdminCodesPanel />
+        </>
+      ) : null}
 
       {tab === "Test" && isAdmin.data ? <EventTestPanel /> : null}
 

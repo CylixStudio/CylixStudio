@@ -36,6 +36,8 @@ export type SendEmailInput = {
   text: string;
   replyTo?: string;
   tags?: Array<{ name: string; value: string }>;
+  /** When false, logs omit recipient addresses (used by the admin broadcast). */
+  logRecipients?: boolean;
 };
 
 export type SendEmailResult =
@@ -169,17 +171,18 @@ function normalizeRecipients(to: string | string[]): string[] {
 /** Low-level send — HTML + text already built. */
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
   const recipients = normalizeRecipients(input.to);
+  const quiet = input.logRecipients === false;
   if (recipients.length === 0) {
-    console.error("[email] invalid recipient", { to: input.to });
+    console.error("[email] invalid recipient", quiet ? { count: 0 } : { to: input.to });
     return { ok: false, error: "invalid_recipient" };
   }
 
   const opened = openSmtpTransport();
   if (!opened.ok) {
-    console.warn("[email] " + opened.error, {
-      to: recipients,
-      subject: input.subject,
-    });
+    console.warn(
+      "[email] " + opened.error,
+      quiet ? { count: recipients.length, subject: input.subject } : { to: recipients, subject: input.subject },
+    );
     return { ok: false, error: opened.error, skipped: true };
   }
 
@@ -205,15 +208,21 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     });
 
     const id = info.messageId || "sent";
-    console.info("[email] sent", { id, to: recipients, subject: input.subject, from: composed.from });
+    console.info(
+      "[email] sent",
+      quiet
+        ? { id, count: recipients.length, subject: input.subject }
+        : { id, to: recipients, subject: input.subject, from: composed.from },
+    );
     return { ok: true, id };
   } catch (err) {
     const message = redactSmtpPassword(err instanceof Error ? err.message : String(err));
-    console.error("[email] SMTP send failed", {
-      to: recipients,
-      subject: input.subject,
-      message: message || "smtp_send_failed",
-    });
+    console.error(
+      "[email] SMTP send failed",
+      quiet
+        ? { count: recipients.length, subject: input.subject, message: message || "smtp_send_failed" }
+        : { to: recipients, subject: input.subject, message: message || "smtp_send_failed" },
+    );
     return { ok: false, error: message || "smtp_send_failed" };
   } finally {
     opened.transport.close();
@@ -226,7 +235,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
 export async function sendTemplateEmail(
   to: string | string[],
   payload: EmailTemplatePayload,
-  options?: { replyTo?: string; tags?: Array<{ name: string; value: string }> },
+  options?: { replyTo?: string; tags?: Array<{ name: string; value: string }>; logRecipients?: boolean },
 ): Promise<SendEmailResult & { built?: BuiltEmail }> {
   let built: BuiltEmail;
   try {
@@ -243,6 +252,7 @@ export async function sendTemplateEmail(
     html: built.html,
     text: built.text,
     ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
+    ...(options?.logRecipients === false ? { logRecipients: false as const } : {}),
     tags: options?.tags ?? [{ name: "template", value: payload.template }],
   });
 

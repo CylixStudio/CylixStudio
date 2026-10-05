@@ -1109,6 +1109,15 @@ const DICT = {
   "activity.group.count": "تكرّر {count} مرات",
   "activity.group.entry": "تكرار",
   "alert.reply": "رد",
+  "settings.admin.version.label": "إصدار الاستوديو",
+  "settings.admin.version.hint": "يظهر بجانب BETA في الشريط الجانبي. الحفظ يرسل بريد التحديث لكل المستخدمين.",
+  "settings.admin.version.placeholder": "v0.2",
+  "settings.admin.version.saveBroadcast": "حفظ وبث لجميع المستخدمين",
+  "settings.admin.version.saving": "جارٍ الحفظ…",
+  "settings.admin.version.saved": "تم حفظ الإصدار",
+  "settings.admin.version.invalid": "اكتب رقم إصدار أولاً",
+  "settings.admin.version.broadcastResult": "تم الإرسال إلى {sent} · تعذّر {failed}",
+  "settings.admin.version.forbidden": "هذا الإجراء للمسؤول فقط",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

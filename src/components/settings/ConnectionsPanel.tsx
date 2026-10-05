@@ -9,6 +9,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   connectStreamElements,
   connectStreamlabsSocket,
+  disconnectPlatformConnection,
   startPlatformLink,
 } from "@/lib/connections.functions";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -158,6 +159,7 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
   const linkFn = useServerFn(startPlatformLink);
   const connectSeFn = useServerFn(connectStreamElements);
   const connectSlFn = useServerFn(connectStreamlabsSocket);
+  const disconnectFn = useServerFn(disconnectPlatformConnection);
 
   const [jwtDraft, setJwtDraft] = useState("");
   const [showJwt, setShowJwt] = useState(false);
@@ -286,9 +288,17 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
   };
 
   const disconnect = async (id: string) => {
-    const { error: writeError } = await supabase.from("platform_connections").delete().eq("id", id);
-    if (writeError) setError(writeError.message);
-    void refresh();
+    setError(null);
+    try {
+      const result = await disconnectFn({ data: { id } });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      void refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const seConnection = findConnection("STREAMELEMENTS");

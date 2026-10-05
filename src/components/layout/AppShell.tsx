@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   BarChart3,
@@ -102,9 +102,26 @@ function IconTip({
   );
 }
 
+const FALLBACK_STUDIO_VERSION = "v0.2";
+
 export function AppShell({ children, title, subtitle, actions, user, profile }: AppShellProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const studioVersion = useQuery({
+    queryKey: ["studio-version"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("studio_settings")
+        .select("value")
+        .eq("key", "app_version")
+        .maybeSingle();
+      if (error) return null;
+      const value = data?.value?.trim();
+      return value || null;
+    },
+    staleTime: 60_000,
+  });
+  const versionLabel = studioVersion.data?.trim() || FALLBACK_STUDIO_VERSION;
   const { t, dir } = useLanguage();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -196,7 +213,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                     </span>
                     <span className="h-2.5 w-px shrink-0 bg-primary/40" aria-hidden />
                     <span className="px-1.5 py-0.5 text-[0.58rem] font-semibold normal-case leading-none tracking-[0.14em]">
-                      v0.2
+                      {versionLabel}
                     </span>
                   </span>
                 </span>
