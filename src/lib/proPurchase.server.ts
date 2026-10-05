@@ -359,8 +359,10 @@ async function deliverSelfActivationEmail(
     locale: "ar" | "en";
     purchaseId: string;
     alreadyDelivered: boolean;
+    transactionId?: string | null;
   },
 ): Promise<{ delivered: boolean; error?: string }> {
+  const transactionId = args.transactionId?.trim() || "";
   return deliverPurchaseEmailOnce(admin, {
     purchaseId: args.purchaseId,
     alreadyDelivered: args.alreadyDelivered,
@@ -377,6 +379,7 @@ async function deliverSelfActivationEmail(
             interval: args.interval,
             durationDays: args.durationDays,
             locale: args.locale,
+            ...(transactionId ? { transactionId } : {}),
           },
         },
         {
@@ -402,8 +405,10 @@ async function deliverGiftEmail(
     alreadyDelivered: boolean;
     giftMessage?: string | null;
     fromName?: string | null;
+    transactionId?: string | null;
   },
 ): Promise<{ delivered: boolean; error?: string }> {
+  const transactionId = args.transactionId?.trim() || "";
   return deliverPurchaseEmailOnce(admin, {
     purchaseId: args.purchaseId,
     alreadyDelivered: args.alreadyDelivered,
@@ -422,6 +427,7 @@ async function deliverGiftEmail(
             locale: args.locale,
             ...(args.giftMessage ? { giftMessage: args.giftMessage } : {}),
             ...(args.fromName ? { fromName: args.fromName } : {}),
+            ...(transactionId ? { transactionId } : {}),
           },
         },
         {
@@ -445,8 +451,10 @@ async function deliverDirectConfirmation(
     purchaseId: string;
     alreadyDelivered: boolean;
     expiresAt: string | null;
+    transactionId?: string | null;
   },
 ): Promise<{ delivered: boolean; error?: string }> {
+  const transactionId = args.transactionId?.trim() || "";
   return deliverPurchaseEmailOnce(admin, {
     purchaseId: args.purchaseId,
     alreadyDelivered: args.alreadyDelivered,
@@ -463,6 +471,7 @@ async function deliverDirectConfirmation(
             durationDays: args.durationDays,
             expiresAt: args.expiresAt,
             locale: args.locale,
+            ...(transactionId ? { transactionId } : {}),
           },
         },
         {
@@ -527,6 +536,7 @@ async function grantDirectEntitlement(
       purchaseId: args.purchaseId,
       alreadyDelivered: Boolean(args.codeDeliveredAt),
       expiresAt: expires,
+      transactionId: args.providerPaymentId,
     });
     return {
       ok: true,
@@ -703,6 +713,7 @@ export async function fulfillProPurchase(
           locale,
           purchaseId: existing.id,
           alreadyDelivered: Boolean(existing.code_delivered_at),
+          transactionId: providerPaymentId,
         });
         return {
           ok: true,
@@ -766,6 +777,7 @@ export async function fulfillProPurchase(
           ...(normalizeEmail(existing.gift_recipient_email) && input.buyerName
             ? { fromName: input.buyerName }
             : {}),
+          transactionId: providerPaymentId,
         });
 
         return {
@@ -841,6 +853,7 @@ export async function fulfillProPurchase(
       locale,
       purchaseId: purchase.id,
       alreadyDelivered: false,
+      transactionId: providerPaymentId,
     });
 
     console.info("[pro-purchase] fulfilled (activation code emailed)", {
@@ -999,6 +1012,7 @@ export async function fulfillProPurchase(
     ...(giftRecipientEmail && (input.buyerName || email)
       ? { fromName: input.buyerName ?? email }
       : {}),
+    transactionId: providerPaymentId,
   });
 
   let smsResult: { delivered: boolean; error?: string } = { delivered: false };

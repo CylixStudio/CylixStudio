@@ -81,7 +81,10 @@ export type ReplyMeta = {
 };
 
 function normKey(key: string): string {
-  return key.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return key
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
 }
 
 function meaningful(value: unknown): boolean {
@@ -182,7 +185,12 @@ export function isReplyPayload(payload: unknown): boolean {
 }
 
 export function readReplyMeta(payload: unknown): ReplyMeta {
-  const state = { nodes: 0, reply: false, quote: null as string | null, appearanceMs: null as number | null };
+  const state = {
+    nodes: 0,
+    reply: false,
+    quote: null as string | null,
+    appearanceMs: null as number | null,
+  };
   walk(payload, 0, state);
   return { isReply: state.reply, quote: state.quote, appearanceMs: state.appearanceMs };
 }
@@ -195,7 +203,11 @@ export function annotateReplyPayload(raw: unknown): unknown {
   if (!isReplyPayload(raw)) return raw;
   const meta = readReplyMeta(raw);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { isReply: true, ...(meta.quote ? { replyQuote: meta.quote } : {}), payload: raw ?? null };
+    return {
+      isReply: true,
+      ...(meta.quote ? { replyQuote: meta.quote } : {}),
+      payload: raw ?? null,
+    };
   }
   const record = { ...(raw as Record<string, unknown>) };
   record["isReply"] = true;

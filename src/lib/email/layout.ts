@@ -1,6 +1,8 @@
 /**
- * CylixStudio master transactional email layout.
- * Table-based HTML for broad client support; RTL-first Arabic + brand #bee1fc.
+ * CylixStudio transactional email layout.
+ * Table-based HTML, inline CSS, system fonts. Subscription receipts use
+ * page #0d0d0d, card #161616, and accent #22c55e.
+ * The logo is a CID attachment (see email.server), not a remote image.
  */
 
 export type EmailLayoutOptions = {
@@ -20,6 +22,8 @@ export type EmailLayoutOptions = {
   preheader?: string;
 };
 
+const FONT = "Tahoma,'Segoe UI',Arial,sans-serif";
+
 const BRAND = {
   bg: "#0a0a0a",
   card: "#111111",
@@ -31,6 +35,12 @@ const BRAND = {
   primaryText: "#111111",
 };
 
+/** Content-ID for the inline PNG attached by the SMTP sender. */
+export const EMAIL_LOGO_CID = "cylixstudio-logo";
+
+/** Visible From / Reply-To mailbox unless EMAIL_FROM overrides it. */
+export const TRANSACTIONAL_FROM_ADDRESS = "noreply@cylixstudio.com";
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -39,9 +49,57 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Absolute logo URL for email clients (PNG, not SVG). */
+/**
+ * @deprecated Transactional HTML uses `cid:cylixstudio-logo`. Kept so older
+ * imports still resolve; do not put this URL in a message body.
+ */
 export function emailLogoUrl(siteUrl: string): string {
   return `${siteUrl.replace(/\/$/, "")}/apple-touch-icon.png`;
+}
+
+function organizationJsonLd(siteUrl: string): string {
+  const payload = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "CylixStudio",
+    url: siteUrl.replace(/\/$/, "") || "https://cylixstudio.com",
+    email: TRANSACTIONAL_FROM_ADDRESS,
+  };
+  const json = JSON.stringify(payload).replace(/</g, "\\u003c");
+  return `<script type="application/ld+json">${json}</script>`;
+}
+
+/** Centered mark in a dark frame. The image bytes travel as a CID attachment. */
+function framedLogoBlock(frameBg: string, border: string, text: string, accent: string): string {
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">
+    <tr>
+      <td align="center" style="background:${frameBg};border:1px solid ${border};border-radius:14px;padding:8px 10px;">
+        <img src="cid:${EMAIL_LOGO_CID}" width="56" alt="CylixStudio" style="display:block;width:56px;max-width:56px;height:auto;border:0;outline:none;text-decoration:none;" />
+      </td>
+    </tr>
+    <tr>
+      <td align="center" style="padding-top:10px;font-family:${FONT};font-size:15px;line-height:1.3;font-weight:700;color:${text};">CylixStudio <span style="color:${accent};font-weight:600;">v0.2</span></td>
+    </tr>
+  </table>`;
+}
+
+/** Table button with an Outlook VML fallback. Inline styles only. */
+function bulletproofButton(label: string, href: string, background: string, color: string): string {
+  const safeHref = escapeHtml(href);
+  const safeLabel = escapeHtml(label);
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:28px auto 0;">
+    <tr>
+      <td align="center" bgcolor="${background}" style="border-radius:10px;background:${background};">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${safeHref}" style="height:44px;v-text-anchor:middle;width:260px;" arcsize="20%" stroke="f" fillcolor="${background}">
+          <w:anchorlock/>
+          <center style="color:${color};font-family:Tahoma,Arial,sans-serif;font-size:14px;font-weight:bold;">${safeLabel}</center>
+        </v:roundrect>
+        <![endif]-->
+        <a href="${safeHref}" style="display:inline-block;padding:12px 22px;font-size:14px;line-height:20px;font-weight:700;color:${color};text-decoration:none;border-radius:10px;font-family:${FONT};mso-hide:all;">${safeLabel}</a>
+      </td>
+    </tr>
+  </table>`;
 }
 
 /**
@@ -52,7 +110,6 @@ export function renderMasterEmailLayout(options: EmailLayoutOptions): string {
   const locale = options.locale ?? "ar";
   const dir = locale === "ar" ? "rtl" : "ltr";
   const site = options.siteUrl.replace(/\/$/, "");
-  const logo = emailLogoUrl(site);
   const year = new Date().getFullYear();
   const preheader = options.preheader
     ? `<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${escapeHtml(options.preheader)}</div>`
@@ -63,13 +120,7 @@ export function renderMasterEmailLayout(options: EmailLayoutOptions): string {
     : "";
 
   const cta = options.cta
-    ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 0;">
-        <tr>
-          <td style="border-radius:10px;background:${BRAND.primary};">
-            <a href="${escapeHtml(options.cta.href)}" style="display:inline-block;padding:12px 20px;font-size:14px;font-weight:700;color:${BRAND.primaryText};text-decoration:none;font-family:Tahoma,'Segoe UI',Arial,sans-serif;">${escapeHtml(options.cta.label)}</a>
-          </td>
-        </tr>
-      </table>`
+    ? bulletproofButton(options.cta.label, options.cta.href, BRAND.primary, BRAND.primaryText)
     : "";
 
   const footerLinks =
@@ -107,7 +158,7 @@ export function renderMasterEmailLayout(options: EmailLayoutOptions): string {
   <title>${escapeHtml(options.title)}</title>
   <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 </head>
-<body style="margin:0;padding:0;background:${BRAND.bg};color:${BRAND.text};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body dir="${dir}" style="margin:0;padding:0;background:${BRAND.bg};color:${BRAND.text};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
   ${preheader}
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${BRAND.bg};padding:32px 12px;">
     <tr>
@@ -115,10 +166,7 @@ export function renderMasterEmailLayout(options: EmailLayoutOptions): string {
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;">
           <tr>
             <td align="center" style="padding:0 0 20px;">
-              <a href="${site}" style="text-decoration:none;">
-                <img src="${logo}" width="56" height="56" alt="CylixStudio" style="display:block;border:0;border-radius:14px;outline:none;" />
-              </a>
-              <p style="margin:10px 0 0;font-size:15px;font-weight:700;letter-spacing:0.04em;color:${BRAND.text};font-family:Tahoma,'Segoe UI',Arial,sans-serif;">CylixStudio</p>
+              ${framedLogoBlock(BRAND.card, "rgba(255,255,255,0.08)", BRAND.text, BRAND.primary)}
             </td>
           </tr>
           <tr>
@@ -148,7 +196,7 @@ export function renderMasterEmailLayout(options: EmailLayoutOptions): string {
 /** Production dashboard linked from payment and gift emails. */
 export const SUBSCRIPTION_DASHBOARD_URL = "https://cylixstudio.com/dashboard";
 
-/** From, Reply-To, and the support line on payment and gift receipts. */
+/** Support address printed in the receipt footer. From / Reply-To use noreply. */
 export const SUBSCRIPTION_SUPPORT_EMAIL = "support@cylixstudio.com";
 
 const PAYMENT = {
@@ -176,17 +224,11 @@ export function renderSubscriptionEmailLayout(options: EmailLayoutOptions): stri
     : "";
 
   const eyebrow = options.eyebrow
-    ? `<p style="margin:0 0 8px;font-size:12px;letter-spacing:0.04em;color:${PAYMENT.accent};font-weight:700;font-family:Tahoma,'Segoe UI',Arial,sans-serif;">${escapeHtml(options.eyebrow)}</p>`
+    ? `<p style="margin:0 0 8px;font-size:12px;letter-spacing:0.04em;color:${PAYMENT.accent};font-weight:700;font-family:${FONT};">${escapeHtml(options.eyebrow)}</p>`
     : "";
 
   const cta = options.cta
-    ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 0;">
-        <tr>
-          <td style="border-radius:10px;background:${PAYMENT.accent};">
-            <a href="${escapeHtml(options.cta.href)}" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:700;color:${PAYMENT.accentText};text-decoration:none;font-family:Tahoma,'Segoe UI',Arial,sans-serif;">${escapeHtml(options.cta.label)}</a>
-          </td>
-        </tr>
-      </table>`
+    ? bulletproofButton(options.cta.label, options.cta.href, PAYMENT.accent, PAYMENT.accentText)
     : "";
 
   const supportLine =
@@ -203,6 +245,7 @@ export function renderSubscriptionEmailLayout(options: EmailLayoutOptions): stri
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="x-ua-compatible" content="ie=edge" />
   <title>${escapeHtml(options.title)}</title>
+  ${organizationJsonLd(options.siteUrl)}
   <style>
     @media only screen and (max-width: 600px) {
       .cs-shell { padding: 20px 10px !important; }
@@ -210,29 +253,29 @@ export function renderSubscriptionEmailLayout(options: EmailLayoutOptions): stri
     }
   </style>
 </head>
-<body style="margin:0;padding:0;background:${PAYMENT.bg};color:${PAYMENT.text};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body dir="${dir}" style="margin:0;padding:0;background:${PAYMENT.bg};color:${PAYMENT.text};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
   ${preheader}
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="cs-shell" style="background:${PAYMENT.bg};padding:32px 12px;">
     <tr>
       <td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;">
           <tr>
-            <td align="${dir === "rtl" ? "right" : "left"}" style="padding:0 4px 16px;font-family:Tahoma,'Segoe UI',Arial,sans-serif;">
-              <p style="margin:0;font-size:20px;line-height:1.3;font-weight:700;color:${PAYMENT.text};">CylixStudio <span style="color:${PAYMENT.accent};">v0.2</span></p>
+            <td align="center" style="padding:0 4px 18px;">
+              ${framedLogoBlock(PAYMENT.card, PAYMENT.border, PAYMENT.text, PAYMENT.accent)}
             </td>
           </tr>
           <tr>
             <td class="cs-card" style="background:${PAYMENT.card};border:1px solid ${PAYMENT.border};border-radius:16px;padding:28px 24px;">
               ${eyebrow}
-              <h1 style="margin:0 0 14px;font-size:22px;line-height:1.35;font-weight:700;color:${PAYMENT.text};font-family:Tahoma,'Segoe UI',Arial,sans-serif;">${escapeHtml(options.title)}</h1>
-              <div style="font-size:14px;line-height:1.7;color:${PAYMENT.muted};font-family:Tahoma,'Segoe UI',Arial,sans-serif;">
+              <h1 style="margin:0 0 14px;font-size:22px;line-height:1.35;font-weight:700;color:${PAYMENT.text};font-family:${FONT};">${escapeHtml(options.title)}</h1>
+              <div style="font-size:14px;line-height:1.7;color:${PAYMENT.muted};font-family:${FONT};">
                 ${options.bodyHtml}
               </div>
               ${cta}
             </td>
           </tr>
           <tr>
-            <td align="center" style="padding:22px 8px 0;font-size:12px;line-height:1.7;color:${PAYMENT.faint};font-family:Tahoma,'Segoe UI',Arial,sans-serif;">
+            <td align="center" style="padding:22px 8px 0;font-size:12px;line-height:1.7;color:${PAYMENT.faint};font-family:${FONT};">
               <p style="margin:0 0 6px;">${supportLine}</p>
               <p style="margin:0;">${copyright}</p>
             </td>

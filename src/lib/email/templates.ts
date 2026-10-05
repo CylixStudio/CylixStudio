@@ -20,6 +20,8 @@ export type ProActivationTemplateInput = {
   code: string;
   interval: ProBillingInterval | "lifetime" | "custom";
   durationDays: number;
+  /** StreamPay payment id or purchase id, when fulfillment already has one. */
+  transactionId?: string | null;
   locale?: EmailLocale;
 };
 
@@ -45,6 +47,8 @@ export type GiftActivationTemplateInput = {
   giftMessage?: string | null;
   /** Buyer display — shown as the sender of the gift */
   fromName?: string | null;
+  /** Included only when the purchase record already has a payment id. */
+  transactionId?: string | null;
   locale?: EmailLocale;
 };
 
@@ -53,6 +57,8 @@ export type DirectActivatedTemplateInput = {
   interval: ProBillingInterval | "lifetime" | "custom";
   durationDays: number;
   expiresAt?: string | null;
+  /** StreamPay payment id or purchase id already stored by fulfillProPurchase. */
+  transactionId?: string | null;
   locale?: EmailLocale;
 };
 
@@ -75,6 +81,7 @@ export function buildProActivationTemplate(input: ProActivationTemplateInput): B
         <li>Choose <strong style="color:#f4f4f5;">Enter activation code</strong> and paste the code</li>
       </ol>
       <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">Do not share this code. It can only be used once.</p>
+      ${invoiceLine("en", input.transactionId)}
     `;
     const text = [
       subject,
@@ -87,6 +94,9 @@ export function buildProActivationTemplate(input: ProActivationTemplateInput): B
       "",
       "Sign in, open Settings → Account & subscription, and enter the code.",
       dashboardUrl,
+      knownTransactionId(input.transactionId)
+        ? `Invoice: ${knownTransactionId(input.transactionId)}`
+        : null,
       "",
       "The code works once. Pro stays inactive until you redeem it.",
     ].join("\n");
@@ -117,6 +127,7 @@ export function buildProActivationTemplate(input: ProActivationTemplateInput): B
       <li>اختر <strong style="color:#f4f4f5;">إدخال رمز التفعيل</strong> والصق الرمز</li>
     </ol>
     <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">لا تشارك هذا الرمز. يُستخدم مرة واحدة فقط.</p>
+    ${invoiceLine("ar", input.transactionId)}
   `;
   const text = [
     subject,
@@ -129,6 +140,9 @@ export function buildProActivationTemplate(input: ProActivationTemplateInput): B
     "",
     "سجّل الدخول، ثم من الإعدادات ← الحساب والاشتراك أدخل الرمز.",
     dashboardUrl,
+    knownTransactionId(input.transactionId)
+      ? `رقم العملية: ${knownTransactionId(input.transactionId)}`
+      : null,
     "",
     "الرمز لمرة واحدة. تبقى الخطة غير نشطة حتى التفعيل.",
   ].join("\n");
@@ -252,6 +266,19 @@ function billingPhrase(
   return `${durationDays} يومًا`;
 }
 
+function knownTransactionId(value: string | null | undefined): string | null {
+  const id = value?.trim();
+  return id ? id : null;
+}
+
+/** Quiet reference line. Omitted when fulfillment has no transaction id. */
+function invoiceLine(locale: EmailLocale, transactionId: string | null | undefined): string {
+  const id = knownTransactionId(transactionId);
+  if (!id) return "";
+  const label = locale === "ar" ? "رقم العملية" : "Invoice";
+  return `<p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#a1a1aa;">${label}: <span style="color:#f4f4f5;font-weight:700;direction:ltr;unicode-bidi:embed;">${escapeHtml(id)}</span></p>`;
+}
+
 function giftCodeBlock(label: string, pretty: string): string {
   return `<div style="margin:0 0 20px;padding:18px 16px;border-radius:12px;background:#0d0d0d;border:1px solid rgba(34,197,94,0.45);text-align:center;">
         <p style="margin:0 0 6px;font-size:11px;letter-spacing:0.08em;color:#a1a1aa;">${escapeHtml(label)}</p>
@@ -291,6 +318,7 @@ export function buildGiftActivationTemplate(input: GiftActivationTemplateInput):
         <li>Redeem this gift code on the account that should receive Pro</li>
       </ol>
       <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">The code works once. Don’t share it publicly.</p>
+      ${invoiceLine("en", input.transactionId)}
     `;
     const text = [
       "CylixStudio Pro — gift code",
@@ -303,6 +331,9 @@ export function buildGiftActivationTemplate(input: GiftActivationTemplateInput):
       "",
       "This code does not activate Pro on its own.",
       `Sign in and redeem at: ${dashboardUrl}`,
+      knownTransactionId(input.transactionId)
+        ? `Invoice: ${knownTransactionId(input.transactionId)}`
+        : null,
     ]
       .filter(Boolean)
       .join("\n");
@@ -336,6 +367,7 @@ export function buildGiftActivationTemplate(input: GiftActivationTemplateInput):
       <li>فعّل رمز الهدية على الحساب الذي يجب أن يحصل على Pro</li>
     </ol>
     <p style="margin:18px 0 0;font-size:12px;color:#a1a1aa;">الرمز لمرة واحدة فقط. لا تنشره علنًا.</p>
+    ${invoiceLine("ar", input.transactionId)}
   `;
   const text = [
     "CylixStudio Pro — رمز هدية",
@@ -348,6 +380,9 @@ export function buildGiftActivationTemplate(input: GiftActivationTemplateInput):
     "",
     "الرمز لا يفعّل Pro من تلقاء نفسه.",
     `سجّل الدخول وفعّل الرمز من: ${dashboardUrl}`,
+    knownTransactionId(input.transactionId)
+      ? `رقم العملية: ${knownTransactionId(input.transactionId)}`
+      : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -368,15 +403,16 @@ export function buildGiftActivationTemplate(input: GiftActivationTemplateInput):
 }
 
 function planFactRows(
-  rows: Array<{ label: string; value: string }>,
+  rows: Array<{ label: string; value: string; ltr?: boolean }>,
 ): string {
   const cells = rows
-    .map(
-      (row) => `<tr>
-        <td style="padding:8px 0;color:#a1a1aa;font-size:13px;vertical-align:top;">${escapeHtml(row.label)}</td>
-        <td style="padding:8px 0 8px 16px;color:#f4f4f5;font-size:13px;font-weight:700;vertical-align:top;">${escapeHtml(row.value)}</td>
-      </tr>`,
-    )
+    .map((row) => {
+      const valueDir = row.ltr ? "direction:ltr;unicode-bidi:embed;" : "";
+      return `<tr>
+        <td style="padding:8px 0;color:#a1a1aa;font-size:13px;vertical-align:top;font-family:Tahoma,'Segoe UI',Arial,sans-serif;">${escapeHtml(row.label)}</td>
+        <td style="padding:8px 12px;color:#f4f4f5;font-size:13px;font-weight:700;vertical-align:top;font-family:Tahoma,'Segoe UI',Arial,sans-serif;${valueDir}">${escapeHtml(row.value)}</td>
+      </tr>`;
+    })
     .join("");
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 16px;border-top:1px solid #2a2a2a;">${cells}</table>`;
 }
@@ -396,6 +432,8 @@ export function buildDirectActivatedTemplate(input: DirectActivatedTemplateInput
         })
       : null;
 
+  const invoice = knownTransactionId(input.transactionId);
+
   if (locale === "en") {
     const subject = "تفاصيل تفعيل حسابك في CylixStudio";
     const rows = [
@@ -403,6 +441,7 @@ export function buildDirectActivatedTemplate(input: DirectActivatedTemplateInput
       { label: "Interval", value: duration },
       { label: "Status", value: "Active" },
       ...(expires ? [{ label: "Expires", value: expires }] : []),
+      ...(invoice ? [{ label: "Invoice", value: invoice, ltr: true }] : []),
     ];
     const bodyHtml = `
       <p style="margin:0 0 16px;">Your payment succeeded. <strong style="color:#f4f4f5;">CylixStudio Pro</strong> is active on your account.</p>
@@ -417,6 +456,7 @@ export function buildDirectActivatedTemplate(input: DirectActivatedTemplateInput
         `Interval: ${duration}`,
         "Status: Active",
         expires ? `Expires: ${expires}` : null,
+        invoice ? `Invoice: ${invoice}` : null,
         "",
         dashUrl,
       ]
@@ -440,6 +480,7 @@ export function buildDirectActivatedTemplate(input: DirectActivatedTemplateInput
     { label: "المدة", value: duration },
     { label: "الحالة", value: "نشط" },
     ...(expires ? [{ label: "ينتهي في", value: expires }] : []),
+    ...(invoice ? [{ label: "رقم العملية", value: invoice, ltr: true }] : []),
   ];
   const bodyHtml = `
     <p style="margin:0 0 16px;">تم الدفع بنجاح. اشتراك <strong style="color:#f4f4f5;">CylixStudio Pro</strong> نشط الآن على حسابك.</p>
@@ -454,6 +495,7 @@ export function buildDirectActivatedTemplate(input: DirectActivatedTemplateInput
       `المدة: ${duration}`,
       "الحالة: نشط",
       expires ? `ينتهي في: ${expires}` : null,
+      invoice ? `رقم العملية: ${invoice}` : null,
       "",
       dashUrl,
     ]

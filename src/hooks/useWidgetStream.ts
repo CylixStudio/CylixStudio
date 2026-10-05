@@ -212,7 +212,10 @@ export function useWidgetStream(publicToken: string | null) {
             color: (payload.color as string | null) ?? null,
             badges: Array.isArray(payload.badges) ? (payload.badges as string[]) : [],
             text: String(payload.text ?? ""),
-            at: typeof payload.at === "number" && payload.at > 0 ? payload.at : (reply.appearanceMs ?? Date.now()),
+            at:
+              typeof payload.at === "number" && payload.at > 0
+                ? payload.at
+                : (reply.appearanceMs ?? Date.now()),
             isReply: payload.isReply === true || reply.isReply,
             replyQuote: typeof payload.replyQuote === "string" ? payload.replyQuote : reply.quote,
           },

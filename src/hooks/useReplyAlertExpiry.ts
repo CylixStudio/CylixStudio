@@ -112,8 +112,7 @@ export function useReplyAlertExpiry<T>(
     if (state === "fade") return true;
     const given = options.appearanceMs(item);
     const cached = firstSeen.current.get(id);
-    const appearance =
-      given != null && Number.isFinite(given) && given > 0 ? given : cached;
+    const appearance = given != null && Number.isFinite(given) && given > 0 ? given : cached;
     if (appearance == null) return true;
     return !isReplyExpired(appearance);
   });

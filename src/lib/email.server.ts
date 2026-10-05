@@ -7,13 +7,21 @@
  * does not connect at import time. If SMTP_PASSWORD is unset, send fails with
  * "SMTP is not configured" and does not fall through to another provider.
  *
- * From default: CylixStudio <support@cylixstudio.com> (EMAIL_FROM override).
- * Reply-To default: support@cylixstudio.com.
+ * From default: CylixStudio <noreply@cylixstudio.com> (EMAIL_FROM override).
+ * Reply-To matches that From address. SMTP auth stays on SMTP_USER.
  *
  * These messages are transactional receipts. Do not add List-Unsubscribe,
  * List-Unsubscribe-Post, or Precedence — those headers classify mail as bulk.
  */
-import { SUBSCRIPTION_SUPPORT_EMAIL } from "@/lib/email/layout";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import logoInline from "@/assets/Logo/cylix-studio.png?inline";
+import {
+  EMAIL_LOGO_CID,
+  TRANSACTIONAL_FROM_ADDRESS,
+} from "@/lib/email/layout";
 import { openSmtpTransport } from "@/lib/email/smtp.server";
 import {
   buildEmailFromTemplate,
@@ -34,8 +42,67 @@ export type SendEmailResult =
   | { ok: true; id: string }
   | { ok: false; error: string; skipped?: boolean };
 
-/** Mailbox on the cylixstudio.com sending domain. Display name is CylixStudio. */
-export const DEFAULT_FROM = `CylixStudio <${SUBSCRIPTION_SUPPORT_EMAIL}>`;
+/** Visible From header. SMTP_USER can stay the authenticated mailbox. */
+export const DEFAULT_FROM = `CylixStudio <${TRANSACTIONAL_FROM_ADDRESS}>`;
+
+function mailboxFromHeader(from: string): string {
+  const angled = from.match(/<([^<>\s]+@[^<>\s]+)>/);
+  if (angled?.[1]) return angled[1];
+  const bare = from.trim();
+  if (bare.includes("@") && !bare.includes(" ")) return bare;
+  return TRANSACTIONAL_FROM_ADDRESS;
+}
+
+type LogoAttachment = {
+  filename: string;
+  content: Buffer;
+  cid: string;
+  contentType: "image/png";
+  contentDisposition: "inline";
+};
+
+function logoFromDataUrl(value: string): Buffer | null {
+  const match = value.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=\r\n]+)$/);
+  if (!match?.[1]) return null;
+  try {
+    const bytes = Buffer.from(match[1].replace(/\s/g, ""), "base64");
+    return bytes.length > 0 ? bytes : null;
+  } catch {
+    return null;
+  }
+}
+
+function logoFromDisk(): Buffer | null {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(process.cwd(), "src/assets/Logo/cylix-studio.png"),
+    path.resolve(here, "../../assets/Logo/cylix-studio.png"),
+    path.resolve(here, "../../../src/assets/Logo/cylix-studio.png"),
+  ];
+  for (const file of candidates) {
+    try {
+      const bytes = readFileSync(file);
+      if (bytes.length > 0) return bytes;
+    } catch {
+      // Next candidate. Missing logo must not throw at startup.
+    }
+  }
+  return null;
+}
+
+/** PNG bytes for the CID logo. Prefers the bundled asset, then the repo file. */
+export function transactionalLogoAttachment(): LogoAttachment | null {
+  const content =
+    (typeof logoInline === "string" ? logoFromDataUrl(logoInline) : null) ?? logoFromDisk();
+  if (!content) return null;
+  return {
+    filename: "cylix-studio.png",
+    content,
+    cid: EMAIL_LOGO_CID,
+    contentType: "image/png",
+    contentDisposition: "inline",
+  };
+}
 
 /**
  * Receipt headers only. Absent on purpose: List-Unsubscribe, List-Unsubscribe-Post, Precedence.
@@ -85,7 +152,7 @@ export function composeTransactionalSend(
     subject: input.subject,
     html: input.html,
     text: input.text,
-    replyTo: input.replyTo?.trim() || SUBSCRIPTION_SUPPORT_EMAIL,
+    replyTo: input.replyTo?.trim() || mailboxFromHeader(from),
     headers: transactionalReceiptHeaders(),
   };
   if (input.tags?.length) payload.tags = input.tags;
@@ -123,6 +190,9 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   }
 
   try {
+    const logo = composed.html.includes(`cid:${EMAIL_LOGO_CID}`)
+      ? transactionalLogoAttachment()
+      : null;
     const info = await opened.transport.sendMail({
       from: composed.from,
       to: composed.to,
@@ -131,6 +201,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       text: composed.text,
       replyTo: composed.replyTo,
       headers: composed.headers,
+      ...(logo ? { attachments: [logo] } : {}),
     });
 
     const id = info.messageId || "sent";

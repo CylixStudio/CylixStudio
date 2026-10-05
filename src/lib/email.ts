@@ -9,6 +9,8 @@ export {
   escapeHtml,
   SUBSCRIPTION_DASHBOARD_URL,
   SUBSCRIPTION_SUPPORT_EMAIL,
+  TRANSACTIONAL_FROM_ADDRESS,
+  EMAIL_LOGO_CID,
   type EmailLayoutOptions,
 } from "@/lib/email/layout";
 

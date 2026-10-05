@@ -17,7 +17,10 @@ export type ChatMessage = {
   replyQuote?: string | null;
 };
 
-function replyFields(payload: unknown, fallbackAt: number): Pick<ChatMessage, "isReply" | "replyQuote" | "at"> {
+function replyFields(
+  payload: unknown,
+  fallbackAt: number,
+): Pick<ChatMessage, "isReply" | "replyQuote" | "at"> {
   const meta = readReplyMeta(payload);
   return {
     isReply: meta.isReply,
@@ -32,7 +35,6 @@ export type ChatSources = {
   /** Kick channel slug, used to resolve channel-specific subscriber badges. */
   kickSlug?: string | null;
 };
-
 
 const TWITCH_IRC = "wss://irc-ws.chat.twitch.tv:443";
 const KICK_WS =
@@ -247,8 +249,11 @@ export function useLiveChat(
             const urlMatch = JSON.stringify(data).match(
               /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s"'<>\\]+/i,
             );
-            if (urlMatch && !/youtube\.com|youtu\.be/i.test(text)) text = `${text} ${urlMatch[0]}`.trim();
-          } catch { /* ignore malformed payloads */ }
+            if (urlMatch && !/youtube\.com|youtu\.be/i.test(text))
+              text = `${text} ${urlMatch[0]}`.trim();
+          } catch {
+            /* ignore malformed payloads */
+          }
           const message: ChatMessage = {
             id: payload.id ?? nextId(),
             platform: "KICK",
@@ -260,7 +265,6 @@ export function useLiveChat(
             ...replyFields(data, Date.now()),
           };
           push.current(message);
-
         } catch {
           /* ignore malformed frames */
         }
