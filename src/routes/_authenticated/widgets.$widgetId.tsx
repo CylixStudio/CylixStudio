@@ -14,8 +14,9 @@ export const Route = createFileRoute("/_authenticated/widgets/$widgetId")({
 
 function WidgetGate() {
   const { user } = Route.useRouteContext();
+  const userId = user?.id ?? "";
   const { widgetId } = useParams({ from: "/_authenticated/widgets/$widgetId" });
-  const subscription = useSubscription(user.id);
+  const subscription = useSubscription(userId);
 
   const widget = useQuery({
     queryKey: ["widget-gate", widgetId],

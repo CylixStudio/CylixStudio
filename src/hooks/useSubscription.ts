@@ -18,6 +18,7 @@ const DAY = 86_400_000;
 export function useSubscription(userId: string) {
   return useQuery({
     queryKey: ["subscription", userId],
+    enabled: userId.length > 0,
     queryFn: async (): Promise<SubscriptionState> => {
       if (isTestMode()) {
         return {

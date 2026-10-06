@@ -8,12 +8,13 @@ async function readBrowserAccessToken(): Promise<string | null> {
   try {
     const { data, error } = await supabase.auth.getSession();
     if (error && !isMissingViewerSession(error)) throw error;
-    const token = data.session?.access_token;
+    const session = data?.session ?? null;
+    const token = session?.access_token;
     if (!isUserJwt(token)) {
       writeSessionCookie(null);
       return null;
     }
-    writeSessionCookie(token, data.session?.expires_at ?? null);
+    writeSessionCookie(token, session?.expires_at ?? null);
     return token;
   } catch (error) {
     if (isMissingViewerSession(error)) {

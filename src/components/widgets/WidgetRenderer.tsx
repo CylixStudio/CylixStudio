@@ -348,7 +348,7 @@ export function ChatBoxView({
   const style = parseChatConfig(config);
   const skin = widgetThemeSkin(parseWidgetThemeId(config));
   const accent = skin.accentColor ?? style.accentColor;
-  const { messages } = useLiveChat(chat, style.maxMessages);
+  const { messages } = useLiveChat(chat ?? null, style.maxMessages);
   // Official Twitch badge artwork (public endpoint); vector marks stay as fallback.
   const twitchBadgeUrls = useTwitchBadges(style.showBadges);
   // Channel-aware Kick badge resolver (custom subscriber tiers + payload art).
@@ -357,7 +357,10 @@ export function ChatBoxView({
 
   // Live viewer messages only. Anything without visible text (system/event
   // payloads) is filtered out before rendering.
-  const chatFeed = [...testMessages, ...messages]
+  const chatFeed = [
+    ...(Array.isArray(testMessages) ? testMessages : []),
+    ...(Array.isArray(messages) ? messages : []),
+  ]
     .filter((message) => message.text.trim().length > 0)
     .sort((a, b) => b.at - a.at)
     .slice(0, style.maxMessages);

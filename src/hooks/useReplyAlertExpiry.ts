@@ -24,9 +24,12 @@ export function useReplyAlertExpiry<T>(
   const firstSeen = useRef(new Map<string, number>());
   const snapshot = useRef(options);
   snapshot.current = options;
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
+  const list = Array.isArray(items) ? items : [];
   const signature = enabled
-    ? items
+    ? list
         .map((item) => {
           const id = options.getId(item);
           if (!options.isReply(item)) return `${id}:0`;
@@ -47,7 +50,9 @@ export function useReplyAlertExpiry<T>(
 
   useEffect(() => {
     if (!enabled) return;
-    const { items: current, getId, isReply, appearanceMs } = snapshot.current;
+    const current = itemsRef.current;
+    const { getId, isReply, appearanceMs } = snapshot.current;
+    if (!Array.isArray(current) || !getId || !isReply || !appearanceMs) return;
     const now = Date.now();
     const expired: string[] = [];
 
@@ -102,9 +107,9 @@ export function useReplyAlertExpiry<T>(
     if (value === "fade") fadingIds.add(id);
   }
 
-  if (!enabled) return { items: [...items], fadingIds };
+  if (!enabled) return { items: [...list], fadingIds };
 
-  const visible = items.filter((item) => {
+  const visible = list.filter((item) => {
     if (!options.isReply(item)) return true;
     const id = options.getId(item);
     const state = phase[id];

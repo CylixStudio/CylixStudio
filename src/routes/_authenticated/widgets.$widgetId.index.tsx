@@ -22,7 +22,8 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { parseOverlayTheme } from "@/lib/overlayTheme";
 import { useLanguage } from "@/lib/i18n";
 import { ensureWidgetSubathon, widgetErrorText } from "@/lib/createWidget";
-import { isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { SIGNED_OUT_ERROR, isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { isTestMode } from "@/lib/testMode";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { DarkSelect } from "@/components/ui/dark-select";
@@ -90,16 +91,20 @@ const labelClass = "text-[0.65rem] font-semibold uppercase tracking-[0.2em] text
 
 function WidgetBuilder() {
   const { user } = Route.useRouteContext();
+  const userId = user?.id ?? "";
+  const signedOutViewer = userId.length === 0 || isTestMode();
   const { widgetId } = Route.useParams();
   const queryClient = useQueryClient();
   const { t } = useLanguage();
-  const { data: workspace } = useWorkspace(user.id);
+  const { data: workspace } = useWorkspace(userId);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const widgetQuery = useQuery({
     queryKey: ["widget", widgetId],
+    enabled: Boolean(widgetId) && !signedOutViewer,
     queryFn: async () => {
+      try {
       const [widget, goal] = await Promise.all([
         supabase
           .from("widgets")
@@ -112,7 +117,11 @@ function WidgetBuilder() {
           .eq("widget_id", widgetId)
           .maybeSingle(),
       ]);
-      if (widget.error) throw widget.error;
+      if (widget.error) {
+        if (isMissingViewerSession(widget.error)) return null;
+        throw widget.error;
+      }
+      if (!widget.data) return null;
       return {
         widget: widget.data as unknown as WidgetRecord,
         goal: goal.data
@@ -123,6 +132,10 @@ function WidgetBuilder() {
             } as GoalRecord)
           : null,
       };
+      } catch (caught) {
+        if (isMissingViewerSession(caught)) return null;
+        throw caught;
+      }
     },
   });
 
@@ -353,12 +366,29 @@ function WidgetBuilder() {
       }
     >
       <SessionAwareError
-        error={error ?? (widgetQuery.error ? widgetErrorText(widgetQuery.error, "Could not load this widget.") : null)}
+        error={
+          error ??
+          (widgetQuery.error ? widgetErrorText(widgetQuery.error, "Could not load this widget.") : null) ??
+          (signedOutViewer && !widget ? SIGNED_OUT_ERROR : null)
+        }
         signedOutLabel={t("widget.signedOut")}
       />
 
       {!widget ? (
-        isMissingViewerSession(widgetQuery.error) ? null : widgetQuery.isError ? null : (
+        signedOutViewer || isMissingViewerSession(widgetQuery.error) ? (
+          <div className="grid min-h-[420px] place-items-center rounded-2xl border border-border bg-[repeating-conic-gradient(#16171d_0%_25%,#101116_0%_50%)] bg-[length:32px_32px] p-6">
+            <WidgetRenderer
+              type="CHAT_BOX"
+              config={{}}
+              frame={null}
+              remaining={0}
+              goal={null}
+              events={[]}
+              spin={null}
+              chat={null}
+            />
+          </div>
+        ) : widgetQuery.isError ? null : (
           <p className="text-sm text-muted-foreground">Loading widget…</p>
         )
       ) : (

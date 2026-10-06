@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase/client";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
 
 export type Subathon = {
@@ -26,10 +27,19 @@ function isMissingRelationError(error: { message?: string; code?: string } | nul
 }
 
 async function profileFromAuth(userId: string) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || user.id !== userId) {
+  let data: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"] = { user: null };
+  let error: Awaited<ReturnType<typeof supabase.auth.getUser>>["error"] = null;
+  try {
+    const result = await supabase.auth.getUser();
+    data = result.data;
+    error = result.error;
+  } catch (caught) {
+    if (!isMissingViewerSession(caught)) throw caught;
+    error = null;
+    data = { user: null };
+  }
+  const user = error ? null : (data?.user ?? null);
+  if (!user?.id || user.id !== userId) {
     return {
       name: null as string | null,
       email: null as string | null,

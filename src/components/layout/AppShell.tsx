@@ -34,7 +34,7 @@ type AppShellProps = {
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
-  user: { email?: string | undefined; id: string };
+  user: { email?: string | undefined; id?: string | undefined } | null | undefined;
   profile?: { name: string | null; image: string | null } | null | undefined;
   subathons?: Subathon[];
   activeSubathonId?: string | null;
@@ -174,7 +174,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
   return (
     <TooltipProvider delayDuration={80}>
       <div className="ambient-field min-h-screen bg-background text-foreground">
-        {isTestMode() ? null : (
+        {isTestMode() || !user?.id ? null : (
           <>
             <StreamlabsBridge userId={user.id} />
             <StreamElementsBridge userId={user.id} />

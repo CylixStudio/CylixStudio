@@ -84,6 +84,7 @@ import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isTestMode } from "@/lib/testMode";
 import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
 import { DarkSelect } from "@/components/ui/dark-select";
+import { BotRixPanel } from "@/components/hub/BotRixPanel";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -260,7 +261,8 @@ const TOOLS: Tool[] = [
 
 function HomePage() {
   const { user } = Route.useRouteContext();
-  const { data: workspace } = useWorkspace(user.id);
+  const userId = user?.id ?? "";
+  const { data: workspace } = useWorkspace(userId);
   const widgets = useWidgets();
   const mediaRequests = useQuery({
     queryKey: ["media-requests"],
@@ -269,7 +271,7 @@ function HomePage() {
     enabled: !isTestMode(),
   });
   const mediaOverlayUrl = mediaRequests.data?.overlayUrl ?? undefined;
-  const subscription = useSubscription(user.id);
+  const subscription = useSubscription(userId);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useLanguage();
@@ -342,7 +344,7 @@ function HomePage() {
     setBusy("custom-goal");
     try {
       const widget = await createWidget({
-        userId: user.id,
+        userId,
         subathonId: workspace?.subathons[0]?.id ?? null,
         type: "GOAL_BAR",
         name: `${goalPreset.title}`,
@@ -409,7 +411,7 @@ function HomePage() {
     setBusy(tool.id);
     try {
       const widget = await createWidget({
-        userId: user.id,
+        userId,
         subathonId: workspace?.subathons[0]?.id ?? null,
         type: tool.type,
         name: tool.name,
@@ -451,6 +453,8 @@ function HomePage() {
           </button>
         </div>
       ) : null}
+
+      <BotRixPanel />
 
       <div
         role="toolbar"
