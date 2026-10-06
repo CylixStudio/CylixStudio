@@ -11,7 +11,8 @@ import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKi
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
 import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
-import { useLanguage } from "@/lib/i18n";
+import { latestStoredEventLines } from "@/lib/eventLabels";
+import { t as translate, useLanguage, type TranslationKey } from "@/lib/i18n";
 import { readOverlayViewers } from "@/lib/toolWidgets.functions";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
@@ -26,6 +27,7 @@ import {
   parseEventLabelsConfig,
   parseKicksGoalConfig,
   parseSpinConfig,
+  parseSplitGoalConfig,
   parseSpotlightConfig,
   parseTappersConfig,
   parseTapGoalConfig,
@@ -1603,11 +1605,15 @@ function ViewerCounterView({
   );
 }
 
-function EventLabelsView({ config }: { config: unknown }) {
+function EventLabelsView({ config, events }: { config: unknown; events: OverlayEvent[] }) {
+  const { lang: appLang } = useLanguage();
   const parsed = parseEventLabelsConfig(config);
+  const lang = parsed.language ?? appLang;
+  const lines = latestStoredEventLines(events);
   return (
     <div
       className="flex min-w-[240px] flex-col gap-2 rounded-2xl px-6 py-5"
+      dir={lang === "ar" ? "rtl" : "ltr"}
       style={{
         background: withAlpha(parsed.backgroundColor, parsed.backgroundOpacity),
         color: parsed.textColor,
@@ -1617,13 +1623,14 @@ function EventLabelsView({ config }: { config: unknown }) {
       <span style={{ letterSpacing: "0.18em", fontSize: 12, fontWeight: 700, color: parsed.accentColor }}>
         {parsed.title}
       </span>
-      {parsed.labels.map((label) => (
+      {lines.map((line) => (
         <span
-          key={label}
+          key={line.eventType}
           className="rounded-xl border px-3 py-1.5"
           style={{ borderColor: withAlpha(parsed.accentColor, 45), fontSize: parsed.fontSize * 0.55 }}
         >
-          {label}
+          {translate(`widget.event.${line.eventType}` as TranslationKey, undefined, lang)}
+          <span dir="ltr"> · {line.username}</span>
         </span>
       ))}
     </div>
@@ -1702,10 +1709,23 @@ export function WidgetRenderer({
         />
       );
     }
+    case "DONATION_GOAL":
+    case "FOLLOWER_GOAL":
+    case "SUBSCRIBER_GOAL":
+    case "CUSTOM_GOAL": {
+      const parsed = parseSplitGoalConfig(type, config);
+      const unit = type === "DONATION_GOAL" || type === "CUSTOM_GOAL" ? parsed.unit : "";
+      return (
+        <GoalBarView
+          config={config}
+          goal={{ title: parsed.title, unit, target: parsed.target, current: parsed.current }}
+        />
+      );
+    }
     case "VIEWER_COUNTER":
       return <ViewerCounterView config={config} publicToken={publicToken} />;
     case "EVENT_LABELS":
-      return <EventLabelsView config={config} />;
+      return <EventLabelsView config={config} events={events} />;
     case "CHAT_BOX":
       return (
         <ChatBoxView config={config} chat={chat} testMessages={testMessages} />

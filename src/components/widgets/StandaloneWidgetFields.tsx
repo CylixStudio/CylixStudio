@@ -39,17 +39,6 @@ function draftPrizes(config: Record<string, unknown>): SpinPrize[] {
   return parseSpinConfig(config).prizes;
 }
 
-function draftLabels(config: Record<string, unknown>): string[] {
-  const raw = config["labels"];
-  if (Array.isArray(raw)) {
-    return raw
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.slice(0, 80))
-      .slice(0, 24);
-  }
-  return parseEventLabelsConfig(config).labels;
-}
-
 export function StandaloneWidgetFields({
   type,
   config,
@@ -67,7 +56,6 @@ export function StandaloneWidgetFields({
   const kicks = parseKicksGoalConfig(config);
   const viewer = parseViewerCounterConfig(config);
   const prizes = useMemo(() => draftPrizes(config), [config]);
-  const labels = useMemo(() => draftLabels(config), [config]);
   const [lookupNote, setLookupNote] = useState<string | null>(null);
   const [lookupCount, setLookupCount] = useState<number | null>(null);
 
@@ -267,34 +255,7 @@ export function StandaloneWidgetFields({
             onChange={(event) => set("title", event.target.value)}
           />
         </label>
-        {labels.map((label, index) => (
-          <div key={index} className="flex items-center gap-2">
-            <input
-              className={fieldClass}
-              value={label}
-              placeholder={t("widget.labels.placeholder")}
-              onChange={(event) => {
-                const next = labels.slice();
-                next[index] = event.target.value;
-                set("labels", next);
-              }}
-            />
-            <button
-              type="button"
-              className="shrink-0 rounded-lg border border-border px-2 py-2 text-xs text-muted-foreground"
-              onClick={() => set("labels", labels.filter((_, item) => item !== index))}
-            >
-              {t("widget.wheel.remove")}
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="rounded-lg border border-border px-3 py-1.5 text-sm"
-          onClick={() => set("labels", [...labels, ""])}
-        >
-          {t("widget.labels.add")}
-        </button>
+        <p className="text-xs leading-relaxed text-muted-foreground">{t("widget.labels.liveHint")}</p>
       </div>
     );
   }

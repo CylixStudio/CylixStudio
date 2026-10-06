@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import {
   normalizeBotRixPlatform,
+  type BotRixLeaderRow,
   type BotRixLookupResult,
   type BotRixPlatform,
   type BotRixShopItem,
@@ -216,6 +217,7 @@ export const importBotRixShop = createServerFn({ method: "POST" })
           description: item.description,
           cost: Math.max(0, Math.round(item.price ?? 0)),
           enabled: true,
+          is_active: true,
         });
         if (error) {
           if (error.code === "23505") {
@@ -231,5 +233,87 @@ export const importBotRixShop = createServerFn({ method: "POST" })
       return { ok: true, imported, skipped, limited: false };
     } catch {
       return { ok: false, error: "save_failed", imported: 0, skipped: 0 };
+    }
+  });
+
+function readLeaderboard(input: unknown): { rows: BotRixLeaderRow[] } {
+  if (!input || typeof input !== "object") return { rows: [] };
+  const raw = Array.isArray((input as { rows?: unknown }).rows) ? (input as { rows: unknown[] }).rows : [];
+  const rows: BotRixLeaderRow[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const item = row as Record<string, unknown>;
+    const name = typeof item["name"] === "string" ? item["name"].trim().slice(0, 80) : "";
+    const points = typeof item["points"] === "number" && Number.isFinite(item["points"]) ? item["points"] : null;
+    rows.push({ name, level: null, points, xp: null, watchtime: null });
+    if (rows.length >= IMPORT_LIMIT) break;
+  }
+  return { rows };
+}
+
+export type BotRixLeaderboardImportResult =
+  | { ok: true; imported: number; updated: number; skipped: number }
+  | { ok: false; error: "save_failed"; imported: number; updated: number; skipped: number };
+
+/** Upserts leaderboard names and points into loyalty_members. Does not delete missing rows. */
+export const importBotRixLeaderboard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(readLeaderboard)
+  .handler(async ({ data, context }): Promise<BotRixLeaderboardImportResult> => {
+    const { supabase, userId } = context;
+    try {
+      const { data: existing, error: readError } = await supabase
+        .from("loyalty_members")
+        .select("id, display_name")
+        .eq("user_id", userId);
+      if (readError) return { ok: false, error: "save_failed", imported: 0, updated: 0, skipped: 0 };
+
+      const byName = new Map<string, string[]>();
+      for (const row of existing ?? []) {
+        const key = row.display_name.trim().toLowerCase();
+        if (!key) continue;
+        const ids = byName.get(key) ?? [];
+        ids.push(row.id);
+        byName.set(key, ids);
+      }
+
+      let imported = 0;
+      let updated = 0;
+      let skipped = 0;
+      for (const row of data.rows) {
+        const name = row.name.trim().slice(0, 80);
+        if (!name || row.points === null) {
+          skipped += 1;
+          continue;
+        }
+        const points = Math.min(100_000_000, Math.max(0, Math.round(row.points)));
+        const key = name.toLowerCase();
+        const ids = byName.get(key);
+        if (ids?.length) {
+          let wrote = false;
+          for (const id of ids) {
+            const { error } = await supabase
+              .from("loyalty_members")
+              .update({ points, updated_at: new Date().toISOString() })
+              .eq("id", id)
+              .eq("user_id", userId);
+            if (error) return { ok: false, error: "save_failed", imported, updated, skipped };
+            wrote = true;
+          }
+          if (wrote) updated += 1;
+          continue;
+        }
+        const { data: inserted, error } = await supabase
+          .from("loyalty_members")
+          .insert({ user_id: userId, display_name: name, points })
+          .select("id")
+          .maybeSingle();
+        if (error || !inserted) return { ok: false, error: "save_failed", imported, updated, skipped };
+        byName.set(key, [inserted.id]);
+        imported += 1;
+      }
+      return { ok: true, imported, updated, skipped };
+    } catch {
+      return { ok: false, error: "save_failed", imported: 0, updated: 0, skipped: 0 };
     }
   });

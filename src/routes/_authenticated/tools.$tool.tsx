@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { CombinedGoalScreen } from "@/components/widgets/GoalKindScreen";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { createWidget, widgetErrorText } from "@/lib/createWidget";
@@ -28,7 +29,7 @@ function ToolOpenPage() {
   const started = useRef(false);
 
   useEffect(() => {
-    if (!spec || isTestMode() || started.current) return;
+    if (!spec || spec.goalEditor || isTestMode() || started.current) return;
     started.current = true;
     void createWidget({
       userId: user.id,
@@ -42,6 +43,14 @@ function ToolOpenPage() {
         setError(widgetErrorText(err, t("tools.openFailed")));
       });
   }, [navigate, spec, t, user.id, workspace.data?.subathons]);
+
+  if (spec?.goalEditor) {
+    return (
+      <AppShell user={user} profile={workspace.data?.profile} title={t(spec.nameKey)} subtitle={t(spec.descriptionKey)}>
+        <CombinedGoalScreen userId={user.id} />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell user={user} profile={workspace.data?.profile} title={spec ? t(spec.nameKey) : t("nav.tools")}>

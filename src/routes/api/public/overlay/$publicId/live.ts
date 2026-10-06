@@ -89,13 +89,14 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
           type === "ALERT_BOX" ||
           type === "CHAT_BOX" ||
           type === "EMOTE_RAIN" ||
-          type === "SUBATHON_TIMER"
+          type === "SUBATHON_TIMER" ||
+          type === "EVENT_LABELS"
         ) {
           const { listOverlayEvents } = await import("@/lib/targets.server");
           events = await listOverlayEvents(supabase, {
             userId: widget.user_id,
             subathonId,
-            limit: type === "CHAT_BOX" ? 25 : 5,
+            limit: type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5,
           });
         }
 

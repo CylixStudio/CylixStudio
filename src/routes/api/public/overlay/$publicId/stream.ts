@@ -254,8 +254,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
                 }
                 return;
               }
-              if (type === "ALERT_BOX" || type === "CHAT_BOX" || type === "EMOTE_RAIN") {
-                const events = await fetchEvents(type === "CHAT_BOX" ? 25 : 5);
+              if (type === "ALERT_BOX" || type === "CHAT_BOX" || type === "EMOTE_RAIN" || type === "EVENT_LABELS") {
+                const events = await fetchEvents(type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5);
                 const payload = JSON.stringify(events);
                 if (payload !== lastEventsPayload) {
                   lastEventsPayload = payload;
@@ -314,8 +314,9 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               type === "ALERT_BOX" ||
               type === "CHAT_BOX" ||
               type === "EMOTE_RAIN" ||
-              type === "SUBATHON_TIMER"
-                ? await fetchEvents(type === "CHAT_BOX" ? 25 : 5)
+              type === "SUBATHON_TIMER" ||
+              type === "EVENT_LABELS"
+                ? await fetchEvents(type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5)
                 : [];
             const spin = type === "SPIN_WHEEL" ? parseSpinState(widget.state) : null;
             const spotlight = type === "CHAT_SPOTLIGHT" ? parseSpotlightState(widget.state) : null;

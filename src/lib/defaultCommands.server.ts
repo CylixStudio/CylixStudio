@@ -1,6 +1,7 @@
+import { commandsPageUrl } from "@/lib/commandsUrl";
 import { sendKickChatMessage } from "@/lib/clipCommand.server";
 import { resolveCommandTemplate } from "@/lib/commandTemplate.server";
-import { commandTrigger, type ChatCommandPlatform } from "@/lib/customCommands";
+import { type ChatCommandPlatform } from "@/lib/customCommands";
 import {
   catalogDefaultCommands,
   formatFollowDuration,
@@ -9,6 +10,7 @@ import {
   parseShoutoutTarget,
   type DefaultCommand,
 } from "@/lib/defaultCommands";
+import { publishedSlugForUser } from "@/lib/publicChannel.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 type ChatSender = {
@@ -37,29 +39,6 @@ async function loadDefaultCommands(userId: string): Promise<DefaultCommand[]> {
     })),
     "en",
   );
-}
-
-async function listEnabledCommandNames(userId: string): Promise<string[]> {
-  const defaults = (await loadDefaultCommands(userId))
-    .filter((command) => command.enabled && command.id !== "commands")
-    .map((command) => command.trigger);
-  const [{ data: settings }, { data: custom }] = await Promise.all([
-    supabaseAdmin
-      .from("custom_chat_command_settings")
-      .select("default_prefix")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabaseAdmin
-      .from("custom_chat_commands")
-      .select("name, prefix")
-      .eq("user_id", userId)
-      .eq("enabled", true),
-  ]);
-  const defaultPrefix = settings?.default_prefix ?? "!";
-  const customNames = (custom ?? []).map((row) =>
-    commandTrigger({ name: row.name, prefix: row.prefix }, defaultPrefix),
-  );
-  return [...defaults, ...customNames];
 }
 
 async function lookupKickFollowage(
@@ -104,6 +83,7 @@ export async function handleDefaultChatCommand(input: {
   platform: ChatCommandPlatform;
   text: string;
   sender: ChatSender;
+  origin?: string;
 }): Promise<{ status: string; reason?: string; command?: string }> {
   const commands = await loadDefaultCommands(input.userId);
   const matched = matchDefaultCommand(input.text, commands, input.platform);
@@ -128,11 +108,22 @@ export async function handleDefaultChatCommand(input: {
     followage: "",
   };
 
-  let template = command.response;
   if (command.id === "commands") {
-    const names = await listEnabledCommandNames(input.userId);
-    vars.list = names.join(", ") || "—";
-  } else if (command.id === "followage") {
+    const slug = await publishedSlugForUser(input.userId);
+    const reply = slug
+      ? commandsPageUrl(input.origin ?? "https://cylixstudio.com", slug)
+      : arabic
+        ? "قائمة الأوامر غير منشورة بعد."
+        : "The command list is not published yet.";
+    if (input.platform === "KICK") {
+      const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply);
+      if (!sent) return { status: "error", reason: "send_failed", command: command.trigger };
+    }
+    return { status: "replied", command: command.trigger };
+  }
+
+  let template = command.response;
+  if (command.id === "followage") {
     const duration = await lookupKickFollowage(input.userId, input.sender.username, arabic);
     if (duration) {
       vars.followage = duration;

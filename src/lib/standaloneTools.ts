@@ -2,12 +2,14 @@ import type { TranslationKey } from "@/lib/i18n";
 import type { WidgetType } from "@/lib/widgets";
 
 export type StandaloneTool = {
-  slug: "kicks-goal" | "viewer-counter" | "wheel" | "event-labels";
+  slug: "kicks-goal" | "viewer-counter" | "wheel" | "event-labels" | "goals";
   type: WidgetType;
   /** Stable English name stored on the widget row. */
   name: string;
   nameKey: TranslationKey;
   descriptionKey: TranslationKey;
+  /** Combined goal editor. Does not insert a row until the user saves. */
+  goalEditor?: boolean;
 };
 
 export const STANDALONE_TOOLS: StandaloneTool[] = [
@@ -38,6 +40,14 @@ export const STANDALONE_TOOLS: StandaloneTool[] = [
     name: "Event labels",
     nameKey: "home.tool.eventLabels.name",
     descriptionKey: "home.tool.eventLabels.desc",
+  },
+  {
+    slug: "goals",
+    type: "GOAL_BAR",
+    name: "Goals",
+    nameKey: "home.tool.goalBar.name",
+    descriptionKey: "home.tool.goalBar.desc",
+    goalEditor: true,
   },
 ];
 

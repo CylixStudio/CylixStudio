@@ -9,9 +9,10 @@ import {
   type BotRixLookupResult,
   type BotRixPlatform,
   type BotRixSection,
+  type BotRixLeaderRow,
   type BotRixShopItem,
 } from "@/lib/botrix";
-import { importBotRixCommands, importBotRixShop, lookupBotRixPublic } from "@/lib/botrix.functions";
+import { importBotRixCommands, importBotRixLeaderboard, importBotRixShop, lookupBotRixPublic } from "@/lib/botrix.functions";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
@@ -187,6 +188,31 @@ export function BotRixPanel() {
     }
   };
 
+  const importLeaderboard = async (rows: BotRixLeaderRow[]) => {
+    if (!result || importLocked) return;
+    setImporting("leaderboard-all");
+    setImportNotice(null);
+    try {
+      if (isTestMode()) {
+        setImportNotice("widget.signedOut");
+        return;
+      }
+      const saved = await importBotRixLeaderboard({
+        data: { rows: rows.map((item) => ({ name: item.name, points: item.points, level: null, xp: null, watchtime: null })) },
+      });
+      if (!saved.ok) {
+        toast.error(t("botrix.importFailed"));
+        return;
+      }
+      toast.success(t("botrix.leaderboardImported", { imported: saved.imported, updated: saved.updated }));
+    } catch (error) {
+      if (isSignedOutFailure(error)) setImportNotice("widget.signedOut");
+      else toast.error(t("botrix.importFailed"));
+    } finally {
+      setImporting(null);
+    }
+  };
+
   const importButton = (key: string, label: TranslationKey, onClick: () => void, disabled = false) => (
     <button
       type="button"
@@ -331,6 +357,13 @@ export function BotRixPanel() {
             title={t("botrix.leaderboard")}
             section={result.leaderboard}
             empty={t("botrix.empty.leaderboard")}
+            action={
+              result.leaderboard.ok && result.leaderboard.items.length > 0
+                ? importButton("leaderboard-all", "botrix.importLeaderboard", () => {
+                    if (result.leaderboard.ok) void importLeaderboard(result.leaderboard.items);
+                  })
+                : null
+            }
           >
             {result.leaderboard.ok
               ? result.leaderboard.items.map((item, index) => (

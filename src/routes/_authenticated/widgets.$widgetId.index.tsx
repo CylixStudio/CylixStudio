@@ -223,6 +223,11 @@ function WidgetBuilder() {
   });
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (widget?.type !== "GOAL_BAR") return;
+    void navigate({ to: "/tools/$tool", params: { tool: "goals" }, replace: true });
+  }, [navigate, widget]);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const remove = useMutation({

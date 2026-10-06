@@ -443,24 +443,39 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           };
           if (text) {
             try {
-              const { handleDefaultChatCommand } = await import("@/lib/defaultCommands.server");
-              const defaultResult = await handleDefaultChatCommand({
-                userId: connection.user_id,
-                broadcasterUserId: broadcasterId,
-                platform: "KICK",
-                text,
-                sender: { username },
-              });
-              commandResult = defaultResult;
-              if (defaultResult.status === "ignored" && defaultResult.reason !== "cooldown") {
-                const { handleCustomChatCommand } = await import("@/lib/customCommands.server");
-                commandResult = await handleCustomChatCommand({
+              const { requestPublicOrigin } = await import("@/lib/commandsUrl");
+              const origin = requestPublicOrigin(request);
+              if (/^!buy\b/i.test(text.trim())) {
+                const { handleShopBuyCommand } = await import("@/lib/shopBuy.server");
+                commandResult = await handleShopBuyCommand({
                   userId: connection.user_id,
                   broadcasterUserId: broadcasterId,
                   platform: "KICK",
                   text,
-                  sender: { username, identityBadges },
+                  sender: { username },
+                  isTest: false,
                 });
+              } else {
+                const { handleDefaultChatCommand } = await import("@/lib/defaultCommands.server");
+                const defaultResult = await handleDefaultChatCommand({
+                  userId: connection.user_id,
+                  broadcasterUserId: broadcasterId,
+                  platform: "KICK",
+                  text,
+                  sender: { username },
+                  origin,
+                });
+                commandResult = defaultResult;
+                if (defaultResult.status === "ignored" && defaultResult.reason === "no_match") {
+                  const { handleCustomChatCommand } = await import("@/lib/customCommands.server");
+                  commandResult = await handleCustomChatCommand({
+                    userId: connection.user_id,
+                    broadcasterUserId: broadcasterId,
+                    platform: "KICK",
+                    text,
+                    sender: { username, identityBadges },
+                  });
+                }
               }
               console.log("[kick-webhook] chat command", {
                 messageId,

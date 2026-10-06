@@ -26,11 +26,14 @@ export type WidgetType =
   | "TIKTOK_TAP_GOAL"
   | "KICKS_GOAL"
   | "VIEWER_COUNTER"
-  | "EVENT_LABELS";
+  | "EVENT_LABELS"
+  | "DONATION_GOAL"
+  | "FOLLOWER_GOAL"
+  | "SUBSCRIBER_GOAL"
+  | "CUSTOM_GOAL";
 
 export const WIDGET_TYPES: { value: WidgetType; label: string; hint: string }[] = [
   { value: "SUBATHON_TIMER", label: "Subathon timer", hint: "Live countdown driven by rules" },
-  { value: "GOAL_BAR", label: "Goal bar", hint: "Progress toward a donation/sub goal" },
   { value: "CHAT_BOX", label: "Activity feed", hint: "Rolling list of the latest events" },
   { value: "SPIN_WHEEL", label: "Wheel of fortune", hint: "Weighted prize wheel" },
   { value: "EMOTE_RAIN", label: "Emote rain", hint: "Emotes rain down on every incoming event" },
@@ -57,6 +60,10 @@ export const WIDGET_TYPES: { value: WidgetType; label: string; hint: string }[] 
   { value: "KICKS_GOAL", label: "Kicks Goal", hint: "Kick currency progress bar" },
   { value: "VIEWER_COUNTER", label: "Viewer counter", hint: "Live viewer or follower count" },
   { value: "EVENT_LABELS", label: "Event labels", hint: "Labels the streamer edits for the overlay" },
+  { value: "DONATION_GOAL", label: "Donation goal", hint: "Donation progress bar" },
+  { value: "FOLLOWER_GOAL", label: "Follower goal", hint: "Follower count progress bar" },
+  { value: "SUBSCRIBER_GOAL", label: "Subscriber goal", hint: "Subscriber count progress bar" },
+  { value: "CUSTOM_GOAL", label: "Custom goal", hint: "Progress bar with a free unit label" },
 ];
 
 export const WIDGET_LABEL: Record<WidgetType, string> = {
@@ -67,6 +74,10 @@ export const WIDGET_LABEL: Record<WidgetType, string> = {
   KICKS_GOAL: "Kicks Goal",
   VIEWER_COUNTER: "عداد المشاهدين",
   EVENT_LABELS: "تسميات الأحداث",
+  DONATION_GOAL: "هدف التبرعات",
+  FOLLOWER_GOAL: "هدف المتابعين",
+  SUBSCRIBER_GOAL: "هدف المشتركين",
+  CUSTOM_GOAL: "هدف مخصص",
   EMOTE_RAIN: "Emote rain",
   CHAT_SPOTLIGHT: "Chat spotlight",
   STREAM_EVENTS_SCHEDULE: "جدول فعاليات البث",
@@ -601,6 +612,43 @@ export type KicksGoalConfig = BaseStyle & {
   current: number;
 };
 
+export const SPLIT_GOAL_KINDS = ["DONATION_GOAL", "FOLLOWER_GOAL", "SUBSCRIBER_GOAL", "CUSTOM_GOAL"] as const;
+export type SplitGoalKind = (typeof SPLIT_GOAL_KINDS)[number];
+
+export function isSplitGoalKind(type: string): type is SplitGoalKind {
+  return (SPLIT_GOAL_KINDS as readonly string[]).includes(type);
+}
+
+export type SplitGoalConfig = BaseStyle & {
+  title: string;
+  target: number;
+  current: number;
+  /** Donation currency or the custom unit. Follower and subscriber goals ignore it. */
+  unit: string;
+};
+
+const SPLIT_GOAL_DEFAULTS: Record<SplitGoalKind, { title: string; unit: string; target: number; accent: string }> = {
+  DONATION_GOAL: { title: "هدف التبرعات", unit: "USD", target: 500, accent: "#7C3AED" },
+  FOLLOWER_GOAL: { title: "هدف المتابعين", unit: "", target: 1000, accent: "#22D3EE" },
+  SUBSCRIBER_GOAL: { title: "هدف المشتركين", unit: "", target: 50, accent: "#F59E0B" },
+  CUSTOM_GOAL: { title: "هدف مخصص", unit: "نقطة", target: 100, accent: "#34D399" },
+};
+
+export function parseSplitGoalConfig(kind: SplitGoalKind, raw: unknown): SplitGoalConfig {
+  const source = asRecord(raw);
+  const defaults = SPLIT_GOAL_DEFAULTS[kind];
+  const target = Number(source["target"]);
+  const current = Number(source["current"]);
+  const unitSource = typeof source["unit"] === "string" ? source["unit"].trim().slice(0, 16) : "";
+  return {
+    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 36, accentColor: defaults.accent }),
+    title: text(source["title"] ?? source["label"], defaults.title, 40),
+    target: Number.isFinite(target) ? Math.min(100_000_000, Math.max(1, Math.round(target))) : defaults.target,
+    current: Number.isFinite(current) ? Math.min(100_000_000, Math.max(0, Math.round(current))) : 0,
+    unit: kind === "DONATION_GOAL" || kind === "CUSTOM_GOAL" ? unitSource || defaults.unit : "",
+  };
+}
+
 export function parseKicksGoalConfig(raw: unknown): KicksGoalConfig {
   const source = asRecord(raw);
   const target = Number(source["target"]);
@@ -643,6 +691,7 @@ export function parseViewerCounterConfig(raw: unknown): ViewerCounterConfig {
 export type EventLabelsConfig = BaseStyle & {
   title: string;
   labels: string[];
+  language: "ar" | "en" | null;
 };
 
 export function parseEventLabelsConfig(raw: unknown): EventLabelsConfig {
@@ -652,10 +701,12 @@ export function parseEventLabelsConfig(raw: unknown): EventLabelsConfig {
     .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     .map((entry) => entry.trim().slice(0, 80))
     .slice(0, 24);
+  const language = source["language"] === "ar" || source["language"] === "en" ? source["language"] : null;
   return {
     ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28, backgroundOpacity: 70 }),
     title: text(source["title"], "تسميات الأحداث", 40),
     labels: labels.length > 0 ? labels : ["متابعة", "اشتراك", "هدية"],
+    language,
   };
 }
 

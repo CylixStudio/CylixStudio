@@ -1,13 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { Coins, Copy, Check, Disc3, Tags, Trash2, Users, type LucideIcon } from "lucide-react";
+import { Coins, Copy, Check, Disc3, Gauge, Tags, Trash2, Users, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
 import { ToolCard } from "@/components/hub/ToolCard";
 import {
+  CustomGoalPreview,
   EventLabelsPreview,
   KicksGoalPreview,
   ViewerCounterPreview,
@@ -22,7 +23,7 @@ import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { useLanguage } from "@/lib/i18n";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
-import { WIDGET_LABEL, WIDGET_TYPES, type WidgetType } from "@/lib/widgets";
+import { isSplitGoalKind, WIDGET_LABEL, WIDGET_TYPES, type WidgetType } from "@/lib/widgets";
 import { DarkSelect } from "@/components/ui/dark-select";
 
 const TIKTOK_COMING_SOON: WidgetType[] = ["TIKTOK_TAPPERS", "TIKTOK_TAP_GOAL"];
@@ -35,9 +36,10 @@ const TOOL_VISUAL: Record<
   "viewer-counter": { icon: Users, preview: ViewerCounterPreview },
   wheel: { icon: Disc3, preview: WheelPreview },
   "event-labels": { icon: Tags, preview: EventLabelsPreview },
+  goals: { icon: Gauge, preview: CustomGoalPreview },
 };
 const CREATABLE_WIDGET_TYPES = WIDGET_TYPES.filter(
-  (entry) => !TIKTOK_COMING_SOON.includes(entry.value),
+  (entry) => !TIKTOK_COMING_SOON.includes(entry.value) && !isSplitGoalKind(entry.value),
 );
 
 export const Route = createFileRoute("/_authenticated/widgets/")({
@@ -190,11 +192,15 @@ function WidgetHub() {
               actionLabel={
                 opening === tool.slug
                   ? t("home.action.opening")
-                  : existing
+                  : tool.goalEditor || existing
                     ? t("home.action.customize")
                     : t("home.action.open")
               }
               onOpen={() => {
+                if (tool.goalEditor) {
+                  void navigate({ to: "/tools/$tool", params: { tool: tool.slug } });
+                  return;
+                }
                 if (existing) {
                   void navigate({ to: "/widgets/$widgetId", params: { widgetId: existing.id } });
                   return;

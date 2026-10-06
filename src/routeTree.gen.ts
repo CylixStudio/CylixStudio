@@ -34,6 +34,7 @@ import { Route as AuthenticatedWelcomeRouteImport } from './routes/_authenticate
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as BioSlugRouteImport } from './routes/bio.$slug'
 import { Route as ClipIdRouteImport } from './routes/clip.$id'
+import { Route as CommandsSlugRouteImport } from './routes/commands.$slug'
 import { Route as MarksTokenRouteImport } from './routes/marks.$token'
 import { Route as OverlayPublicIdRouteImport } from './routes/overlay.$publicId'
 import { Route as OverlayGiveawayRouteImport } from './routes/overlay.giveaway'
@@ -42,6 +43,7 @@ import { Route as OverlayScheduleRouteImport } from './routes/overlay.schedule'
 import { Route as OverlaySubathonTimerRouteImport } from './routes/overlay.subathon-timer'
 import { Route as OverlayTiktokTapGoalRouteImport } from './routes/overlay.tiktok-tap-goal'
 import { Route as OverlayTiktokTappersRouteImport } from './routes/overlay.tiktok-tappers'
+import { Route as StoreSlugRouteImport } from './routes/store.$slug'
 import { Route as USlugRouteImport } from './routes/u.$slug'
 import { Route as AuthenticatedToolsToolRouteImport } from './routes/_authenticated/tools.$tool'
 import { Route as AuthenticatedWidgetsIndexRouteImport } from './routes/_authenticated/widgets.index'
@@ -216,6 +218,11 @@ const ClipIdRoute = ClipIdRouteImport.update({
   path: '/clip/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CommandsSlugRoute = CommandsSlugRouteImport.update({
+  id: '/commands/$slug',
+  path: '/commands/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MarksTokenRoute = MarksTokenRouteImport.update({
   id: '/marks/$token',
   path: '/marks/$token',
@@ -254,6 +261,11 @@ const OverlayTiktokTapGoalRoute = OverlayTiktokTapGoalRouteImport.update({
 const OverlayTiktokTappersRoute = OverlayTiktokTappersRouteImport.update({
   id: '/overlay/tiktok-tappers',
   path: '/overlay/tiktok-tappers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoreSlugRoute = StoreSlugRouteImport.update({
+  id: '/store/$slug',
+  path: '/store/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const USlugRoute = USlugRouteImport.update({
@@ -527,6 +539,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/bio/$slug': typeof BioSlugRoute
   '/clip/$id': typeof ClipIdRoute
+  '/commands/$slug': typeof CommandsSlugRoute
   '/marks/$token': typeof MarksTokenRouteWithChildren
   '/overlay/$publicId': typeof OverlayPublicIdRoute
   '/overlay/giveaway': typeof OverlayGiveawayRoute
@@ -535,6 +548,7 @@ export interface FileRoutesByFullPath {
   '/overlay/subathon-timer': typeof OverlaySubathonTimerRoute
   '/overlay/tiktok-tap-goal': typeof OverlayTiktokTapGoalRoute
   '/overlay/tiktok-tappers': typeof OverlayTiktokTappersRoute
+  '/store/$slug': typeof StoreSlugRoute
   '/u/$slug': typeof USlugRoute
   '/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
@@ -604,6 +618,7 @@ export interface FileRoutesByTo {
   '/auth/callback': typeof AuthCallbackRoute
   '/bio/$slug': typeof BioSlugRoute
   '/clip/$id': typeof ClipIdRoute
+  '/commands/$slug': typeof CommandsSlugRoute
   '/marks/$token': typeof MarksTokenRouteWithChildren
   '/overlay/$publicId': typeof OverlayPublicIdRoute
   '/overlay/giveaway': typeof OverlayGiveawayRoute
@@ -612,6 +627,7 @@ export interface FileRoutesByTo {
   '/overlay/subathon-timer': typeof OverlaySubathonTimerRoute
   '/overlay/tiktok-tap-goal': typeof OverlayTiktokTapGoalRoute
   '/overlay/tiktok-tappers': typeof OverlayTiktokTappersRoute
+  '/store/$slug': typeof StoreSlugRoute
   '/u/$slug': typeof USlugRoute
   '/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
@@ -682,6 +698,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/bio/$slug': typeof BioSlugRoute
   '/clip/$id': typeof ClipIdRoute
+  '/commands/$slug': typeof CommandsSlugRoute
   '/marks/$token': typeof MarksTokenRouteWithChildren
   '/overlay/$publicId': typeof OverlayPublicIdRoute
   '/overlay/giveaway': typeof OverlayGiveawayRoute
@@ -690,6 +707,7 @@ export interface FileRoutesById {
   '/overlay/subathon-timer': typeof OverlaySubathonTimerRoute
   '/overlay/tiktok-tap-goal': typeof OverlayTiktokTapGoalRoute
   '/overlay/tiktok-tappers': typeof OverlayTiktokTappersRoute
+  '/store/$slug': typeof StoreSlugRoute
   '/u/$slug': typeof USlugRoute
   '/_authenticated/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/_authenticated/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
@@ -761,6 +779,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/bio/$slug'
     | '/clip/$id'
+    | '/commands/$slug'
     | '/marks/$token'
     | '/overlay/$publicId'
     | '/overlay/giveaway'
@@ -769,6 +788,7 @@ export interface FileRouteTypes {
     | '/overlay/subathon-timer'
     | '/overlay/tiktok-tap-goal'
     | '/overlay/tiktok-tappers'
+    | '/store/$slug'
     | '/u/$slug'
     | '/tools/$tool'
     | '/widgets/$widgetId'
@@ -838,6 +858,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/bio/$slug'
     | '/clip/$id'
+    | '/commands/$slug'
     | '/marks/$token'
     | '/overlay/$publicId'
     | '/overlay/giveaway'
@@ -846,6 +867,7 @@ export interface FileRouteTypes {
     | '/overlay/subathon-timer'
     | '/overlay/tiktok-tap-goal'
     | '/overlay/tiktok-tappers'
+    | '/store/$slug'
     | '/u/$slug'
     | '/tools/$tool'
     | '/api/live-counter/lookup'
@@ -915,6 +937,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/bio/$slug'
     | '/clip/$id'
+    | '/commands/$slug'
     | '/marks/$token'
     | '/overlay/$publicId'
     | '/overlay/giveaway'
@@ -923,6 +946,7 @@ export interface FileRouteTypes {
     | '/overlay/subathon-timer'
     | '/overlay/tiktok-tap-goal'
     | '/overlay/tiktok-tappers'
+    | '/store/$slug'
     | '/u/$slug'
     | '/_authenticated/tools/$tool'
     | '/_authenticated/widgets/$widgetId'
@@ -978,6 +1002,7 @@ export interface RootRouteChildren {
   AuthCallbackRoute: typeof AuthCallbackRoute
   BioSlugRoute: typeof BioSlugRoute
   ClipIdRoute: typeof ClipIdRoute
+  CommandsSlugRoute: typeof CommandsSlugRoute
   MarksTokenRoute: typeof MarksTokenRouteWithChildren
   OverlayPublicIdRoute: typeof OverlayPublicIdRoute
   OverlayGiveawayRoute: typeof OverlayGiveawayRoute
@@ -986,6 +1011,7 @@ export interface RootRouteChildren {
   OverlaySubathonTimerRoute: typeof OverlaySubathonTimerRoute
   OverlayTiktokTapGoalRoute: typeof OverlayTiktokTapGoalRoute
   OverlayTiktokTappersRoute: typeof OverlayTiktokTappersRoute
+  StoreSlugRoute: typeof StoreSlugRoute
   USlugRoute: typeof USlugRoute
   ApiLiveCounterLookupRoute: typeof ApiLiveCounterLookupRoute
   ApiAuthProviderCallbackRoute: typeof ApiAuthProviderCallbackRoute
@@ -1197,6 +1223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClipIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/commands/$slug': {
+      id: '/commands/$slug'
+      path: '/commands/$slug'
+      fullPath: '/commands/$slug'
+      preLoaderRoute: typeof CommandsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/marks/$token': {
       id: '/marks/$token'
       path: '/marks/$token'
@@ -1251,6 +1284,13 @@ declare module '@tanstack/react-router' {
       path: '/overlay/tiktok-tappers'
       fullPath: '/overlay/tiktok-tappers'
       preLoaderRoute: typeof OverlayTiktokTappersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/store/$slug': {
+      id: '/store/$slug'
+      path: '/store/$slug'
+      fullPath: '/store/$slug'
+      preLoaderRoute: typeof StoreSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/u/$slug': {
@@ -1657,6 +1697,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthCallbackRoute: AuthCallbackRoute,
   BioSlugRoute: BioSlugRoute,
   ClipIdRoute: ClipIdRoute,
+  CommandsSlugRoute: CommandsSlugRoute,
   MarksTokenRoute: MarksTokenRouteWithChildren,
   OverlayPublicIdRoute: OverlayPublicIdRoute,
   OverlayGiveawayRoute: OverlayGiveawayRoute,
@@ -1665,6 +1706,7 @@ const rootRouteChildren: RootRouteChildren = {
   OverlaySubathonTimerRoute: OverlaySubathonTimerRoute,
   OverlayTiktokTapGoalRoute: OverlayTiktokTapGoalRoute,
   OverlayTiktokTappersRoute: OverlayTiktokTappersRoute,
+  StoreSlugRoute: StoreSlugRoute,
   USlugRoute: USlugRoute,
   ApiLiveCounterLookupRoute: ApiLiveCounterLookupRoute,
   ApiAuthProviderCallbackRoute: ApiAuthProviderCallbackRoute,

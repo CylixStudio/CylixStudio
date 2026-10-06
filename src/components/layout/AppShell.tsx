@@ -7,10 +7,8 @@ import {
   Bookmark,
   CalendarDays,
   ChevronsLeft,
-  Coins,
   CreditCard,
   Crown,
-  Disc3,
   Hash,
   Home,
   LogOut,
@@ -18,8 +16,6 @@ import {
   Link2,
   Scissors,
   Settings,
-  Tags,
-  Users,
 } from "lucide-react";
 
 import { StreamlabsBridge } from "@/components/layout/StreamlabsBridge";
@@ -61,19 +57,12 @@ const NAV = [
   { to: "/clip-command" as const, icon: Scissors, labelKey: "nav.clipCommand" },
   { to: "/schedule" as const, icon: CalendarDays, labelKey: "nav.schedule" },
   { to: "/mark-points" as const, icon: Bookmark, labelKey: "nav.markPoints" },
+  { to: "/loyalty" as const, icon: Crown, labelKey: "nav.tools.loyalty" },
 ] as const satisfies ReadonlyArray<{
   to: string;
   icon: typeof Home;
   labelKey: TranslationKey;
 }>;
-
-const TOOL_NAV = [
-  { to: "/tools/$tool" as const, tool: "kicks-goal", icon: Coins, labelKey: "nav.tools.kicksGoal" },
-  { to: "/tools/$tool" as const, tool: "viewer-counter", icon: Users, labelKey: "nav.tools.viewerCounter" },
-  { to: "/tools/$tool" as const, tool: "wheel", icon: Disc3, labelKey: "nav.tools.wheel" },
-  { to: "/tools/$tool" as const, tool: "event-labels", icon: Tags, labelKey: "nav.tools.eventLabels" },
-  { to: "/loyalty" as const, tool: null, icon: Crown, labelKey: "nav.tools.loyalty" },
-] as const;
 
 const menuSurface = "absolute z-50 min-w-44 rounded-xl border p-1.5";
 const menuSurfaceStyle = {
@@ -270,41 +259,6 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                     <Icon className="size-4 shrink-0" aria-hidden />
                     {collapsed ? null : <span className="truncate">{label}</span>}
                   </Link>
-                </IconTip>
-              );
-            })}
-            {collapsed ? (
-              <div className="mx-2 my-2 border-t border-white/10" />
-            ) : (
-              <p className="px-3 pb-1 pt-4 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {t("nav.tools")}
-              </p>
-            )}
-            {TOOL_NAV.map((item) => {
-              const Icon = item.icon;
-              const active =
-                item.to === "/loyalty"
-                  ? pathname === "/loyalty"
-                  : pathname === `/tools/${item.tool}`;
-              const label = t(item.labelKey);
-              return (
-                <IconTip key={item.labelKey} label={label} collapsed={collapsed}>
-                  {item.to === "/loyalty" ? (
-                    <Link to="/loyalty" className={navBtn(active)} aria-current={active ? "page" : undefined}>
-                      <Icon className="size-4 shrink-0" aria-hidden />
-                      {collapsed ? null : <span className="truncate">{label}</span>}
-                    </Link>
-                  ) : (
-                    <Link
-                      to="/tools/$tool"
-                      params={{ tool: item.tool ?? "kicks-goal" }}
-                      className={navBtn(active)}
-                      aria-current={active ? "page" : undefined}
-                    >
-                      <Icon className="size-4 shrink-0" aria-hidden />
-                      {collapsed ? null : <span className="truncate">{label}</span>}
-                    </Link>
-                  )}
                 </IconTip>
               );
             })}

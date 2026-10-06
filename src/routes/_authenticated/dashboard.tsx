@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactElement } from "react";
 import {
@@ -16,7 +16,6 @@ import {
   Sparkles,
   Timer,
   Trophy,
-  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -49,7 +48,6 @@ import {
   TapGoalPreview,
   ViewerCounterPreview,
   WheelPreview,
-  GoalTypePreview,
   MediaRequestPreview,
   TimerPreview,
 } from "@/components/hub/previews";
@@ -74,13 +72,6 @@ function GiveawayPreview() {
     </div>
   );
 }
-import {
-  GOAL_TYPES,
-  DEFAULT_GOAL_TYPE,
-  goalOverlayParams,
-  goalTypePreset,
-  type GoalTypeId,
-} from "@/lib/goalTypes";
 import { useQuery } from "@tanstack/react-query";
 import { getMediaRequestDashboard } from "@/lib/mediaRequests.functions";
 import { useWidgets } from "@/hooks/useWidgets";
@@ -91,18 +82,17 @@ import type { WidgetType } from "@/lib/widgets";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isTestMode } from "@/lib/testMode";
 import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
-import { DarkSelect } from "@/components/ui/dark-select";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "CylixStudio — Widget Hub" },
+      { title: "CylixStudio â€” Widget Hub" },
       {
         name: "description",
         content:
           "Discover, open and customize every streaming widget: timers, goals, alerts, chat, wheels, emote rain and more.",
       },
-      { property: "og:title", content: "CylixStudio — Widget Hub" },
+      { property: "og:title", content: "CylixStudio â€” Widget Hub" },
       {
         property: "og:description",
         content: "Everything you need to build, customize, and control your stream.",
@@ -114,7 +104,9 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: HomePage,
 });
 
-const HUB_INITIAL_VISIBLE = 16;
+const HUB_INITIAL_VISIBLE = 20;
+
+const GOAL_TOOL_IDS = new Set(["goals"]);
 const HUB_LOAD_MORE = 8;
 
 /** Hub tools that require an active Pro subscription (matches PLAN_FEATURES). */
@@ -169,8 +161,8 @@ const TOOLS: Tool[] = [
     platforms: [...ALL_PLATFORMS],
   },
   {
-    id: "custom-goal",
-    name: "Goal bar",
+    id: "goals",
+    name: "Goals",
     nameKey: "home.tool.goalBar.name",
     descriptionKey: "home.tool.goalBar.desc",
     categoryKey: "cat.Goals",
@@ -341,8 +333,6 @@ function HomePage() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [goalModal, setGoalModal] = useState(false);
-  const [goalType, setGoalType] = useState<GoalTypeId>(DEFAULT_GOAL_TYPE);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -383,38 +373,8 @@ function HomePage() {
     }
   };
 
-  const goalWidgets = widgets.data?.widgets.filter((widget) => widget.type === "GOAL_BAR") ?? [];
-
   const existingFor = (tool: Tool) =>
-    tool.id === "custom-goal"
-      ? (goalWidgets[0] ?? null)
-      : tool.type
-        ? (widgets.data?.widgets.find((widget) => widget.type === tool.type) ?? null)
-        : null;
-
-  const goalPreset = goalTypePreset(goalType);
-
-  const createGoalWidget = async () => {
-    setError(null);
-    setBusy("custom-goal");
-    try {
-      const widget = await createWidget({
-        userId,
-        subathonId: workspace?.subathons[0]?.id ?? null,
-        type: "GOAL_BAR",
-        name: `${goalPreset.title}`,
-        goalType,
-      });
-      await queryClient.invalidateQueries({ queryKey: ["widgets"] });
-      setGoalModal(false);
-      await openWidget(widget.id);
-    } catch (err) {
-      console.error("[dashboard] create goal failed", err);
-      setError(widgetErrorText(err, "Could not create this goal."));
-    } finally {
-      setBusy(null);
-    }
-  };
+    tool.type ? (widgets.data?.widgets.find((widget) => widget.type === tool.type) ?? null) : null;
 
   const open = async (tool: Tool) => {
     if (tool.comingSoon) return;
@@ -422,8 +382,8 @@ function HomePage() {
       await navigate({ to: "/subscription" });
       return;
     }
-    if (tool.id === "custom-goal") {
-      setGoalModal(true);
+    if (GOAL_TOOL_IDS.has(tool.id)) {
+      await navigate({ to: "/tools/$tool", params: { tool: "goals" } });
       return;
     }
     if (tool.id === "kick-media-requests") {
@@ -592,7 +552,7 @@ function HomePage() {
                       ? t("home.action.openQueue")
                       : busy === tool.id
                         ? t("home.action.opening")
-                        : existing
+                        : GOAL_TOOL_IDS.has(tool.id) || existing
                           ? t("home.action.customize")
                           : t("home.action.open")
                   }
@@ -626,121 +586,6 @@ function HomePage() {
 
       <SaudiBusinessSeal />
 
-      {goalModal ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Customize custom goal"
-          className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
-          onClick={() => setGoalModal(false)}
-        >
-          <div
-            className="glass-3d w-full max-w-lg rounded-2xl p-5"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 className="text-base font-medium tracking-tight">Custom goal</h2>
-            <p className="mt-1 text-[0.78rem] text-muted-foreground">
-              Pick a goal type — targets, labels, triggers, colors and the OBS URL update instantly.
-            </p>
-
-            {goalWidgets.length > 0 ? (
-              <div className="mt-4 space-y-1.5">
-                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Your goals
-                </p>
-                {goalWidgets.map((widget) => (
-                  <div
-                    key={widget.id}
-                    className="flex items-center gap-2 rounded-xl border border-[oklch(1_0_0/0.08)] px-3 py-2 text-[0.78rem]"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGoalModal(false);
-                        navigate({ to: "/widgets/$widgetId", params: { widgetId: widget.id } });
-                      }}
-                      className="flex min-w-0 flex-1 items-center justify-between hover:text-primary"
-                    >
-                      <span className="truncate">{widget.name}</span>
-                      <span className="text-[0.68rem] text-muted-foreground">Edit</span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${t("home.delete")}: ${widget.name}`}
-                      onClick={() => {
-                        setGoalModal(false);
-                        setPendingDelete({ id: widget.id, name: widget.name });
-                      }}
-                      className="rounded-xl bg-[oklch(1_0_0/0.05)] p-1.5 text-muted-foreground transition-all duration-200 hover:scale-110 hover:bg-red-500/20 hover:text-red-400"
-                    >
-                      <Trash2 className="size-3.5" aria-hidden />
-                    </button>
-                  </div>
-                ))}
-
-              </div>
-            ) : null}
-
-            <label className="mt-4 block text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Goal type
-            </label>
-            <DarkSelect
-              value={goalType}
-              onValueChange={(next) => setGoalType(next as GoalTypeId)}
-              className="mt-2 w-full"
-              options={GOAL_TYPES.map((preset) => ({
-                value: preset.id,
-                label: `${preset.emoji} ${preset.labelEn}`,
-              }))}
-            />
-
-            <div className="mt-4 h-[120px] overflow-hidden rounded-xl border border-[oklch(1_0_0/0.06)] bg-[oklch(1_0_0/0.02)]">
-              <GoalTypePreview
-                label={goalPreset.overlayLabel}
-                current={goalPreset.previewCurrent}
-                target={goalPreset.target}
-                unit={goalPreset.unit}
-                accent={goalPreset.accentColor}
-              />
-            </div>
-
-            <dl className="mt-4 grid grid-cols-2 gap-2 text-[0.72rem]">
-              <div className="rounded-xl border border-[oklch(1_0_0/0.06)] p-2.5">
-                <dt className="text-muted-foreground">Target</dt>
-                <dd className="mt-0.5 font-medium">
-                  {goalPreset.target.toLocaleString()} {goalPreset.unit}
-                </dd>
-              </div>
-              <div className="rounded-xl border border-[oklch(1_0_0/0.06)] p-2.5">
-                <dt className="text-muted-foreground">Triggers</dt>
-                <dd className="mt-0.5 font-medium">{goalPreset.triggers.join(", ")}</dd>
-              </div>
-            </dl>
-
-            <p className="mt-3 truncate rounded-xl border border-[oklch(1_0_0/0.06)] px-2.5 py-2 font-mono text-[0.68rem] text-muted-foreground">
-              /overlay/&lt;token&gt;{goalOverlayParams(goalType)}
-            </p>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setGoalModal(false)}
-                className="rounded-xl border border-[oklch(1_0_0/0.1)] px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={busy === "custom-goal"}
-                onClick={() => void createGoalWidget()}
-                className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {busy === "custom-goal" ? "Creating…" : "Create goal"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {pendingDelete ? (
         <DeleteWidgetDialog

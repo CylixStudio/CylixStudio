@@ -1865,7 +1865,10 @@ export type Database = {
           description: string
           enabled: boolean
           id: string
+          image_url: string | null
+          is_active: boolean
           name: string
+          stock: number | null
           user_id: string
         }
         Insert: {
@@ -1874,7 +1877,10 @@ export type Database = {
           description?: string
           enabled?: boolean
           id?: string
+          image_url?: string | null
+          is_active?: boolean
           name: string
+          stock?: number | null
           user_id: string
         }
         Update: {
@@ -1883,7 +1889,10 @@ export type Database = {
           description?: string
           enabled?: boolean
           id?: string
+          image_url?: string | null
+          is_active?: boolean
           name?: string
+          stock?: number | null
           user_id?: string
         }
         Relationships: []
@@ -1986,6 +1995,10 @@ export type Database = {
           taps: number
         }[]
       }
+      purchase_loyalty_item: {
+        Args: { p_item_id: string; p_member_id: string; p_user_id: string }
+        Returns: Json
+      }
       redeem_activation_code: { Args: { p_code: string }; Returns: Json }
       revoke_activation_code: { Args: { p_code_id: string }; Returns: Json }
     }
@@ -2023,6 +2036,10 @@ export type Database = {
         | "KICKS_GOAL"
         | "VIEWER_COUNTER"
         | "EVENT_LABELS"
+        | "DONATION_GOAL"
+        | "FOLLOWER_GOAL"
+        | "SUBSCRIBER_GOAL"
+        | "CUSTOM_GOAL"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2185,6 +2202,10 @@ export const Constants = {
         "KICKS_GOAL",
         "VIEWER_COUNTER",
         "EVENT_LABELS",
+        "DONATION_GOAL",
+        "FOLLOWER_GOAL",
+        "SUBSCRIBER_GOAL",
+        "CUSTOM_GOAL",
       ],
     },
   },
