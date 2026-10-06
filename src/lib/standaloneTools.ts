@@ -2,13 +2,21 @@ import type { TranslationKey } from "@/lib/i18n";
 import type { WidgetType } from "@/lib/widgets";
 
 export type StandaloneTool = {
-  slug: "kicks-goal" | "viewer-counter" | "wheel" | "event-labels" | "goals";
+  slug:
+    | "kicks-goal"
+    | "viewer-counter"
+    | "wheel"
+    | "event-labels"
+    | "donation-goal"
+    | "follower-goal"
+    | "subscriber-goal"
+    | "custom-goal";
   type: WidgetType;
   /** Stable English name stored on the widget row. */
   name: string;
   nameKey: TranslationKey;
   descriptionKey: TranslationKey;
-  /** Combined goal editor. Does not insert a row until the user saves. */
+  /** Customize lives on `/tools/$slug` and saves this kind only. */
   goalEditor?: boolean;
 };
 
@@ -42,11 +50,35 @@ export const STANDALONE_TOOLS: StandaloneTool[] = [
     descriptionKey: "home.tool.eventLabels.desc",
   },
   {
-    slug: "goals",
-    type: "GOAL_BAR",
-    name: "Goals",
-    nameKey: "home.tool.goalBar.name",
-    descriptionKey: "home.tool.goalBar.desc",
+    slug: "donation-goal",
+    type: "DONATION_GOAL",
+    name: "Donation Goal",
+    nameKey: "home.tool.donationGoal.name",
+    descriptionKey: "home.tool.donationGoal.desc",
+    goalEditor: true,
+  },
+  {
+    slug: "follower-goal",
+    type: "FOLLOWER_GOAL",
+    name: "Follower Goal",
+    nameKey: "home.tool.followerGoal.name",
+    descriptionKey: "home.tool.followerGoal.desc",
+    goalEditor: true,
+  },
+  {
+    slug: "subscriber-goal",
+    type: "SUBSCRIBER_GOAL",
+    name: "Subscriber Goal",
+    nameKey: "home.tool.subscriberGoal.name",
+    descriptionKey: "home.tool.subscriberGoal.desc",
+    goalEditor: true,
+  },
+  {
+    slug: "custom-goal",
+    type: "CUSTOM_GOAL",
+    name: "Custom Goal",
+    nameKey: "home.tool.customGoal.name",
+    descriptionKey: "home.tool.customGoal.desc",
     goalEditor: true,
   },
 ];

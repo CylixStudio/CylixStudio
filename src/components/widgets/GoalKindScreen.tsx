@@ -2,72 +2,74 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { DarkSelect } from "@/components/ui/dark-select";
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { createWidget, widgetErrorText } from "@/lib/createWidget";
-import { GOAL_TYPES, goalTypePreset, type GoalTypeId } from "@/lib/goalTypes";
-import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { useLanguage } from "@/lib/i18n";
+import type { StandaloneTool } from "@/lib/standaloneTools";
 import { supabase } from "@/lib/supabase/client";
 import { SIGNED_OUT_ERROR } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
-import { parseGoalConfig } from "@/lib/widgets";
+import { isSplitGoalKind, parseSplitGoalConfig, type SplitGoalKind } from "@/lib/widgets";
 
 const fieldClass =
   "w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-primary";
 const labelClass = "text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground";
 
-const TYPE_KEYS: Record<GoalTypeId, TranslationKey> = {
-  DONATION: "goal.type.donation",
-  FOLLOWER: "goal.type.follower",
-  SUBSCRIBER: "goal.type.subscriber",
-  CUSTOM: "goal.type.custom",
-};
+export function GoalKindScreen({ spec, userId }: { spec: StandaloneTool; userId: string }) {
+  const kind = spec.type;
+  if (!isSplitGoalKind(kind)) return null;
+  return <GoalKindForm spec={spec} userId={userId} kind={kind} />;
+}
 
-export function CombinedGoalScreen({ userId }: { userId: string }) {
+function GoalKindForm({
+  spec,
+  userId,
+  kind,
+}: {
+  spec: StandaloneTool;
+  userId: string;
+  kind: SplitGoalKind;
+}) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const widgets = useWidgets();
   const workspace = useWorkspace(userId);
-  const existing = widgets.data?.widgets.find((widget) => widget.type === "GOAL_BAR") ?? null;
-  const goalRow = widgets.data?.goals.find((goal) => goal.widget_id === existing?.id) ?? null;
-  const initialConfig = parseGoalConfig(existing?.config);
-  const initialType = initialConfig.goalType;
-  const [goalType, setGoalType] = useState<GoalTypeId>(initialType);
-  const [title, setTitle] = useState(goalRow?.title || goalTypePreset(initialType).title);
-  const [current, setCurrent] = useState(String(goalRow?.current_value ?? 0));
-  const [target, setTarget] = useState(String(goalRow?.target_value || goalTypePreset(initialType).target));
-  const [unit, setUnit] = useState(goalRow?.unit || goalTypePreset(initialType).unit);
-  const [accent, setAccent] = useState(initialConfig.accentColor);
-  const [track, setTrack] = useState(initialConfig.backgroundColor);
-  const [text, setText] = useState(initialConfig.textColor);
+  const existing = widgets.data?.widgets.find((widget) => widget.type === kind) ?? null;
+  const initial = parseSplitGoalConfig(kind, existing?.config);
+  const [title, setTitle] = useState(initial.title);
+  const [current, setCurrent] = useState(String(initial.current));
+  const [target, setTarget] = useState(String(initial.target));
+  const [unit, setUnit] = useState(initial.unit);
+  const [accent, setAccent] = useState(initial.accentColor);
+  const [track, setTrack] = useState(initial.backgroundColor);
+  const [text, setText] = useState(initial.textColor);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hydratedId, setHydratedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!existing || hydratedId === existing.id) return;
-    const next = parseGoalConfig(existing.config);
-    const preset = goalTypePreset(next.goalType);
-    setGoalType(next.goalType);
-    setTitle(goalRow?.title || preset.title);
-    setCurrent(String(goalRow?.current_value ?? 0));
-    setTarget(String(goalRow?.target_value || preset.target));
-    setUnit(goalRow?.unit || preset.unit);
+    const next = parseSplitGoalConfig(kind, existing.config);
+    setTitle(next.title);
+    setCurrent(String(next.current));
+    setTarget(String(next.target));
+    setUnit(next.unit);
     setAccent(next.accentColor);
     setTrack(next.backgroundColor);
     setText(next.textColor);
     setHydratedId(existing.id);
-  }, [existing, goalRow, hydratedId]);
+  }, [existing, hydratedId, kind]);
 
-  const savedUnit = goalType === "DONATION" || goalType === "CUSTOM" ? unit.trim() : "";
-  const previewConfig = {
-    ...parseGoalConfig(existing?.config),
-    goalType,
-    label: title,
+  const config = {
+    ...parseSplitGoalConfig(kind, null),
+    title,
+    current: Math.max(0, Number(current) || 0),
+    target: Math.max(1, Number(target) || 1),
+    unit: kind === "DONATION_GOAL" || kind === "CUSTOM_GOAL" ? unit.trim() : "",
     accentColor: accent,
     backgroundColor: track,
     textColor: text,
@@ -86,32 +88,17 @@ export function CombinedGoalScreen({ userId }: { userId: string }) {
         const created = await createWidget({
           userId,
           subathonId: workspace.data?.subathons[0]?.id ?? null,
-          type: "GOAL_BAR",
-          name: title.trim() || "Goals",
-          goalType,
+          type: kind,
+          name: spec.name,
         });
         widgetId = created.id;
       }
-      const { error: widgetError } = await supabase
+      const { error: writeError } = await supabase
         .from("widgets")
-        .update({
-          name: title.trim() || "Goals",
-          config: previewConfig as never,
-        })
+        .update({ name: title.trim() || spec.name, config: config as never })
         .eq("id", widgetId)
         .eq("user_id", userId);
-      if (widgetError) throw widgetError;
-      const { error: goalError } = await supabase
-        .from("goals")
-        .update({
-          title: title.trim() || goalTypePreset(goalType).title,
-          unit: savedUnit,
-          target_value: Math.max(1, Number(target) || 1),
-          current_value: Math.max(0, Number(current) || 0),
-        })
-        .eq("widget_id", widgetId)
-        .eq("user_id", userId);
-      if (goalError) throw goalError;
+      if (writeError) throw writeError;
       await queryClient.invalidateQueries({ queryKey: ["widgets"] });
       await navigate({ to: "/widgets" });
     } catch (err) {
@@ -131,19 +118,6 @@ export function CombinedGoalScreen({ userId }: { userId: string }) {
         }}
       >
         <SessionAwareError error={error} signedOutLabel={t("tools.signedOut")} />
-        <label className="block">
-          <span className={labelClass}>{t("goal.field.type")}</span>
-          <DarkSelect
-            className="mt-2 w-full"
-            aria-label={t("goal.field.type")}
-            value={goalType}
-            onValueChange={(next) => setGoalType(next as GoalTypeId)}
-            options={GOAL_TYPES.map((preset) => ({
-              value: preset.id,
-              label: t(TYPE_KEYS[preset.id]),
-            }))}
-          />
-        </label>
         <label className="block">
           <span className={labelClass}>{t("goal.field.title")}</span>
           <input className={`${fieldClass} mt-2`} value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -168,13 +142,13 @@ export function CombinedGoalScreen({ userId }: { userId: string }) {
             />
           </label>
         </div>
-        {goalType === "DONATION" ? (
+        {kind === "DONATION_GOAL" ? (
           <label className="block">
             <span className={labelClass}>{t("goal.field.currency")}</span>
             <input className={`${fieldClass} mt-2`} value={unit} onChange={(event) => setUnit(event.target.value)} />
           </label>
         ) : null}
-        {goalType === "CUSTOM" ? (
+        {kind === "CUSTOM_GOAL" ? (
           <label className="block">
             <span className={labelClass}>{t("goal.field.unit")}</span>
             <input className={`${fieldClass} mt-2`} value={unit} onChange={(event) => setUnit(event.target.value)} />
@@ -204,16 +178,11 @@ export function CombinedGoalScreen({ userId }: { userId: string }) {
       </form>
       <div className="grid min-h-[240px] place-items-center rounded-2xl border border-white/10 bg-[repeating-conic-gradient(#16171d_0%_25%,#101116_0%_50%)] bg-[length:32px_32px] p-6">
         <WidgetRenderer
-          type="GOAL_BAR"
-          config={previewConfig}
+          type={kind}
+          config={config}
           frame={null}
           remaining={0}
-          goal={{
-            title,
-            unit: savedUnit,
-            target: Math.max(1, Number(target) || 1),
-            current: Math.max(0, Number(current) || 0),
-          }}
+          goal={null}
           events={[]}
           spin={null}
         />

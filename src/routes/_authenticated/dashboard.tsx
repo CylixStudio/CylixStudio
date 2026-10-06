@@ -5,6 +5,8 @@ import {
   Coins,
   Disc3,
   Gauge,
+  Star,
+  Target,
   Gift,
   Lock,
   Tags,
@@ -39,7 +41,9 @@ import {
 import {
   ChatPreview,
   CustomGoalPreview,
+  DonationGoalPreview,
   EmotePreview,
+  FollowerGoalPreview,
   EventLabelsPreview,
   KicksGoalPreview,
   SpotlightPreview,
@@ -49,6 +53,7 @@ import {
   ViewerCounterPreview,
   WheelPreview,
   MediaRequestPreview,
+  SubscriberGoalPreview,
   TimerPreview,
 } from "@/components/hub/previews";
 
@@ -106,7 +111,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 const HUB_INITIAL_VISIBLE = 20;
 
-const GOAL_TOOL_IDS = new Set(["goals"]);
+const GOAL_TOOL_IDS = new Set(["donation-goal", "follower-goal", "subscriber-goal", "custom-goal"]);
 const HUB_LOAD_MORE = 8;
 
 /** Hub tools that require an active Pro subscription (matches PLAN_FEATURES). */
@@ -161,15 +166,51 @@ const TOOLS: Tool[] = [
     platforms: [...ALL_PLATFORMS],
   },
   {
-    id: "goals",
-    name: "Goals",
-    nameKey: "home.tool.goalBar.name",
-    descriptionKey: "home.tool.goalBar.desc",
+    id: "donation-goal",
+    name: "Donation Goal",
+    nameKey: "home.tool.donationGoal.name",
+    descriptionKey: "home.tool.donationGoal.desc",
     categoryKey: "cat.Goals",
-    icon: Gauge,
+    icon: Coins,
+    preview: DonationGoalPreview,
+    type: "DONATION_GOAL",
+    keywords: "donation goal tips currency amount",
+    platforms: [...ALL_PLATFORMS],
+  },
+  {
+    id: "follower-goal",
+    name: "Follower Goal",
+    nameKey: "home.tool.followerGoal.name",
+    descriptionKey: "home.tool.followerGoal.desc",
+    categoryKey: "cat.Goals",
+    icon: Users,
+    preview: FollowerGoalPreview,
+    type: "FOLLOWER_GOAL",
+    keywords: "follower goal count",
+    platforms: [...ALL_PLATFORMS],
+  },
+  {
+    id: "subscriber-goal",
+    name: "Subscriber Goal",
+    nameKey: "home.tool.subscriberGoal.name",
+    descriptionKey: "home.tool.subscriberGoal.desc",
+    categoryKey: "cat.Goals",
+    icon: Star,
+    preview: SubscriberGoalPreview,
+    type: "SUBSCRIBER_GOAL",
+    keywords: "subscriber goal subs count",
+    platforms: [...ALL_PLATFORMS],
+  },
+  {
+    id: "custom-goal",
+    name: "Custom Goal",
+    nameKey: "home.tool.customGoal.name",
+    descriptionKey: "home.tool.customGoal.desc",
+    categoryKey: "cat.Goals",
+    icon: Target,
     preview: CustomGoalPreview,
-    type: "GOAL_BAR",
-    keywords: "goal donation follower subscriber custom progress bar target",
+    type: "CUSTOM_GOAL",
+    keywords: "custom goal unit label",
     platforms: [...ALL_PLATFORMS],
   },
   {
@@ -383,7 +424,7 @@ function HomePage() {
       return;
     }
     if (GOAL_TOOL_IDS.has(tool.id)) {
-      await navigate({ to: "/tools/$tool", params: { tool: "goals" } });
+      await navigate({ to: "/tools/$tool", params: { tool: tool.id } });
       return;
     }
     if (tool.id === "kick-media-requests") {

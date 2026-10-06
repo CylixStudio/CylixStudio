@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { Coins, Copy, Check, Disc3, Gauge, Tags, Trash2, Users, type LucideIcon } from "lucide-react";
+import { Banknote, Coins, Copy, Check, Disc3, Star, Tags, Target, Trash2, Users, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -9,8 +9,11 @@ import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
 import { ToolCard } from "@/components/hub/ToolCard";
 import {
   CustomGoalPreview,
+  DonationGoalPreview,
   EventLabelsPreview,
+  FollowerGoalPreview,
   KicksGoalPreview,
+  SubscriberGoalPreview,
   ViewerCounterPreview,
   WheelPreview,
 } from "@/components/hub/previews";
@@ -36,7 +39,10 @@ const TOOL_VISUAL: Record<
   "viewer-counter": { icon: Users, preview: ViewerCounterPreview },
   wheel: { icon: Disc3, preview: WheelPreview },
   "event-labels": { icon: Tags, preview: EventLabelsPreview },
-  goals: { icon: Gauge, preview: CustomGoalPreview },
+  "donation-goal": { icon: Banknote, preview: DonationGoalPreview },
+  "follower-goal": { icon: Users, preview: FollowerGoalPreview },
+  "subscriber-goal": { icon: Star, preview: SubscriberGoalPreview },
+  "custom-goal": { icon: Target, preview: CustomGoalPreview },
 };
 const CREATABLE_WIDGET_TYPES = WIDGET_TYPES.filter(
   (entry) => !TIKTOK_COMING_SOON.includes(entry.value) && !isSplitGoalKind(entry.value),

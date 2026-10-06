@@ -13,7 +13,8 @@ import { SubathonElementControlPanel } from "@/components/widgets/SubathonElemen
 import { SubathonTimerSidebar } from "@/components/widgets/SubathonTimerSidebar";
 import { SpotlightControlPanel } from "@/components/widgets/SpotlightControlPanel";
 import { StreamEventsScheduleControlPanel } from "@/components/widgets/StreamEventsScheduleControlPanel";
-import { parseSpotlightConfig, parseStreamEventsScheduleState } from "@/lib/widgets";
+import { isSplitGoalKind, parseSpotlightConfig, parseStreamEventsScheduleState } from "@/lib/widgets";
+import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
 import { supabase } from "@/lib/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { syncGoalFollowers } from "@/lib/goals.functions";
@@ -225,8 +226,10 @@ function WidgetBuilder() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (widget?.type !== "GOAL_BAR") return;
-    void navigate({ to: "/tools/$tool", params: { tool: "goals" }, replace: true });
+    if (!widget || !isSplitGoalKind(widget.type)) return;
+    const spec = STANDALONE_TOOLS.find((tool) => tool.type === widget.type);
+    if (!spec) return;
+    void navigate({ to: "/tools/$tool", params: { tool: spec.slug }, replace: true });
   }, [navigate, widget]);
   const [confirmDelete, setConfirmDelete] = useState(false);
 

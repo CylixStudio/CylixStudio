@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { CombinedGoalScreen } from "@/components/widgets/GoalKindScreen";
+import { GoalKindScreen } from "@/components/widgets/GoalKindScreen";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { createWidget, widgetErrorText } from "@/lib/createWidget";
@@ -47,7 +47,7 @@ function ToolOpenPage() {
   if (spec?.goalEditor) {
     return (
       <AppShell user={user} profile={workspace.data?.profile} title={t(spec.nameKey)} subtitle={t(spec.descriptionKey)}>
-        <CombinedGoalScreen userId={user.id} />
+        <GoalKindScreen spec={spec} userId={user.id} />
       </AppShell>
     );
   }
