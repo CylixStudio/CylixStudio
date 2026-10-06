@@ -23,13 +23,16 @@ export type WidgetType =
   | "CHAT_SPOTLIGHT"
   | "STREAM_EVENTS_SCHEDULE"
   | "TIKTOK_TAPPERS"
-  | "TIKTOK_TAP_GOAL";
+  | "TIKTOK_TAP_GOAL"
+  | "KICKS_GOAL"
+  | "VIEWER_COUNTER"
+  | "EVENT_LABELS";
 
 export const WIDGET_TYPES: { value: WidgetType; label: string; hint: string }[] = [
   { value: "SUBATHON_TIMER", label: "Subathon timer", hint: "Live countdown driven by rules" },
   { value: "GOAL_BAR", label: "Goal bar", hint: "Progress toward a donation/sub goal" },
   { value: "CHAT_BOX", label: "Activity feed", hint: "Rolling list of the latest events" },
-  { value: "SPIN_WHEEL", label: "Spin wheel", hint: "Random picker you trigger from the dashboard" },
+  { value: "SPIN_WHEEL", label: "Wheel of fortune", hint: "Weighted prize wheel" },
   { value: "EMOTE_RAIN", label: "Emote rain", hint: "Emotes rain down on every incoming event" },
   {
     value: "CHAT_SPOTLIGHT",
@@ -51,13 +54,19 @@ export const WIDGET_TYPES: { value: WidgetType; label: string; hint: string }[] 
     label: "TikTok tap goal overlay",
     hint: "Progress bar toward a total TikTok tap target",
   },
+  { value: "KICKS_GOAL", label: "Kicks Goal", hint: "Kick currency progress bar" },
+  { value: "VIEWER_COUNTER", label: "Viewer counter", hint: "Live viewer or follower count" },
+  { value: "EVENT_LABELS", label: "Event labels", hint: "Labels the streamer edits for the overlay" },
 ];
 
 export const WIDGET_LABEL: Record<WidgetType, string> = {
   SUBATHON_TIMER: "Subathon timer",
   GOAL_BAR: "Goal bar",
   CHAT_BOX: "Activity feed",
-  SPIN_WHEEL: "Spin wheel",
+  SPIN_WHEEL: "عجلة الحظ",
+  KICKS_GOAL: "Kicks Goal",
+  VIEWER_COUNTER: "عداد المشاهدين",
+  EVENT_LABELS: "تسميات الأحداث",
   EMOTE_RAIN: "Emote rain",
   CHAT_SPOTLIGHT: "Chat spotlight",
   STREAM_EVENTS_SCHEDULE: "جدول فعاليات البث",
@@ -120,7 +129,9 @@ export type ChatConfig = BaseStyle & {
   /** Vertical gap between messages, in px. */
   messageGap: number;
 };
-export type SpinConfig = BaseStyle & { entries: string[]; title: string };
+export type SpinPrize = { label: string; weight: number };
+
+export type SpinConfig = BaseStyle & { entries: string[]; prizes: SpinPrize[]; title: string };
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -206,17 +217,60 @@ export function parseChatConfig(raw: unknown): ChatConfig {
   };
 }
 
-export function parseSpinConfig(raw: unknown): SpinConfig {
+const DEFAULT_SPIN_PRIZES: SpinPrize[] = [
+  { label: "+5 minutes", weight: 1 },
+  { label: "+10 minutes", weight: 1 },
+  { label: "Push-ups", weight: 1 },
+  { label: "Nothing", weight: 1 },
+];
+
+function prizeWeight(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.min(100, Math.max(1, Math.round(parsed)));
+}
+
+/** Saved prizes win. Legacy string entries become equal slices. */
+export function parseSpinPrizes(raw: unknown): SpinPrize[] {
   const source = asRecord(raw);
+  const rawPrizes = Array.isArray(source["prizes"]) ? source["prizes"] : [];
+  const prizes = rawPrizes
+    .map((item) => asRecord(item))
+    .map((item) => ({
+      label: typeof item["label"] === "string" ? item["label"].trim().slice(0, 40) : "",
+      weight: prizeWeight(item["weight"]),
+    }))
+    .filter((item) => item.label.length > 0)
+    .slice(0, 24);
+  if (prizes.length > 0) return prizes;
   const rawEntries = Array.isArray(source["entries"]) ? source["entries"] : [];
   const entries = rawEntries
     .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    .map((entry) => entry.trim().slice(0, 40))
+    .map((entry) => ({ label: entry.trim().slice(0, 40), weight: 1 }))
     .slice(0, 24);
+  return entries.length > 0 ? entries : DEFAULT_SPIN_PRIZES;
+}
+
+export function pickWeightedPrize(prizes: SpinPrize[]): string | null {
+  const pool = prizes.filter((prize) => prize.label.trim().length > 0 && prize.weight > 0);
+  if (pool.length === 0) return null;
+  const total = pool.reduce((sum, prize) => sum + prize.weight, 0);
+  let roll = Math.random() * total;
+  for (const prize of pool) {
+    roll -= prize.weight;
+    if (roll <= 0) return prize.label;
+  }
+  return pool[pool.length - 1]?.label ?? null;
+}
+
+export function parseSpinConfig(raw: unknown): SpinConfig {
+  const source = asRecord(raw);
+  const prizes = parseSpinPrizes(raw);
   return {
     ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28 }),
     title: text(source["title"], "SPIN THE WHEEL", 40),
-    entries: entries.length > 0 ? entries : ["+5 minutes", "+10 minutes", "Push-ups", "Nothing"],
+    prizes,
+    entries: prizes.map((prize) => prize.label),
   };
 }
 
@@ -536,6 +590,72 @@ export function parseTapGoalConfig(raw: unknown): TapGoalConfig {
     design: (TAPGOAL_DESIGNS.some((entry) => entry.value === design)
       ? design
       : "bar") as TapGoalDesign,
+  };
+}
+
+/* ------------------------------ Kicks goal ------------------------------ */
+
+export type KicksGoalConfig = BaseStyle & {
+  title: string;
+  target: number;
+  current: number;
+};
+
+export function parseKicksGoalConfig(raw: unknown): KicksGoalConfig {
+  const source = asRecord(raw);
+  const target = Number(source["target"]);
+  const current = Number(source["current"]);
+  return {
+    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 36, accentColor: "#53FC18" }),
+    title: text(source["title"] ?? source["label"], "Kicks Goal", 40),
+    target: Number.isFinite(target) ? Math.min(100_000_000, Math.max(1, Math.round(target))) : 1000,
+    current: Number.isFinite(current) ? Math.min(100_000_000, Math.max(0, Math.round(current))) : 0,
+  };
+}
+
+/* ---------------------------- Viewer counter ---------------------------- */
+
+export const VIEWER_PLATFORMS = ["KICK", "TWITCH", "YOUTUBE", "X", "TIKTOK"] as const;
+export type ViewerPlatform = (typeof VIEWER_PLATFORMS)[number];
+export type ViewerMetric = "viewers" | "followers";
+
+export type ViewerCounterConfig = BaseStyle & {
+  platform: ViewerPlatform;
+  channel: string;
+  metric: ViewerMetric;
+};
+
+export function parseViewerCounterConfig(raw: unknown): ViewerCounterConfig {
+  const source = asRecord(raw);
+  const platform = typeof source["platform"] === "string" ? source["platform"].toUpperCase() : "KICK";
+  const metric = source["metric"] === "followers" ? "followers" : "viewers";
+  const channel = typeof source["channel"] === "string" ? source["channel"].trim().slice(0, 80) : "";
+  return {
+    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 64, accentColor: "#bee1fc" }),
+    platform: (VIEWER_PLATFORMS as readonly string[]).includes(platform) ? (platform as ViewerPlatform) : "KICK",
+    channel,
+    metric,
+  };
+}
+
+/* ----------------------------- Event labels ----------------------------- */
+
+export type EventLabelsConfig = BaseStyle & {
+  title: string;
+  labels: string[];
+};
+
+export function parseEventLabelsConfig(raw: unknown): EventLabelsConfig {
+  const source = asRecord(raw);
+  const rawLabels = Array.isArray(source["labels"]) ? source["labels"] : [];
+  const labels = rawLabels
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim().slice(0, 80))
+    .slice(0, 24);
+  return {
+    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28, backgroundOpacity: 70 }),
+    title: text(source["title"], "تسميات الأحداث", 40),
+    labels: labels.length > 0 ? labels : ["متابعة", "اشتراك", "هدية"],
   };
 }
 

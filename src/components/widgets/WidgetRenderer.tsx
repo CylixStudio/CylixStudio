@@ -12,6 +12,7 @@ import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
 import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
 import { useLanguage } from "@/lib/i18n";
+import { readOverlayViewers } from "@/lib/toolWidgets.functions";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
@@ -22,10 +23,13 @@ import {
   parseChatConfig,
   parseGoalConfig,
   parseEmoteRainConfig,
+  parseEventLabelsConfig,
+  parseKicksGoalConfig,
   parseSpinConfig,
   parseSpotlightConfig,
   parseTappersConfig,
   parseTapGoalConfig,
+  parseViewerCounterConfig,
   type ChatLayout,
   type GoalSnapshot,
   type OverlayEvent,
@@ -599,16 +603,30 @@ export function ChatBoxView({
 
 /* ------------------------------ Spin wheel ------------------------------ */
 
-export function SpinWheelView({ config, spin }: { config: unknown; spin: SpinState | null }) {
+export function SpinWheelView({
+  config,
+  spin,
+  onSpin,
+  spinning = false,
+}: {
+  config: unknown;
+  spin: SpinState | null;
+  onSpin?: (() => void) | undefined;
+  spinning?: boolean;
+}) {
+  const { t } = useLanguage();
   const style = parseSpinConfig(config);
-  const entries = style.entries;
-  const slice = 360 / entries.length;
-
-  const targetIndex = useMemo(() => {
-    if (!spin?.result) return 0;
-    const index = entries.indexOf(spin.result);
-    return index >= 0 ? index : 0;
-  }, [spin?.result, entries]);
+  const prizes = style.prizes;
+  const totalWeight = prizes.reduce((sum, prize) => sum + prize.weight, 0) || 1;
+  let cursor = 0;
+  const slices = prizes.map((prize, index) => {
+    const span = (prize.weight / totalWeight) * 360;
+    const start = cursor;
+    cursor += span;
+    return { ...prize, index, start, span };
+  });
+  const winner = slices.find((slice) => slice.label === spin?.result) ?? slices[0];
+  const center = winner ? winner.start + winner.span / 2 : 0;
 
   const [rotation, setRotation] = useState(0);
   const lastNonce = useRef<number | null>(null);
@@ -617,20 +635,18 @@ export function SpinWheelView({ config, spin }: { config: unknown; spin: SpinSta
     const nonce = spin?.nonce ?? 0;
     if (lastNonce.current === null) {
       lastNonce.current = nonce;
-      setRotation(-(targetIndex * slice + slice / 2));
+      setRotation(-center);
       return;
     }
     if (nonce === lastNonce.current) return;
     lastNonce.current = nonce;
-    // Five full turns, then land on the winning slice.
-    setRotation((current) => current - (360 * 5 + ((current % 360) + targetIndex * slice + slice / 2)));
-  }, [spin?.nonce, targetIndex, slice]);
+    setRotation((current) => current - (360 * 5 + ((current % 360) + center)));
+  }, [spin?.nonce, center]);
 
-  const gradient = `conic-gradient(${entries
-    .map((_, index) => {
-      const color =
-        index % 2 === 0 ? style.accentColor : withAlpha(style.backgroundColor, 100);
-      return `${color} ${index * slice}deg ${(index + 1) * slice}deg`;
+  const gradient = `conic-gradient(${slices
+    .map((slice, index) => {
+      const color = index % 2 === 0 ? style.accentColor : withAlpha(style.backgroundColor, 100);
+      return `${color} ${slice.start}deg ${slice.start + slice.span}deg`;
     })
     .join(", ")})`;
 
@@ -680,6 +696,17 @@ export function SpinWheelView({ config, spin }: { config: unknown; spin: SpinSta
           {spin?.result ?? "—"}
         </div>
       </div>
+      {onSpin ? (
+        <button
+          type="button"
+          onClick={onSpin}
+          disabled={spinning || prizes.length === 0}
+          className="rounded-full border border-white/15 bg-black/50 px-4 py-1.5 text-sm font-semibold disabled:opacity-50"
+          style={{ color: style.textColor }}
+        >
+          {spinning ? "…" : t("widget.wheel.spin")}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1498,6 +1525,111 @@ function TapperAvatar({
 }
 
 
+function ViewerCounterView({
+  config,
+  publicToken,
+}: {
+  config: unknown;
+  publicToken?: string | null;
+}) {
+  const { t } = useLanguage();
+  const parsed = parseViewerCounterConfig(config);
+  const [count, setCount] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!publicToken || !parsed.channel || parsed.platform === "TIKTOK") {
+      setCount(null);
+      setError(
+        parsed.platform === "TIKTOK"
+          ? "TikTok live counters are Coming Soon until TikTok OAuth is ready."
+          : null,
+      );
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const result = await readOverlayViewers({ data: { publicToken } });
+        if (cancelled) return;
+        if (result.ok) {
+          setCount(result.count);
+          setError(result.note);
+        } else {
+          setCount(null);
+          setError(result.message === "channel_missing" ? null : result.message);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setCount(null);
+        setError(err instanceof Error ? err.message : "lookup_failed");
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [publicToken, parsed.channel, parsed.platform, parsed.metric]);
+
+  const comingSoon = /coming soon/i.test(error ?? "");
+  const style = parsed;
+  return (
+    <div
+      className="flex min-w-[280px] flex-col items-center gap-2 rounded-2xl px-8 py-6 text-center"
+      style={{
+        background: withAlpha(style.backgroundColor, style.backgroundOpacity),
+        color: style.textColor,
+        fontFamily: style.fontFamily,
+      }}
+    >
+      <span style={{ letterSpacing: "0.22em", fontSize: 12, fontWeight: 700, color: style.accentColor }}>
+        {parsed.channel || t("widget.viewer.channel")}
+      </span>
+      <span style={{ fontSize: style.fontSize, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} dir="ltr">
+        {count === null ? "—" : count.toLocaleString("en-US")}
+      </span>
+      <span style={{ fontSize: 13, opacity: 0.7 }}>
+        {comingSoon
+          ? t("widget.viewer.comingSoon")
+          : error && error !== "overlay_not_found"
+            ? error
+            : parsed.metric === "followers"
+              ? t("widget.viewer.followers")
+              : t("widget.viewer.viewers")}
+      </span>
+    </div>
+  );
+}
+
+function EventLabelsView({ config }: { config: unknown }) {
+  const parsed = parseEventLabelsConfig(config);
+  return (
+    <div
+      className="flex min-w-[240px] flex-col gap-2 rounded-2xl px-6 py-5"
+      style={{
+        background: withAlpha(parsed.backgroundColor, parsed.backgroundOpacity),
+        color: parsed.textColor,
+        fontFamily: parsed.fontFamily,
+      }}
+    >
+      <span style={{ letterSpacing: "0.18em", fontSize: 12, fontWeight: 700, color: parsed.accentColor }}>
+        {parsed.title}
+      </span>
+      {parsed.labels.map((label) => (
+        <span
+          key={label}
+          className="rounded-xl border px-3 py-1.5"
+          style={{ borderColor: withAlpha(parsed.accentColor, 45), fontSize: parsed.fontSize * 0.55 }}
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /* ------------------------------- Renderer ------------------------------- */
 
 
@@ -1536,6 +1668,9 @@ export function WidgetRenderer({
   chat = null,
   testMessages = [],
   demo = false,
+  publicToken = null,
+  onSpin,
+  spinning = false,
 }: {
   type: WidgetType;
   config: unknown;
@@ -1551,16 +1686,32 @@ export function WidgetRenderer({
   chat?: ChatSources | null;
   testMessages?: ChatMessage[];
   demo?: boolean;
+  publicToken?: string | null;
+  onSpin?: (() => void) | undefined;
+  spinning?: boolean;
 }) {
   switch (type) {
     case "GOAL_BAR":
       return <GoalBarView config={config} goal={goal} />;
+    case "KICKS_GOAL": {
+      const kicks = parseKicksGoalConfig(config);
+      return (
+        <GoalBarView
+          config={config}
+          goal={{ title: kicks.title, unit: "Kicks", target: kicks.target, current: kicks.current }}
+        />
+      );
+    }
+    case "VIEWER_COUNTER":
+      return <ViewerCounterView config={config} publicToken={publicToken} />;
+    case "EVENT_LABELS":
+      return <EventLabelsView config={config} />;
     case "CHAT_BOX":
       return (
         <ChatBoxView config={config} chat={chat} testMessages={testMessages} />
       );
     case "SPIN_WHEEL":
-      return <SpinWheelView config={config} spin={spin} />;
+      return <SpinWheelView config={config} spin={spin} onSpin={onSpin} spinning={spinning} />;
     case "EMOTE_RAIN":
       return <EmoteRainView config={config} events={events} demo={demo} />;
     case "TIKTOK_TAPPERS":

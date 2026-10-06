@@ -1825,6 +1825,96 @@ export type Database = {
           },
         ]
       }
+      loyalty_members: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          level: number
+          points: number
+          updated_at: string
+          user_id: string
+          watch_seconds: number
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          level?: number
+          points?: number
+          updated_at?: string
+          user_id: string
+          watch_seconds?: number
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          level?: number
+          points?: number
+          updated_at?: string
+          user_id?: string
+          watch_seconds?: number
+        }
+        Relationships: []
+      }
+      loyalty_shop_items: {
+        Row: {
+          cost: number
+          created_at: string
+          description: string
+          enabled: boolean
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          description?: string
+          enabled?: boolean
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          description?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_sales: {
+        Row: {
+          created_at: string
+          id: string
+          item_name: string
+          member_id: string | null
+          points: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_name: string
+          member_id?: string | null
+          points?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_name?: string
+          member_id?: string | null
+          points?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1930,6 +2020,9 @@ export type Database = {
         | "STREAM_EVENTS_SCHEDULE"
         | "TIKTOK_TAPPERS"
         | "TIKTOK_TAP_GOAL"
+        | "KICKS_GOAL"
+        | "VIEWER_COUNTER"
+        | "EVENT_LABELS"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2089,6 +2182,9 @@ export const Constants = {
         "STREAM_EVENTS_SCHEDULE",
         "TIKTOK_TAPPERS",
         "TIKTOK_TAP_GOAL",
+        "KICKS_GOAL",
+        "VIEWER_COUNTER",
+        "EVENT_LABELS",
       ],
     },
   },

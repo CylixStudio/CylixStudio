@@ -2,9 +2,13 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactElement } from "react";
 import {
+  Coins,
+  Disc3,
   Gauge,
   Gift,
   Lock,
+  Tags,
+  Users,
   MessageSquare,
   Pin,
   PlaySquare,
@@ -37,10 +41,14 @@ import {
   ChatPreview,
   CustomGoalPreview,
   EmotePreview,
+  EventLabelsPreview,
+  KicksGoalPreview,
   SpotlightPreview,
   StreamEventsSchedulePreview,
   TappersPreview,
   TapGoalPreview,
+  ViewerCounterPreview,
+  WheelPreview,
   GoalTypePreview,
   MediaRequestPreview,
   TimerPreview,
@@ -106,7 +114,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: HomePage,
 });
 
-const HUB_INITIAL_VISIBLE = 12;
+const HUB_INITIAL_VISIBLE = 16;
 const HUB_LOAD_MORE = 8;
 
 /** Hub tools that require an active Pro subscription (matches PLAN_FEATURES). */
@@ -255,6 +263,54 @@ const TOOLS: Tool[] = [
     type: "EMOTE_RAIN",
     keywords: "emote rain particles hype gifts",
     platforms: ["KICK", "TWITCH"],
+  },
+  {
+    id: "kicks-goal",
+    name: "Kicks Goal",
+    nameKey: "home.tool.kicksGoal.name",
+    descriptionKey: "home.tool.kicksGoal.desc",
+    categoryKey: "cat.Goals",
+    icon: Coins,
+    preview: KicksGoalPreview,
+    type: "KICKS_GOAL",
+    keywords: "kicks goal kick currency progress bar",
+    platforms: ["KICK"],
+  },
+  {
+    id: "viewer-counter",
+    name: "Viewer counter",
+    nameKey: "home.tool.viewerCounter.name",
+    descriptionKey: "home.tool.viewerCounter.desc",
+    categoryKey: "cat.Utilities",
+    icon: Users,
+    preview: ViewerCounterPreview,
+    type: "VIEWER_COUNTER",
+    keywords: "viewer counter viewers followers live count",
+    platforms: ["KICK", "TWITCH", "YOUTUBE"],
+  },
+  {
+    id: "wheel-of-fortune",
+    name: "Wheel of fortune",
+    nameKey: "home.tool.wheel.name",
+    descriptionKey: "home.tool.wheel.desc",
+    categoryKey: "cat.Utilities",
+    icon: Disc3,
+    preview: WheelPreview,
+    type: "SPIN_WHEEL",
+    keywords: "wheel fortune spin prize raffle",
+    platforms: [...ALL_PLATFORMS],
+  },
+  {
+    id: "event-labels",
+    name: "Event labels",
+    nameKey: "home.tool.eventLabels.name",
+    descriptionKey: "home.tool.eventLabels.desc",
+    categoryKey: "cat.Utilities",
+    icon: Tags,
+    preview: EventLabelsPreview,
+    type: "EVENT_LABELS",
+    keywords: "event labels tags overlay text",
+    platforms: [...ALL_PLATFORMS],
   },
 ];
 

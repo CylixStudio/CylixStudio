@@ -9,8 +9,9 @@ import {
   type BotRixLookupResult,
   type BotRixPlatform,
   type BotRixSection,
+  type BotRixShopItem,
 } from "@/lib/botrix";
-import { importBotRixCommands, lookupBotRixPublic } from "@/lib/botrix.functions";
+import { importBotRixCommands, importBotRixShop, lookupBotRixPublic } from "@/lib/botrix.functions";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
@@ -150,6 +151,42 @@ export function BotRixPanel() {
     }
   };
 
+  const importShop = async (key: string, items: BotRixShopItem[]) => {
+    if (!result || importLocked) return;
+    setImporting(key);
+    setImportNotice(null);
+    try {
+      if (isTestMode()) {
+        setImportNotice("widget.signedOut");
+        return;
+      }
+      const saved = await importBotRixShop({
+        data: {
+          items: items.map((item) => ({
+            name: item.name,
+            description: item.description,
+            price: item.price,
+            image: null,
+          })),
+        },
+      });
+      if (!saved.ok) {
+        toast.error(t("botrix.importFailed"));
+        return;
+      }
+      toast.success(
+        saved.skipped > 0
+          ? t("botrix.importedCount", { imported: saved.imported, skipped: saved.skipped })
+          : t("botrix.imported"),
+      );
+    } catch (error) {
+      if (isSignedOutFailure(error)) setImportNotice("widget.signedOut");
+      else toast.error(t("botrix.importFailed"));
+    } finally {
+      setImporting(null);
+    }
+  };
+
   const importButton = (key: string, label: TranslationKey, onClick: () => void, disabled = false) => (
     <button
       type="button"
@@ -162,7 +199,7 @@ export function BotRixPanel() {
   );
 
   return (
-    <section aria-busy={loading} className="glass-3d mt-6 rounded-2xl border border-white/10 bg-zinc-950 p-5">
+    <section id="botrix" aria-busy={loading} className="glass-3d mt-6 rounded-2xl border border-white/10 bg-zinc-950 p-5">
       <h2 className="text-base font-medium tracking-tight">{t("botrix.title")}</h2>
       <p className="mt-1 text-[0.78rem] text-muted-foreground">{t("botrix.subtitle")}</p>
 
@@ -258,10 +295,9 @@ export function BotRixPanel() {
             title={t("botrix.shop")}
             section={result.shop}
             empty={t("botrix.empty.shop")}
-            note={result.shop.ok && result.shop.items.length > 0 ? t("botrix.shopNoDestination") : undefined}
             action={
               result.shop.ok && result.shop.items.length > 0
-                ? importButton("shop-all", "botrix.importAll", () => {}, true)
+                ? importButton("shop-all", "botrix.importAll", () => void importShop("shop-all", result.shop.ok ? result.shop.items : []))
                 : null
             }
           >
@@ -277,7 +313,7 @@ export function BotRixPanel() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium">{item.name}</p>
-                        {importButton(`shop-${index}`, "botrix.import", () => {}, true)}
+                        {importButton(`shop-${index}`, "botrix.import", () => void importShop(`shop-${index}`, [item]))}
                       </div>
                       {item.price !== null ? (
                         <p className="text-xs text-muted-foreground">{t("botrix.points", { count: count(item.price) })}</p>

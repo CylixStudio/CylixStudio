@@ -1,6 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { normalizeBotRixPlatform, type BotRixLookupResult, type BotRixPlatform } from "@/lib/botrix";
+import {
+  normalizeBotRixPlatform,
+  type BotRixLookupResult,
+  type BotRixPlatform,
+  type BotRixShopItem,
+} from "@/lib/botrix";
 import { lookupBotRixPublicData } from "@/lib/botrix.server";
 import {
   isReservedCustomCommandName,
@@ -157,6 +162,73 @@ export const importBotRixCommands = createServerFn({ method: "POST" })
       }
 
       return { ok: true, imported, skipped, limited };
+    } catch {
+      return { ok: false, error: "save_failed", imported: 0, skipped: 0 };
+    }
+  });
+
+function readShop(input: unknown): { items: BotRixShopItem[] } {
+  if (!input || typeof input !== "object") return { items: [] };
+  const raw = Array.isArray((input as { items?: unknown }).items) ? (input as { items: unknown[] }).items : [];
+  const items: BotRixShopItem[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const item = row as Record<string, unknown>;
+    const name = typeof item["name"] === "string" ? item["name"].trim().slice(0, 80) : "";
+    if (!name) continue;
+    const price = typeof item["price"] === "number" && Number.isFinite(item["price"]) ? item["price"] : null;
+    items.push({
+      name,
+      description: typeof item["description"] === "string" ? item["description"].slice(0, 400) : "",
+      price,
+      image: null,
+    });
+    if (items.length >= IMPORT_LIMIT) break;
+  }
+  return { items };
+}
+
+/** Copies BotRix shop rows into loyalty_shop_items. Skips duplicate names. */
+export const importBotRixShop = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(readShop)
+  .handler(async ({ data, context }): Promise<BotRixCommandImportResult> => {
+    const { supabase, userId } = context;
+    try {
+      const { data: existing, error: readError } = await supabase
+        .from("loyalty_shop_items")
+        .select("name")
+        .eq("user_id", userId);
+      if (readError) return { ok: false, error: "save_failed", imported: 0, skipped: 0 };
+
+      const seen = new Set((existing ?? []).map((row) => row.name.toLowerCase()));
+      let imported = 0;
+      let skipped = 0;
+      for (const item of data.items) {
+        const key = item.name.toLowerCase();
+        if (seen.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        const { error } = await supabase.from("loyalty_shop_items").insert({
+          user_id: userId,
+          name: item.name,
+          description: item.description,
+          cost: Math.max(0, Math.round(item.price ?? 0)),
+          enabled: true,
+        });
+        if (error) {
+          if (error.code === "23505") {
+            seen.add(key);
+            skipped += 1;
+            continue;
+          }
+          return { ok: false, error: "save_failed", imported, skipped };
+        }
+        seen.add(key);
+        imported += 1;
+      }
+      return { ok: true, imported, skipped, limited: false };
     } catch {
       return { ok: false, error: "save_failed", imported: 0, skipped: 0 };
     }

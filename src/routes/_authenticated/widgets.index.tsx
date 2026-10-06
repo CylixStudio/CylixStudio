@@ -1,10 +1,18 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Copy, Check, Trash2 } from "lucide-react";
+import { useState, type ReactElement } from "react";
+import { Coins, Copy, Check, Disc3, Tags, Trash2, Users, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
+import { ToolCard } from "@/components/hub/ToolCard";
+import {
+  EventLabelsPreview,
+  KicksGoalPreview,
+  ViewerCounterPreview,
+  WheelPreview,
+} from "@/components/hub/previews";
 import { supabase } from "@/lib/supabase/client";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -13,10 +21,21 @@ import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { useLanguage } from "@/lib/i18n";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
+import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
 import { WIDGET_LABEL, WIDGET_TYPES, type WidgetType } from "@/lib/widgets";
 import { DarkSelect } from "@/components/ui/dark-select";
 
 const TIKTOK_COMING_SOON: WidgetType[] = ["TIKTOK_TAPPERS", "TIKTOK_TAP_GOAL"];
+
+const TOOL_VISUAL: Record<
+  (typeof STANDALONE_TOOLS)[number]["slug"],
+  { icon: LucideIcon; preview: () => ReactElement }
+> = {
+  "kicks-goal": { icon: Coins, preview: KicksGoalPreview },
+  "viewer-counter": { icon: Users, preview: ViewerCounterPreview },
+  wheel: { icon: Disc3, preview: WheelPreview },
+  "event-labels": { icon: Tags, preview: EventLabelsPreview },
+};
 const CREATABLE_WIDGET_TYPES = WIDGET_TYPES.filter(
   (entry) => !TIKTOK_COMING_SOON.includes(entry.value),
 );
@@ -53,6 +72,8 @@ function WidgetHub() {
   const [name, setName] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
 
   const subathonId = workspace?.subathons[0]?.id ?? null;
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["widgets"] });
@@ -62,7 +83,12 @@ function WidgetHub() {
       if (TIKTOK_COMING_SOON.includes(type)) {
         throw new Error("TikTok overlays are Coming Soon until OAuth is ready.");
       }
-      return createWidget({ userId: user.id, subathonId, type, name });
+      return createWidget({
+        userId: user.id,
+        subathonId,
+        type,
+        ...(name.trim() ? { name: name.trim() } : {}),
+      });
     },
     onError: (err: unknown) => {
       const message = widgetErrorText(err, "Could not create this widget.");
@@ -120,6 +146,13 @@ function WidgetHub() {
 
   const fieldClass =
     "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary";
+  const featuredIds = new Set(
+    STANDALONE_TOOLS.flatMap((tool) => {
+      const match = data?.widgets.find((widget) => widget.type === tool.type);
+      return match ? [match.id] : [];
+    }),
+  );
+  const otherWidgets = (data?.widgets ?? []).filter((widget) => !featuredIds.has(widget.id));
 
   return (
     <AppShell
@@ -130,6 +163,71 @@ function WidgetHub() {
       subtitle="Every widget gets its own OBS browser-source URL."
     >
       <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} />
+
+      <section className="mb-6 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
+        {STANDALONE_TOOLS.map((tool) => {
+          const existing = data?.widgets.find((widget) => widget.type === tool.type) ?? null;
+          const visual = TOOL_VISUAL[tool.slug];
+          const Preview = visual.preview;
+          return (
+            <ToolCard
+              key={tool.slug}
+              name={t(tool.nameKey)}
+              description={t(tool.descriptionKey)}
+              category={t("nav.tools")}
+              icon={visual.icon}
+              preview={<Preview />}
+              status={
+                existing?.is_enabled
+                  ? t("home.status.live")
+                  : existing
+                    ? t("home.status.paused")
+                    : t("home.status.ready")
+              }
+              live={Boolean(existing?.is_enabled)}
+              publicToken={existing?.is_enabled ? existing.public_token : undefined}
+              disabled={opening === tool.slug}
+              actionLabel={
+                opening === tool.slug
+                  ? t("home.action.opening")
+                  : existing
+                    ? t("home.action.customize")
+                    : t("home.action.open")
+              }
+              onOpen={() => {
+                if (existing) {
+                  void navigate({ to: "/widgets/$widgetId", params: { widgetId: existing.id } });
+                  return;
+                }
+                if (isLoading) return;
+                setOpening(tool.slug);
+                setError(null);
+                void createWidget({
+                  userId: user.id,
+                  subathonId,
+                  type: tool.type,
+                  name: tool.name,
+                })
+                  .then(async (widget) => {
+                    await invalidate();
+                    await navigate({ to: "/widgets/$widgetId", params: { widgetId: widget.id } });
+                  })
+                  .catch((err: unknown) => {
+                    const message = widgetErrorText(err, "Could not open this widget.");
+                    setError(message);
+                    if (!isMissingViewerSession(message)) toast.error(message);
+                  })
+                  .finally(() => setOpening(null));
+              }}
+              onDelete={
+                existing
+                  ? () => setPendingDelete({ id: existing.id, name: t(tool.nameKey) })
+                  : undefined
+              }
+            />
+          );
+        })}
+      </section>
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -182,9 +280,9 @@ function WidgetHub() {
       <section className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading widgets…</p>
-        ) : data && data.widgets.length > 0 ? (
-          data.widgets.map((widget) => {
-            const goal = data.goals.find((entry) => entry.widget_id === widget.id);
+        ) : otherWidgets.length > 0 ? (
+          otherWidgets.map((widget) => {
+            const goal = (data?.goals ?? []).find((entry) => entry.widget_id === widget.id);
             return (
               <article key={widget.id} className="rounded-2xl border border-border bg-card p-5">
                 <div className="flex items-start justify-between gap-3">
@@ -257,6 +355,16 @@ function WidgetHub() {
           </p>
         )}
       </section>
+      {pendingDelete ? (
+        <DeleteWidgetDialog
+          widgetName={pendingDelete.name}
+          pending={remove.isPending}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            remove.mutate(pendingDelete.id, { onSuccess: () => setPendingDelete(null) });
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }

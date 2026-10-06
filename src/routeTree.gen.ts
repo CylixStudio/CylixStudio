@@ -24,6 +24,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedGiveawayRouteImport } from './routes/_authenticated/giveaway'
 import { Route as AuthenticatedLinkInBioRouteImport } from './routes/_authenticated/link-in-bio'
 import { Route as AuthenticatedLiveCounterRouteImport } from './routes/_authenticated/live-counter'
+import { Route as AuthenticatedLoyaltyRouteImport } from './routes/_authenticated/loyalty'
 import { Route as AuthenticatedMarkPointsRouteImport } from './routes/_authenticated/mark-points'
 import { Route as AuthenticatedMediaRequestsRouteImport } from './routes/_authenticated/media-requests'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
@@ -42,6 +43,7 @@ import { Route as OverlaySubathonTimerRouteImport } from './routes/overlay.subat
 import { Route as OverlayTiktokTapGoalRouteImport } from './routes/overlay.tiktok-tap-goal'
 import { Route as OverlayTiktokTappersRouteImport } from './routes/overlay.tiktok-tappers'
 import { Route as USlugRouteImport } from './routes/u.$slug'
+import { Route as AuthenticatedToolsToolRouteImport } from './routes/_authenticated/tools.$tool'
 import { Route as AuthenticatedWidgetsIndexRouteImport } from './routes/_authenticated/widgets.index'
 import { Route as AuthenticatedWidgetsWidgetIdRouteImport } from './routes/_authenticated/widgets.$widgetId'
 import { Route as ApiLiveCounterLookupRouteImport } from './routes/api/live-counter/lookup'
@@ -162,6 +164,11 @@ const AuthenticatedLiveCounterRoute =
     path: '/live-counter',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedLoyaltyRoute = AuthenticatedLoyaltyRouteImport.update({
+  id: '/loyalty',
+  path: '/loyalty',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedMarkPointsRoute = AuthenticatedMarkPointsRouteImport.update({
   id: '/mark-points',
   path: '/mark-points',
@@ -253,6 +260,11 @@ const USlugRoute = USlugRouteImport.update({
   id: '/u/$slug',
   path: '/u/$slug',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedToolsToolRoute = AuthenticatedToolsToolRouteImport.update({
+  id: '/tools/$tool',
+  path: '/tools/$tool',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedWidgetsIndexRoute =
   AuthenticatedWidgetsIndexRouteImport.update({
@@ -505,6 +517,7 @@ export interface FileRoutesByFullPath {
   '/giveaway': typeof AuthenticatedGiveawayRoute
   '/link-in-bio': typeof AuthenticatedLinkInBioRoute
   '/live-counter': typeof AuthenticatedLiveCounterRoute
+  '/loyalty': typeof AuthenticatedLoyaltyRoute
   '/mark-points': typeof AuthenticatedMarkPointsRoute
   '/media-requests': typeof AuthenticatedMediaRequestsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
@@ -523,6 +536,7 @@ export interface FileRoutesByFullPath {
   '/overlay/tiktok-tap-goal': typeof OverlayTiktokTapGoalRoute
   '/overlay/tiktok-tappers': typeof OverlayTiktokTappersRoute
   '/u/$slug': typeof USlugRoute
+  '/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
@@ -580,6 +594,7 @@ export interface FileRoutesByTo {
   '/giveaway': typeof AuthenticatedGiveawayRoute
   '/link-in-bio': typeof AuthenticatedLinkInBioRoute
   '/live-counter': typeof AuthenticatedLiveCounterRoute
+  '/loyalty': typeof AuthenticatedLoyaltyRoute
   '/mark-points': typeof AuthenticatedMarkPointsRoute
   '/media-requests': typeof AuthenticatedMediaRequestsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
@@ -598,6 +613,7 @@ export interface FileRoutesByTo {
   '/overlay/tiktok-tap-goal': typeof OverlayTiktokTapGoalRoute
   '/overlay/tiktok-tappers': typeof OverlayTiktokTappersRoute
   '/u/$slug': typeof USlugRoute
+  '/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
   '/widgets': typeof AuthenticatedWidgetsIndexRoute
@@ -656,6 +672,7 @@ export interface FileRoutesById {
   '/_authenticated/giveaway': typeof AuthenticatedGiveawayRoute
   '/_authenticated/link-in-bio': typeof AuthenticatedLinkInBioRoute
   '/_authenticated/live-counter': typeof AuthenticatedLiveCounterRoute
+  '/_authenticated/loyalty': typeof AuthenticatedLoyaltyRoute
   '/_authenticated/mark-points': typeof AuthenticatedMarkPointsRoute
   '/_authenticated/media-requests': typeof AuthenticatedMediaRequestsRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
@@ -674,6 +691,7 @@ export interface FileRoutesById {
   '/overlay/tiktok-tap-goal': typeof OverlayTiktokTapGoalRoute
   '/overlay/tiktok-tappers': typeof OverlayTiktokTappersRoute
   '/u/$slug': typeof USlugRoute
+  '/_authenticated/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/_authenticated/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
@@ -733,6 +751,7 @@ export interface FileRouteTypes {
     | '/giveaway'
     | '/link-in-bio'
     | '/live-counter'
+    | '/loyalty'
     | '/mark-points'
     | '/media-requests'
     | '/schedule'
@@ -751,6 +770,7 @@ export interface FileRouteTypes {
     | '/overlay/tiktok-tap-goal'
     | '/overlay/tiktok-tappers'
     | '/u/$slug'
+    | '/tools/$tool'
     | '/widgets/$widgetId'
     | '/api/live-counter/lookup'
     | '/marks/$token/$markId'
@@ -808,6 +828,7 @@ export interface FileRouteTypes {
     | '/giveaway'
     | '/link-in-bio'
     | '/live-counter'
+    | '/loyalty'
     | '/mark-points'
     | '/media-requests'
     | '/schedule'
@@ -826,6 +847,7 @@ export interface FileRouteTypes {
     | '/overlay/tiktok-tap-goal'
     | '/overlay/tiktok-tappers'
     | '/u/$slug'
+    | '/tools/$tool'
     | '/api/live-counter/lookup'
     | '/marks/$token/$markId'
     | '/widgets'
@@ -883,6 +905,7 @@ export interface FileRouteTypes {
     | '/_authenticated/giveaway'
     | '/_authenticated/link-in-bio'
     | '/_authenticated/live-counter'
+    | '/_authenticated/loyalty'
     | '/_authenticated/mark-points'
     | '/_authenticated/media-requests'
     | '/_authenticated/schedule'
@@ -901,6 +924,7 @@ export interface FileRouteTypes {
     | '/overlay/tiktok-tap-goal'
     | '/overlay/tiktok-tappers'
     | '/u/$slug'
+    | '/_authenticated/tools/$tool'
     | '/_authenticated/widgets/$widgetId'
     | '/api/live-counter/lookup'
     | '/marks/$token/$markId'
@@ -1103,6 +1127,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLiveCounterRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/loyalty': {
+      id: '/_authenticated/loyalty'
+      path: '/loyalty'
+      fullPath: '/loyalty'
+      preLoaderRoute: typeof AuthenticatedLoyaltyRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/mark-points': {
       id: '/_authenticated/mark-points'
       path: '/mark-points'
@@ -1228,6 +1259,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/u/$slug'
       preLoaderRoute: typeof USlugRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/tools/$tool': {
+      id: '/_authenticated/tools/$tool'
+      path: '/tools/$tool'
+      fullPath: '/tools/$tool'
+      preLoaderRoute: typeof AuthenticatedToolsToolRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/widgets/': {
       id: '/_authenticated/widgets/'
@@ -1553,12 +1591,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedGiveawayRoute: typeof AuthenticatedGiveawayRoute
   AuthenticatedLinkInBioRoute: typeof AuthenticatedLinkInBioRoute
   AuthenticatedLiveCounterRoute: typeof AuthenticatedLiveCounterRoute
+  AuthenticatedLoyaltyRoute: typeof AuthenticatedLoyaltyRoute
   AuthenticatedMarkPointsRoute: typeof AuthenticatedMarkPointsRoute
   AuthenticatedMediaRequestsRoute: typeof AuthenticatedMediaRequestsRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSubscriptionRoute: typeof AuthenticatedSubscriptionRoute
   AuthenticatedWelcomeRoute: typeof AuthenticatedWelcomeRoute
+  AuthenticatedToolsToolRoute: typeof AuthenticatedToolsToolRoute
   AuthenticatedWidgetsWidgetIdRoute: typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
   AuthenticatedWidgetsIndexRoute: typeof AuthenticatedWidgetsIndexRoute
   AuthenticatedSubathonsIdControlRoute: typeof AuthenticatedSubathonsIdControlRoute
@@ -1576,12 +1616,14 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedGiveawayRoute: AuthenticatedGiveawayRoute,
   AuthenticatedLinkInBioRoute: AuthenticatedLinkInBioRoute,
   AuthenticatedLiveCounterRoute: AuthenticatedLiveCounterRoute,
+  AuthenticatedLoyaltyRoute: AuthenticatedLoyaltyRoute,
   AuthenticatedMarkPointsRoute: AuthenticatedMarkPointsRoute,
   AuthenticatedMediaRequestsRoute: AuthenticatedMediaRequestsRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSubscriptionRoute: AuthenticatedSubscriptionRoute,
   AuthenticatedWelcomeRoute: AuthenticatedWelcomeRoute,
+  AuthenticatedToolsToolRoute: AuthenticatedToolsToolRoute,
   AuthenticatedWidgetsWidgetIdRoute:
     AuthenticatedWidgetsWidgetIdRouteWithChildren,
   AuthenticatedWidgetsIndexRoute: AuthenticatedWidgetsIndexRoute,

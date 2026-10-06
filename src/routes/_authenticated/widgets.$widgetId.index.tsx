@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
+import { StandaloneWidgetFields } from "@/components/widgets/StandaloneWidgetFields";
 import { TestSimulatePanel } from "@/components/widgets/TestSimulatePanel";
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
 import { SubathonElementControlPanel } from "@/components/widgets/SubathonElementControlPanel";
@@ -35,6 +36,7 @@ import {
   parseEmoteRainConfig,
   parseGoalConfig,
   parseSpinConfig,
+  pickWeightedPrize,
   parseStreamEventsScheduleConfig,
   parseTappersConfig,
   parseTapGoalConfig,
@@ -258,12 +260,11 @@ function WidgetBuilder() {
     },
   });
 
-  const spinEntries = useMemo(() => parseSpinConfig(config).entries, [config]);
+  const spinPrizes = useMemo(() => parseSpinConfig(config).prizes, [config]);
 
   const spin = useMutation({
     mutationFn: async () => {
-      const entries = spinEntries;
-      const result = entries[Math.floor(Math.random() * entries.length)] ?? null;
+      const result = pickWeightedPrize(spinPrizes);
       const nonce = Date.now();
       const { error: writeError } = await supabase
         .from("widgets")
@@ -610,35 +611,17 @@ function WidgetBuilder() {
               </div>
             ) : null}
 
-            {widget.type === "SPIN_WHEEL" ? (
-              <div className="space-y-3 rounded-xl border border-border bg-background p-4">
-                <label className="block">
-                  <span className={labelClass}>Wheel entries (one per line)</span>
-                  <textarea
-                    rows={6}
-                    className={`${fieldClass} mt-2 font-mono text-xs`}
-                    value={spinEntries.join("\n")}
-                    onChange={(event) =>
-                      set(
-                        "entries",
-                        event.target.value.split("\n").map((entry) => entry.trim()),
-                      )
-                    }
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => spin.mutate()}
-                  disabled={spin.isPending}
-                  className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
-                >
-                  {spin.isPending ? "Spinning…" : "Spin now"}
-                </button>
-                <p className="text-xs text-muted-foreground">
-                  Save first so the wheel entries reach the overlay, then spin — the result is
-                  broadcast to OBS instantly.
-                </p>
-              </div>
+            {widget.type === "KICKS_GOAL" ||
+            widget.type === "VIEWER_COUNTER" ||
+            widget.type === "SPIN_WHEEL" ||
+            widget.type === "EVENT_LABELS" ? (
+              <StandaloneWidgetFields
+                type={widget.type}
+                config={config}
+                set={set}
+                spinning={spin.isPending}
+                onSpin={widget.type === "SPIN_WHEEL" ? () => spin.mutate() : undefined}
+              />
             ) : null}
 
             {widget.type === "CHAT_BOX" ? (
@@ -1027,6 +1010,9 @@ function WidgetBuilder() {
               chat={stream.chat}
               testMessages={stream.testMessages}
               demo
+              publicToken={widget.public_token}
+              spinning={spin.isPending}
+              onSpin={widget.type === "SPIN_WHEEL" ? () => spin.mutate() : undefined}
             />
           </section>
         </div>

@@ -761,3 +761,45 @@ export function MediaRequestPreview() {
     </div>
   );
 }
+
+export function KicksGoalPreview() {
+  return (
+    <div className="flex h-full flex-col justify-center gap-2 px-4">
+      <div className="flex items-center justify-between text-[0.58rem] text-[#53FC18]">
+        <span>Kicks Goal</span>
+        <span>42%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full w-[42%] rounded-full bg-[#53FC18]" />
+      </div>
+      <p className="text-[0.62rem] tabular-nums text-foreground/80" dir="ltr">
+        420 / 1000
+      </p>
+    </div>
+  );
+}
+
+export function ViewerCounterPreview() {
+  return (
+    <div className="grid h-full place-items-center">
+      <div className="text-center">
+        <p className="text-[0.55rem] uppercase tracking-[0.18em] text-[#bee1fc]">viewers</p>
+        <p className="text-2xl font-semibold tabular-nums" dir="ltr">
+          1,284
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function EventLabelsPreview() {
+  return (
+    <div className="flex h-full flex-col justify-center gap-1.5 px-4">
+      {["متابعة", "اشتراك", "هدية"].map((label) => (
+        <span key={label} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[0.62rem]">
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}

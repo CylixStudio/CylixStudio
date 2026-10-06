@@ -14,8 +14,20 @@ import {
   parseStreamEventsScheduleConfig,
   parseTappersConfig,
   parseTapGoalConfig,
+  parseKicksGoalConfig,
+  parseViewerCounterConfig,
+  parseEventLabelsConfig,
   type WidgetType,
 } from "@/lib/widgets";
+
+const SINGLETON_WIDGETS = new Set<WidgetType>([
+  "KICKS_GOAL",
+  "VIEWER_COUNTER",
+  "SPIN_WHEEL",
+  "EVENT_LABELS",
+]);
+
+const singletonInflight = new Map<string, Promise<{ id: string; public_token: string }>>();
 
 function defaultConfig(type: WidgetType, goalType?: GoalTypeId): Record<string, unknown> {
   switch (type) {
@@ -42,6 +54,12 @@ function defaultConfig(type: WidgetType, goalType?: GoalTypeId): Record<string, 
       return { ...parseTappersConfig(null) };
     case "TIKTOK_TAP_GOAL":
       return { ...parseTapGoalConfig(null) };
+    case "KICKS_GOAL":
+      return { ...parseKicksGoalConfig(null) };
+    case "VIEWER_COUNTER":
+      return { ...parseViewerCounterConfig(null) };
+    case "EVENT_LABELS":
+      return { ...parseEventLabelsConfig(null) };
     default:
       return { ...DEFAULT_STYLE };
   }
@@ -132,12 +150,42 @@ export async function createWidget(args: {
   type: WidgetType;
   name?: string;
   goalType?: GoalTypeId;
-}) {
+  _lock?: boolean;
+}): Promise<{ id: string; public_token: string }> {
+  if (SINGLETON_WIDGETS.has(args.type) && !args._lock) {
+    const key = `${args.userId}:${args.type}`;
+    const pending = singletonInflight.get(key);
+    if (pending) return pending;
+    const work: Promise<{ id: string; public_token: string }> = createWidget({ ...args, _lock: true }).finally(
+      () => {
+        singletonInflight.delete(key);
+      },
+    );
+    singletonInflight.set(key, work);
+    return work;
+  }
+
   if (args.type === "TIKTOK_TAPPERS" || args.type === "TIKTOK_TAP_GOAL") {
     throw new Error("TikTok overlays are Coming Soon until OAuth is ready.");
   }
 
   await ensureUserProfile(args.userId);
+
+  if (SINGLETON_WIDGETS.has(args.type)) {
+    const { data: existing, error: existingError } = await supabase
+      .from("widgets")
+      .select("id, public_token")
+      .eq("user_id", args.userId)
+      .eq("type", args.type)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (existingError) {
+      if (isMissingViewerSession(existingError)) throw new SignedOutError();
+      throw existingError;
+    }
+    if (existing?.id && existing.public_token) return existing;
+  }
 
   // Ignore a stale / deleted subathon id so the FK does not block creation.
   let subathonId = args.subathonId;
