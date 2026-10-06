@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { OVERLAY_FONT_STYLESHEET } from "@/lib/overlayTheme";
+import { wheelSpinLockMs } from "@/components/widgets/SpinWheel";
 import { spinPublicWheel } from "@/lib/toolWidgets.functions";
 import type { SpinState } from "@/lib/widgets";
 
@@ -41,13 +42,14 @@ function OverlayPage() {
   const spinWheel = async () => {
     if (!widget || widget.type !== "SPIN_WHEEL" || spinning) return;
     setSpinning(true);
+    const lockMs = wheelSpinLockMs();
     try {
       const result = await spinPublicWheel({ data: { publicToken: publicId } });
       if (result.ok) {
         setLocalSpin({ result: result.result, spunAt: result.spunAt, nonce: result.nonce });
       }
     } finally {
-      setSpinning(false);
+      window.setTimeout(() => setSpinning(false), lockMs);
     }
   };
 

@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 
 import { DarkSelect } from "@/components/ui/dark-select";
+import { playWheelSpinSound } from "@/components/widgets/SpinWheel";
+import { EVENT_LABEL_I18N, EVENT_LABEL_OPTIONS } from "@/lib/eventLabels";
 import { useLanguage } from "@/lib/i18n";
 import { lookupChannel } from "@/lib/liveCounter.functions";
 import {
@@ -26,7 +28,7 @@ function asRecord(raw: unknown): Record<string, unknown> {
 
 function draftPrizes(config: Record<string, unknown>): SpinPrize[] {
   const raw = config["prizes"];
-  if (Array.isArray(raw) && raw.length > 0) {
+  if (Array.isArray(raw)) {
     return raw.slice(0, 24).map((item) => {
       const row = asRecord(item);
       const weight = Number(row["weight"]);
@@ -233,8 +235,12 @@ export function StandaloneWidgetFields({
         {onSpin ? (
           <button
             type="button"
-            onClick={onSpin}
-            disabled={spinning}
+            onClick={() => {
+              if (spinning || !prizes.some((prize) => prize.label.trim().length > 0)) return;
+              playWheelSpinSound();
+              onSpin();
+            }}
+            disabled={spinning || !prizes.some((prize) => prize.label.trim().length > 0)}
             className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
             {spinning ? "…" : t("widget.wheel.spin")}
@@ -245,6 +251,7 @@ export function StandaloneWidgetFields({
   }
 
   if (type === "EVENT_LABELS") {
+    const selected = new Set(parseEventLabelsConfig(config).labels);
     return (
       <div className="space-y-3 rounded-xl border border-border bg-background p-4">
         <label className="block">
@@ -255,6 +262,28 @@ export function StandaloneWidgetFields({
             onChange={(event) => set("title", event.target.value)}
           />
         </label>
+        <fieldset className="space-y-2">
+          <legend className={labelClass}>{t("widget.labels.options")}</legend>
+          {EVENT_LABEL_OPTIONS.map((option) => (
+            <label key={option} className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                className="size-3.5 accent-primary"
+                checked={selected.has(option)}
+                onChange={(event) => {
+                  const next = new Set(selected);
+                  if (event.target.checked) next.add(option);
+                  else next.delete(option);
+                  set(
+                    "labels",
+                    EVENT_LABEL_OPTIONS.filter((id) => next.has(id)),
+                  );
+                }}
+              />
+              <span>{t(EVENT_LABEL_I18N[option])}</span>
+            </label>
+          ))}
+        </fieldset>
         <p className="text-xs leading-relaxed text-muted-foreground">{t("widget.labels.liveHint")}</p>
       </div>
     );

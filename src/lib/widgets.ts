@@ -4,6 +4,7 @@
  * read goes through a parser that tolerates missing/legacy keys.
  */
 
+import { selectedEventLabelOptions, type EventLabelOption } from "@/lib/eventLabels";
 import { OVERLAY_FONTS, DEFAULT_OVERLAY_THEME } from "@/lib/overlayTheme";
 import {
   defaultScheduleEvents,
@@ -228,13 +229,6 @@ export function parseChatConfig(raw: unknown): ChatConfig {
   };
 }
 
-const DEFAULT_SPIN_PRIZES: SpinPrize[] = [
-  { label: "+5 minutes", weight: 1 },
-  { label: "+10 minutes", weight: 1 },
-  { label: "Push-ups", weight: 1 },
-  { label: "Nothing", weight: 1 },
-];
-
 function prizeWeight(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return 1;
@@ -259,7 +253,7 @@ export function parseSpinPrizes(raw: unknown): SpinPrize[] {
     .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     .map((entry) => ({ label: entry.trim().slice(0, 40), weight: 1 }))
     .slice(0, 24);
-  return entries.length > 0 ? entries : DEFAULT_SPIN_PRIZES;
+  return entries;
 }
 
 export function pickWeightedPrize(prizes: SpinPrize[]): string | null {
@@ -279,7 +273,7 @@ export function parseSpinConfig(raw: unknown): SpinConfig {
   const prizes = parseSpinPrizes(raw);
   return {
     ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28 }),
-    title: text(source["title"], "SPIN THE WHEEL", 40),
+    title: typeof source["title"] === "string" ? source["title"].trim().slice(0, 40) : "",
     prizes,
     entries: prizes.map((prize) => prize.label),
   };
@@ -690,22 +684,17 @@ export function parseViewerCounterConfig(raw: unknown): ViewerCounterConfig {
 
 export type EventLabelsConfig = BaseStyle & {
   title: string;
-  labels: string[];
+  labels: EventLabelOption[];
   language: "ar" | "en" | null;
 };
 
 export function parseEventLabelsConfig(raw: unknown): EventLabelsConfig {
   const source = asRecord(raw);
-  const rawLabels = Array.isArray(source["labels"]) ? source["labels"] : [];
-  const labels = rawLabels
-    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    .map((entry) => entry.trim().slice(0, 80))
-    .slice(0, 24);
   const language = source["language"] === "ar" || source["language"] === "en" ? source["language"] : null;
   return {
     ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28, backgroundOpacity: 70 }),
     title: text(source["title"], "تسميات الأحداث", 40),
-    labels: labels.length > 0 ? labels : ["متابعة", "اشتراك", "هدية"],
+    labels: selectedEventLabelOptions(source["labels"]),
     language,
   };
 }

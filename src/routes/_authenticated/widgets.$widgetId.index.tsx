@@ -9,6 +9,7 @@ import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
 import { StandaloneWidgetFields } from "@/components/widgets/StandaloneWidgetFields";
 import { TestSimulatePanel } from "@/components/widgets/TestSimulatePanel";
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
+import { wheelSpinLockMs } from "@/components/widgets/SpinWheel";
 import { SubathonElementControlPanel } from "@/components/widgets/SubathonElementControlPanel";
 import { SubathonTimerSidebar } from "@/components/widgets/SubathonTimerSidebar";
 import { SpotlightControlPanel } from "@/components/widgets/SpotlightControlPanel";
@@ -269,10 +270,13 @@ function WidgetBuilder() {
   });
 
   const spinPrizes = useMemo(() => parseSpinConfig(config).prizes, [config]);
+  const [wheelTurning, setWheelTurning] = useState(false);
+  const wheelTimer = useRef<number | null>(null);
 
   const spin = useMutation({
     mutationFn: async () => {
       const result = pickWeightedPrize(spinPrizes);
+      if (!result) return null;
       const nonce = Date.now();
       const { error: writeError } = await supabase
         .from("widgets")
@@ -287,6 +291,17 @@ function WidgetBuilder() {
       if (!isMissingViewerSession(message)) toast.error(message);
     },
   });
+
+  const requestWheelSpin = () => {
+    if (wheelTurning || spin.isPending || spinPrizes.length === 0) return;
+    setWheelTurning(true);
+    if (wheelTimer.current !== null) window.clearTimeout(wheelTimer.current);
+    wheelTimer.current = window.setTimeout(() => {
+      setWheelTurning(false);
+      wheelTimer.current = null;
+    }, wheelSpinLockMs());
+    spin.mutate();
+  };
 
   const bumpGoal = async (delta: number) => {
     if (!goalRow || !Number.isFinite(delta) || delta === 0) return;
@@ -627,8 +642,8 @@ function WidgetBuilder() {
                 type={widget.type}
                 config={config}
                 set={set}
-                spinning={spin.isPending}
-                onSpin={widget.type === "SPIN_WHEEL" ? () => spin.mutate() : undefined}
+                spinning={wheelTurning || spin.isPending}
+                onSpin={widget.type === "SPIN_WHEEL" ? requestWheelSpin : undefined}
               />
             ) : null}
 
@@ -1019,8 +1034,8 @@ function WidgetBuilder() {
               testMessages={stream.testMessages}
               demo
               publicToken={widget.public_token}
-              spinning={spin.isPending}
-              onSpin={widget.type === "SPIN_WHEEL" ? () => spin.mutate() : undefined}
+              spinning={wheelTurning || spin.isPending}
+              onSpin={widget.type === "SPIN_WHEEL" ? requestWheelSpin : undefined}
             />
           </section>
         </div>

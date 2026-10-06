@@ -5,9 +5,9 @@ import {
   Coins,
   Disc3,
   Gauge,
+  Gift,
   Star,
   Target,
-  Gift,
   Lock,
   Tags,
   Users,
@@ -42,6 +42,7 @@ import {
   ChatPreview,
   CustomGoalPreview,
   DonationGoalPreview,
+  GOAL_CARD_ACCENT,
   EmotePreview,
   FollowerGoalPreview,
   EventLabelsPreview,
@@ -171,7 +172,7 @@ const TOOLS: Tool[] = [
     nameKey: "home.tool.donationGoal.name",
     descriptionKey: "home.tool.donationGoal.desc",
     categoryKey: "cat.Goals",
-    icon: Coins,
+    icon: Gift,
     preview: DonationGoalPreview,
     type: "DONATION_GOAL",
     keywords: "donation goal tips currency amount",
@@ -566,6 +567,9 @@ function HomePage() {
                   description={t(tool.descriptionKey)}
                   category={t(tool.categoryKey)}
                   icon={tool.icon}
+                  {...(GOAL_CARD_ACCENT[tool.id as keyof typeof GOAL_CARD_ACCENT]
+                    ? { accent: GOAL_CARD_ACCENT[tool.id as keyof typeof GOAL_CARD_ACCENT] }
+                    : {})}
                   platforms={tool.platforms}
                   comingSoon={Boolean(tool.comingSoon)}
                   preview={<Preview />}

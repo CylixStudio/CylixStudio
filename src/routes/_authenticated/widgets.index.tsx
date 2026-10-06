@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { Banknote, Coins, Copy, Check, Disc3, Star, Tags, Target, Trash2, Users, type LucideIcon } from "lucide-react";
+import { Coins, Copy, Check, Disc3, Gift, Star, Tags, Target, Trash2, Users, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -10,6 +10,7 @@ import { ToolCard } from "@/components/hub/ToolCard";
 import {
   CustomGoalPreview,
   DonationGoalPreview,
+  GOAL_CARD_ACCENT,
   EventLabelsPreview,
   FollowerGoalPreview,
   KicksGoalPreview,
@@ -33,16 +34,16 @@ const TIKTOK_COMING_SOON: WidgetType[] = ["TIKTOK_TAPPERS", "TIKTOK_TAP_GOAL"];
 
 const TOOL_VISUAL: Record<
   (typeof STANDALONE_TOOLS)[number]["slug"],
-  { icon: LucideIcon; preview: () => ReactElement }
+  { icon: LucideIcon; preview: () => ReactElement; accent?: string }
 > = {
   "kicks-goal": { icon: Coins, preview: KicksGoalPreview },
   "viewer-counter": { icon: Users, preview: ViewerCounterPreview },
   wheel: { icon: Disc3, preview: WheelPreview },
   "event-labels": { icon: Tags, preview: EventLabelsPreview },
-  "donation-goal": { icon: Banknote, preview: DonationGoalPreview },
-  "follower-goal": { icon: Users, preview: FollowerGoalPreview },
-  "subscriber-goal": { icon: Star, preview: SubscriberGoalPreview },
-  "custom-goal": { icon: Target, preview: CustomGoalPreview },
+  "donation-goal": { icon: Gift, preview: DonationGoalPreview, accent: GOAL_CARD_ACCENT["donation-goal"] },
+  "follower-goal": { icon: Users, preview: FollowerGoalPreview, accent: GOAL_CARD_ACCENT["follower-goal"] },
+  "subscriber-goal": { icon: Star, preview: SubscriberGoalPreview, accent: GOAL_CARD_ACCENT["subscriber-goal"] },
+  "custom-goal": { icon: Target, preview: CustomGoalPreview, accent: GOAL_CARD_ACCENT["custom-goal"] },
 };
 const CREATABLE_WIDGET_TYPES = WIDGET_TYPES.filter(
   (entry) => !TIKTOK_COMING_SOON.includes(entry.value) && !isSplitGoalKind(entry.value),
@@ -184,6 +185,7 @@ function WidgetHub() {
               description={t(tool.descriptionKey)}
               category={t("nav.tools")}
               icon={visual.icon}
+              {...(visual.accent ? { accent: visual.accent } : {})}
               preview={<Preview />}
               status={
                 existing?.is_enabled

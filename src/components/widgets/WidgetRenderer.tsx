@@ -11,10 +11,11 @@ import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKi
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
 import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
-import { latestStoredEventLines } from "@/lib/eventLabels";
-import { t as translate, useLanguage, type TranslationKey } from "@/lib/i18n";
+import { EVENT_LABEL_I18N, resolveEventLabelLines } from "@/lib/eventLabels";
+import { t as translate, useLanguage } from "@/lib/i18n";
 import { readOverlayViewers } from "@/lib/toolWidgets.functions";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
+import { SpinWheelView } from "@/components/widgets/SpinWheel";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
 import { formatDuration, type TimerFrame } from "@/lib/timer";
@@ -26,7 +27,6 @@ import {
   parseEmoteRainConfig,
   parseEventLabelsConfig,
   parseKicksGoalConfig,
-  parseSpinConfig,
   parseSplitGoalConfig,
   parseSpotlightConfig,
   parseTappersConfig,
@@ -599,116 +599,6 @@ export function ChatBoxView({
       {visibleChat.length > 0 ? visibleChat.map((message) => renderMessage(message)) : null}
 
       {visibleChat.length === 0 ? <span style={{ opacity: 0.6 }}>Waiting for chat…</span> : null}
-    </div>
-  );
-}
-
-/* ------------------------------ Spin wheel ------------------------------ */
-
-export function SpinWheelView({
-  config,
-  spin,
-  onSpin,
-  spinning = false,
-}: {
-  config: unknown;
-  spin: SpinState | null;
-  onSpin?: (() => void) | undefined;
-  spinning?: boolean;
-}) {
-  const { t } = useLanguage();
-  const style = parseSpinConfig(config);
-  const prizes = style.prizes;
-  const totalWeight = prizes.reduce((sum, prize) => sum + prize.weight, 0) || 1;
-  let cursor = 0;
-  const slices = prizes.map((prize, index) => {
-    const span = (prize.weight / totalWeight) * 360;
-    const start = cursor;
-    cursor += span;
-    return { ...prize, index, start, span };
-  });
-  const winner = slices.find((slice) => slice.label === spin?.result) ?? slices[0];
-  const center = winner ? winner.start + winner.span / 2 : 0;
-
-  const [rotation, setRotation] = useState(0);
-  const lastNonce = useRef<number | null>(null);
-
-  useEffect(() => {
-    const nonce = spin?.nonce ?? 0;
-    if (lastNonce.current === null) {
-      lastNonce.current = nonce;
-      setRotation(-center);
-      return;
-    }
-    if (nonce === lastNonce.current) return;
-    lastNonce.current = nonce;
-    setRotation((current) => current - (360 * 5 + ((current % 360) + center)));
-  }, [spin?.nonce, center]);
-
-  const gradient = `conic-gradient(${slices
-    .map((slice, index) => {
-      const color = index % 2 === 0 ? style.accentColor : withAlpha(style.backgroundColor, 100);
-      return `${color} ${slice.start}deg ${slice.start + slice.span}deg`;
-    })
-    .join(", ")})`;
-
-  return (
-    <div
-      className="flex flex-col items-center gap-4"
-      style={{ fontFamily: style.fontFamily, color: style.textColor }}
-    >
-      <span
-        style={{
-          fontSize: `${Math.max(12, Math.round(style.fontSize * 0.5))}px`,
-          letterSpacing: "0.3em",
-          fontWeight: 700,
-          color: style.accentColor,
-        }}
-      >
-        {style.title}
-      </span>
-
-      <div className="relative grid place-items-center">
-        <div
-          aria-hidden
-          className="absolute -top-2 z-10 size-0"
-          style={{
-            borderLeft: "10px solid transparent",
-            borderRight: "10px solid transparent",
-            borderTop: `18px solid ${style.textColor}`,
-          }}
-        />
-        <div
-          className="size-[300px] rounded-full transition-transform duration-[4000ms] ease-out"
-          style={{
-            background: gradient,
-            transform: `rotate(${rotation}deg)`,
-            boxShadow: `0 0 40px ${withAlpha(style.accentColor, 45)}`,
-          }}
-        />
-        <div
-          className="absolute grid size-[150px] place-items-center rounded-full px-3 text-center"
-          style={{
-            background: withAlpha(style.backgroundColor, Math.max(style.backgroundOpacity, 85)),
-            border: `2px solid ${style.accentColor}`,
-            fontSize: `${Math.max(14, Math.round(style.fontSize * 0.55))}px`,
-            fontWeight: 700,
-          }}
-        >
-          {spin?.result ?? "—"}
-        </div>
-      </div>
-      {onSpin ? (
-        <button
-          type="button"
-          onClick={onSpin}
-          disabled={spinning || prizes.length === 0}
-          className="rounded-full border border-white/15 bg-black/50 px-4 py-1.5 text-sm font-semibold disabled:opacity-50"
-          style={{ color: style.textColor }}
-        >
-          {spinning ? "…" : t("widget.wheel.spin")}
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -1609,7 +1499,7 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
   const { lang: appLang } = useLanguage();
   const parsed = parseEventLabelsConfig(config);
   const lang = parsed.language ?? appLang;
-  const lines = latestStoredEventLines(events);
+  const lines = resolveEventLabelLines(events, parsed.labels);
   return (
     <div
       className="flex min-w-[240px] flex-col gap-2 rounded-2xl px-6 py-5"
@@ -1625,12 +1515,16 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
       </span>
       {lines.map((line) => (
         <span
-          key={line.eventType}
+          key={line.option}
           className="rounded-xl border px-3 py-1.5"
           style={{ borderColor: withAlpha(parsed.accentColor, 45), fontSize: parsed.fontSize * 0.55 }}
         >
-          {translate(`widget.event.${line.eventType}` as TranslationKey, undefined, lang)}
-          <span dir="ltr"> · {line.username}</span>
+          {translate(EVENT_LABEL_I18N[line.option], undefined, lang)}
+          <span dir="ltr">
+            {" · "}
+            {line.username}
+            {line.amount ? ` · ${line.amount}` : ""}
+          </span>
         </span>
       ))}
     </div>

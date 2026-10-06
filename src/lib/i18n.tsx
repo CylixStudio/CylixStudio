@@ -1282,7 +1282,8 @@ const DICT = {
   "loyalty.sales.product": "المنتج",
   "loyalty.sales.spent": "النقاط المصروفة",
   "loyalty.sales.time": "الوقت",
-  "widget.labels.liveHint": "تعرض الشاشة آخر حدث محفوظ لكل نوع، مع اسم المشاهد.",
+  "widget.labels.liveHint": "تعرض الشاشة الأسطر المختارة فقط. «آخر» هو أحدث حدث، و«أفضل اليوم» هو الأكبر منذ منتصف الليل، مع اسم المشاهد والمبلغ إن وُجد.",
+  "widget.labels.options": "الأسطر المعروضة",
   "widget.event.FOLLOW": "متابعة",
   "widget.event.SUBSCRIPTION": "اشتراك",
   "widget.event.GIFT_SUB": "هدية اشتراك",
@@ -1290,6 +1291,16 @@ const DICT = {
   "widget.event.DONATION": "تبرع",
   "widget.event.RAID": "غارة",
   "widget.event.LIKE": "إعجاب",
+  "widget.eventLabel.lastKicks": "آخر Kicks",
+  "widget.eventLabel.lastRaid": "آخر Raid",
+  "widget.eventLabel.lastFollow": "آخر متابع",
+  "widget.eventLabel.lastDonation": "آخر متبرع",
+  "widget.eventLabel.lastSub": "آخر مشترك",
+  "widget.eventLabel.lastGift": "آخر مهدي اشتراكات",
+  "widget.eventLabel.topKicks": "أفضل Kicks اليوم",
+  "widget.eventLabel.topRaid": "أفضل Raid اليوم",
+  "widget.eventLabel.topBits": "أفضل Bits",
+  "widget.eventLabel.topGift": "أفضل مهدي اشتراكات اليوم",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

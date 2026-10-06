@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { GoalKindScreen } from "@/components/widgets/GoalKindScreen";
+import { EventLabelsGuestCustomize } from "@/components/widgets/EventLabelsGuestCustomize";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
+import { WheelGuestCustomize } from "@/components/widgets/WheelGuestCustomize";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { createWidget, widgetErrorText } from "@/lib/createWidget";
 import { useLanguage } from "@/lib/i18n";
@@ -43,6 +45,22 @@ function ToolOpenPage() {
         setError(widgetErrorText(err, t("tools.openFailed")));
       });
   }, [navigate, spec, t, user.id, workspace.data?.subathons]);
+
+  if (spec?.slug === "wheel" && isTestMode()) {
+    return (
+      <AppShell user={user} profile={workspace.data?.profile} title={t(spec.nameKey)} subtitle={t(spec.descriptionKey)}>
+        <WheelGuestCustomize />
+      </AppShell>
+    );
+  }
+
+  if (spec?.slug === "event-labels" && isTestMode()) {
+    return (
+      <AppShell user={user} profile={workspace.data?.profile} title={t(spec.nameKey)} subtitle={t(spec.descriptionKey)}>
+        <EventLabelsGuestCustomize />
+      </AppShell>
+    );
+  }
 
   if (spec?.goalEditor) {
     return (

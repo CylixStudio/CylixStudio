@@ -148,10 +148,12 @@ function Bar({
   percent,
   label,
   value,
+  accent,
 }: {
   percent: number;
   label: string;
   value: string;
+  accent?: string;
 }) {
   return (
     <div className="flex h-full flex-col justify-center gap-2 overflow-hidden px-3.5">
@@ -160,7 +162,10 @@ function Bar({
         <span className="text-foreground">{percent}%</span>
       </div>
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-[oklch(1_0_0/0.06)]">
-        <div className="hub-bar-fill h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
+        <div
+          className={`hub-bar-fill h-full rounded-full ${accent ? "" : "bg-primary"}`}
+          style={accent ? { width: `${percent}%`, background: accent } : { width: `${percent}%` }}
+        />
       </div>
       <p className="text-[0.66rem] text-muted-foreground">{value}</p>
     </div>
@@ -196,34 +201,27 @@ export function TimerPreview() {
   );
 }
 
+export const GOAL_CARD_ACCENT = {
+  "donation-goal": "#34D399",
+  "follower-goal": "#38BDF8",
+  "subscriber-goal": "#A78BFA",
+  "custom-goal": "#F59E0B",
+} as const;
+
 export function DonationGoalPreview() {
-  return <Bar percent={72} label="Donation goal" value="$720 / $1,000" />;
+  return <Bar percent={72} label="هدف التبرعات" value="360 / 500 USD" accent={GOAL_CARD_ACCENT["donation-goal"]} />;
 }
 
 export function FollowerGoalPreview() {
-  return <Bar percent={85} label="Followers" value="850 / 1,000 followers" />;
+  return <Bar percent={64} label="هدف المتابعين" value="640 / 1,000" accent={GOAL_CARD_ACCENT["follower-goal"]} />;
 }
 
 export function SubscriberGoalPreview() {
-  return <Bar percent={84} label="Subscribers" value="42 / 50 subs" />;
+  return <Bar percent={36} label="هدف المشتركين" value="18 / 50" accent={GOAL_CARD_ACCENT["subscriber-goal"]} />;
 }
 
 export function CustomGoalPreview() {
-  const live = useLoopProgress(22, 88, HUB_LOOP_MS);
-  const percent = Math.round(live);
-  const current = Math.round((percent / 100) * 100);
-  return (
-    <div className="flex h-full flex-col justify-center gap-2 overflow-hidden px-3.5">
-      <div className="flex items-center justify-between text-[0.6rem] uppercase tracking-[0.2em] text-muted-foreground">
-        <span>Custom goal</span>
-        <span className="tabular-nums text-foreground">{percent}%</span>
-      </div>
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-[oklch(1_0_0/0.06)]">
-        <div className="hub-bar-fill h-full rounded-full bg-primary" style={{ width: `${live}%` }} />
-      </div>
-      <p className="text-[0.66rem] tabular-nums text-muted-foreground">{current} / 100 points</p>
-    </div>
-  );
+  return <Bar percent={40} label="هدف مخصص" value="40 / 100 نقطة" accent={GOAL_CARD_ACCENT["custom-goal"]} />;
 }
 
 export function GoalTypePreview({
@@ -424,17 +422,31 @@ export function StreamEventsSchedulePreview() {
   );
 }
 
+const WHEEL_PREVIEW_FILLS = ["#4C8DFF", "#5DDC8A", "#FF8A3D", "#FF8FBF", "#F3E0C4", "#4C8DFF"] as const;
+
+function wheelPreviewWedge(index: number) {
+  const start = index * 60;
+  const end = start + 60;
+  const polar = (deg: number) => {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return { x: 43 + Math.cos(rad) * 34, y: 43 + Math.sin(rad) * 34 };
+  };
+  const from = polar(start);
+  const to = polar(end);
+  return `M 43 43 L ${from.x} ${from.y} A 34 34 0 0 1 ${to.x} ${to.y} Z`;
+}
+
 export function WheelPreview() {
   return (
     <div className="grid h-full place-items-center overflow-hidden">
-      <div
-        className="size-[86px] rounded-full border border-[oklch(1_0_0/0.12)]"
-        style={{
-          background:
-            "conic-gradient(var(--primary) 0 25%, var(--cyan) 0 50%, var(--primary-glow) 0 75%, var(--secondary) 0 100%)",
-        }}
-        aria-hidden
-      />
+      <svg viewBox="0 0 86 86" className="size-[86px]" aria-hidden>
+        {WHEEL_PREVIEW_FILLS.map((fill, index) => (
+          <path key={fill + index} d={wheelPreviewWedge(index)} fill={fill} stroke="#18181B" strokeWidth="0.6" />
+        ))}
+        <circle cx="43" cy="43" r="38" fill="none" stroke="#E4E4E7" strokeWidth="2.5" />
+        <circle cx="43" cy="43" r="5" fill="#18181B" stroke="#A1A1AA" strokeWidth="1.2" />
+        <path d="M43 15 L37.5 3.5 H48.5 Z" fill="#FAFAFA" stroke="#09090B" strokeWidth="1" strokeLinejoin="round" />
+      </svg>
     </div>
   );
 }
@@ -795,7 +807,7 @@ export function ViewerCounterPreview() {
 export function EventLabelsPreview() {
   return (
     <div className="flex h-full flex-col justify-center gap-1.5 px-4">
-      {["متابعة", "اشتراك", "هدية"].map((label) => (
+      {["آخر متابع", "آخر متبرع", "أفضل Bits"].map((label) => (
         <span key={label} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[0.62rem]">
           {label}
         </span>
