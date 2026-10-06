@@ -22,6 +22,7 @@ import { TestEventMenu, type InjectedFeedEvent } from "@/components/activity/Tes
 import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { readReplyMeta } from "@/lib/replyAlert";
+import { isStoredTestRow, readTestDisplay } from "@/lib/testAlert";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { groupConsecutiveEvents, type FeedEventGroup } from "@/lib/activityFeed";
@@ -65,6 +66,7 @@ type FeedEvent = {
   created_at: string;
   isReply?: boolean;
   replyQuote?: string | null;
+  isTest?: boolean;
 };
 
 
@@ -233,6 +235,7 @@ function ActivityFeedRow({
         >
           <PlatformIcon platform={event.platform} size={13} />
           <span>{label}</span>
+          {event.isTest ? <span className="opacity-80">{t("activity.testEvent")}</span> : null}
           {amount ? <span className="opacity-80">{amount}</span> : null}
           {count > 1 ? <span className="opacity-80">×{count}</span> : null}
         </span>
@@ -329,19 +332,22 @@ type EventRow = {
 /** Normalizes a persisted `events` row into the shape the feed renders. */
 function toFeedEvent(row: EventRow): FeedEvent {
   const reply = readReplyMeta(row.raw_payload);
+  const display = readTestDisplay(row.raw_payload);
+  const test = isStoredTestRow({ event_type: row.event_type, raw_payload: row.raw_payload });
   return {
     id: row.id,
     platform: row.platform,
     event_type: row.event_type,
     actor_name: row.actor_name,
-    amount: row.amount,
-    currency: row.currency,
-    quantity: row.quantity ?? 1,
-    seconds_added: row.seconds_added ?? 0,
+    amount: display?.amount ?? row.amount,
+    currency: display?.currency ?? row.currency,
+    quantity: display?.quantity ?? row.quantity ?? 1,
+    seconds_added: test ? 0 : (row.seconds_added ?? 0),
     message: readMessage(row.raw_payload),
     created_at: row.created_at,
     isReply: reply.isReply,
     replyQuote: reply.quote,
+    ...(test ? { isTest: true as const } : {}),
   };
 }
 

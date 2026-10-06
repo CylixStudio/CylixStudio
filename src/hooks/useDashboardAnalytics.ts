@@ -10,6 +10,7 @@ import {
   type DashboardOverview,
 } from "@/lib/dashboardAnalytics";
 import { supabase } from "@/lib/supabase/client";
+import { isStoredTestRow } from "@/lib/testAlert";
 import { isTestMode } from "@/lib/testMode";
 
 function toAnalyticsEvent(row: {
@@ -18,13 +19,17 @@ function toAnalyticsEvent(row: {
   amount?: unknown;
   quantity?: unknown;
   created_at?: unknown;
+  raw_payload?: unknown;
 }): AnalyticsEvent {
+  const eventType = String(row.event_type ?? "");
+  const test = isStoredTestRow({ event_type: eventType, raw_payload: row.raw_payload });
   return {
     id: String(row.id ?? ""),
-    event_type: String(row.event_type ?? ""),
+    event_type: eventType,
     amount: row.amount == null ? null : Number(row.amount),
     quantity: Number(row.quantity ?? 1),
     created_at: String(row.created_at ?? ""),
+    ...(test ? { isTest: true as const } : {}),
   };
 }
 
@@ -32,7 +37,7 @@ async function fetchLiveOverview(): Promise<DashboardOverview> {
   const since = rangeStart(ANALYTICS_FETCH_DAYS).toISOString();
   const { data, error } = await supabase
     .from("events")
-    .select("id, event_type, amount, quantity, created_at")
+    .select("id, event_type, amount, quantity, created_at, raw_payload")
     .gte("created_at", since)
     .order("created_at", { ascending: true })
     .limit(2000);

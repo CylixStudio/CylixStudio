@@ -1076,4 +1076,12 @@ export const EN = {
   "botrix.points": "{count} points",
   "botrix.xp": "{count} XP",
   "botrix.watchtime": "Watch time {count}",
+  "botrix.import": "Import",
+  "botrix.importAll": "Import all",
+  "botrix.importing": "Importing…",
+  "botrix.imported": "Imported",
+  "botrix.importedCount": "Imported {imported} · skipped {skipped}",
+  "botrix.importFailed": "Could not import.",
+  "botrix.importLimit": "The free plan command limit was reached.",
+  "botrix.shopNoDestination": "Shop items stay here. This studio has no points shop to import them into.",
 } as const;

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { goalTypePreset } from "@/lib/goalTypes";
 import type { Database } from "@/lib/supabase/types";
 import { readReplyMeta } from "@/lib/replyAlert";
+import { isDispatchedTest, isStoredTestRow, readTestDisplay } from "@/lib/testAlert";
 import type { OverlayEvent } from "@/lib/widgets";
 import type { NormalizedEvent } from "@/lib/webhooks/ingest.server";
 
@@ -22,6 +23,7 @@ export type TargetStatus = {
 
 /** Units this event contributes to a matching goal. Raids are logged, not counted. */
 export function targetDelta(event: NormalizedEvent): number {
+  if (isDispatchedTest(event)) return 0;
   if (event.eventType === "RAID") return 0;
   if (event.eventType === "DONATION" || event.eventType === "BITS") {
     const amount = Number(event.amount ?? 0);
@@ -48,6 +50,7 @@ export async function advanceTargets(
   event: NormalizedEvent,
   skipWidgetIds: ReadonlySet<string>,
 ): Promise<{ updated: string[]; milestones: string[] }> {
+  if (isDispatchedTest(event)) return { updated: [], milestones: [] };
   const delta = targetDelta(event);
   if (delta <= 0) return { updated: [], milestones: [] };
 
@@ -110,6 +113,7 @@ export async function recordTargetEvent(
   userId: string,
   event: NormalizedEvent,
 ): Promise<{ inserted: boolean; id: string | null }> {
+  if (isDispatchedTest(event)) return { inserted: false, id: null };
   const { data, error } = await admin
     .from("target_events")
     .insert({
@@ -194,16 +198,19 @@ export async function listOverlayEvents(
       .order("created_at", { ascending: false })
       .limit(limit);
     for (const event of data ?? []) {
+      const display = readTestDisplay(event.raw_payload);
+      const test = isStoredTestRow({ event_type: event.event_type, raw_payload: event.raw_payload });
       combined.push({
         id: event.id,
         platform: event.platform,
         eventType: event.event_type,
         actorName: event.actor_name,
-        amount: event.amount === null ? null : Number(event.amount),
-        currency: event.currency,
-        quantity: event.quantity,
-        secondsAdded: event.seconds_added,
+        amount: display?.amount ?? (event.amount === null ? null : Number(event.amount)),
+        currency: display?.currency ?? event.currency,
+        quantity: display?.quantity ?? event.quantity,
+        secondsAdded: test ? 0 : event.seconds_added,
         createdAt: event.created_at,
+        ...(test ? { isTest: true as const } : {}),
         ...replyOverlayFields(event.raw_payload, event.created_at),
       });
     }

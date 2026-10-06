@@ -1145,6 +1145,14 @@ const DICT = {
   "botrix.points": "{count} نقطة",
   "botrix.xp": "{count} XP",
   "botrix.watchtime": "مشاهدة {count}",
+  "botrix.import": "استيراد",
+  "botrix.importAll": "استيراد الكل",
+  "botrix.importing": "جارٍ الاستيراد…",
+  "botrix.imported": "تم الاستيراد",
+  "botrix.importedCount": "تم استيراد {imported} · تم تخطي {skipped}",
+  "botrix.importFailed": "تعذّر الاستيراد.",
+  "botrix.importLimit": "وصلت إلى حد الأوامر في الخطة المجانية.",
+  "botrix.shopNoDestination": "عناصر المتجر تبقى هنا. لا يوجد متجر نقاط في الاستوديو لاستيرادها.",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

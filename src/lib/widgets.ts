@@ -370,6 +370,8 @@ export type OverlayEvent = {
   replyQuote?: string | null;
   /** When the reply appeared. Falls back to createdAt for the 10-minute clock. */
   appearedAt?: string;
+  /** Preview alert. Visible on the overlay, ignored by timer and goal counters. */
+  isTest?: boolean;
 };
 
 export type GoalSnapshot = {

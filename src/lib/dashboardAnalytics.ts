@@ -11,6 +11,8 @@ export type AnalyticsEvent = {
   amount: number | null;
   quantity: number;
   created_at: string;
+  /** Preview rows already stored with `isTest` or `type: "test"` add nothing. */
+  isTest?: boolean;
 };
 
 export type AnalyticsDayPoint = {
@@ -112,6 +114,7 @@ function qty(event: AnalyticsEvent) {
 
 /** Same contribution rules as the activity feed totals and MetricAnalyticsModal. */
 export function metricContribution(metric: MetricKey, event: AnalyticsEvent): number {
+  if (event.isTest || event.event_type === "test") return 0;
   const count = qty(event);
   const amount = Number(event.amount ?? 0);
   const type = event.event_type;

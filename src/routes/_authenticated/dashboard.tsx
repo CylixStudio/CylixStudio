@@ -84,7 +84,6 @@ import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isTestMode } from "@/lib/testMode";
 import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
 import { DarkSelect } from "@/components/ui/dark-select";
-import { BotRixPanel } from "@/components/hub/BotRixPanel";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -453,8 +452,6 @@ function HomePage() {
           </button>
         </div>
       ) : null}
-
-      <BotRixPanel />
 
       <div
         role="toolbar"

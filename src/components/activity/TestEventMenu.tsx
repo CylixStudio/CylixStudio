@@ -29,6 +29,7 @@ export type InjectedFeedEvent = {
   seconds_added: number;
   message: string | null;
   created_at: string;
+  isTest?: boolean;
 };
 
 type Connection = { platform: string; is_active?: boolean | null };
@@ -74,6 +75,7 @@ function buildLocalEvent(
     seconds_added: 0,
     message: spec.message ?? null,
     created_at: new Date().toISOString(),
+    isTest: true,
   };
 }
 

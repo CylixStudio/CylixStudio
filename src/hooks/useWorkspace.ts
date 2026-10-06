@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase/client";
 import { isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { isStoredTestRow } from "@/lib/testAlert";
 import { isTestMode } from "@/lib/testMode";
 
 export type Subathon = {
@@ -149,10 +150,7 @@ export function useSubathonStats(subathonId: string | null) {
           .select("total_added_seconds")
           .eq("subathon_id", subathonId!)
           .maybeSingle(),
-        supabase
-          .from("events")
-          .select("id", { count: "exact", head: true })
-          .eq("subathon_id", subathonId!),
+        supabase.from("events").select("raw_payload").eq("subathon_id", subathonId!),
         supabase
           .from("rules")
           .select("id", { count: "exact", head: true })
@@ -161,7 +159,8 @@ export function useSubathonStats(subathonId: string | null) {
       ]);
       return {
         totalAddedSeconds: timer.data?.total_added_seconds ?? 0,
-        totalEvents: events.count ?? 0,
+        totalEvents: (events.data ?? []).filter((row) => !isStoredTestRow({ raw_payload: row.raw_payload }))
+          .length,
         activeRules: rules.count ?? 0,
       };
     },

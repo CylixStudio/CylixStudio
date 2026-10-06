@@ -14,6 +14,36 @@ import type {
   WidgetType,
 } from "@/lib/widgets";
 
+function mergePreviewTests(pending: OverlayEvent[], server: OverlayEvent[]) {
+  const ids = new Set(server.map((event) => event.id));
+  const nextPending = pending.filter((event) => !ids.has(event.id));
+  if (nextPending.length === 0) return { pending: nextPending, events: server };
+  const events = [...nextPending, ...server].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  return { pending: nextPending, events };
+}
+
+function previewFromAlert(payload: Record<string, unknown>): OverlayEvent | null {
+  if (payload["isTest"] !== true) return null;
+  const id = typeof payload["eventId"] === "string" ? payload["eventId"] : "";
+  if (!id) return null;
+  const amount = payload["amount"];
+  const quantity = payload["quantity"];
+  return {
+    id,
+    platform: String(payload["platform"] ?? ""),
+    eventType: String(payload["eventType"] ?? ""),
+    actorName: typeof payload["actorName"] === "string" ? payload["actorName"] : null,
+    amount: typeof amount === "number" && Number.isFinite(amount) ? amount : null,
+    currency: typeof payload["currency"] === "string" ? payload["currency"] : null,
+    quantity: typeof quantity === "number" && quantity > 0 ? quantity : 1,
+    secondsAdded: 0,
+    createdAt: new Date().toISOString(),
+    isTest: true,
+  };
+}
+
 export type StreamStatus = "connecting" | "live" | "error";
 
 export type StreamWidget = {
@@ -57,6 +87,13 @@ export function useWidgetStream(publicToken: string | null) {
   const [testMessages, setTestMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const offsetRef = useRef(0);
+  const previewTests = useRef<OverlayEvent[]>([]);
+
+  const adoptServerEvents = (server: OverlayEvent[]) => {
+    const merged = mergePreviewTests(previewTests.current, server);
+    previewTests.current = merged.pending;
+    return merged.events;
+  };
 
   useEffect(() => {
     if (!publicToken) return;
@@ -80,7 +117,7 @@ export function useWidgetStream(publicToken: string | null) {
         const payload = JSON.parse((event as MessageEvent).data) as Snapshot;
         setWidget(payload.widget);
         setGoal(payload.goal);
-        setEvents(payload.events ?? []);
+        setEvents(adoptServerEvents(payload.events ?? []));
         setSpin(payload.spin);
         setSpotlight(payload.spotlight ?? null);
         setStreamEvents(payload.streamEvents ?? null);
@@ -98,7 +135,7 @@ export function useWidgetStream(publicToken: string | null) {
         setGoal(JSON.parse((event as MessageEvent).data) as GoalSnapshot | null);
       });
       source.addEventListener("events", (event) => {
-        setEvents(JSON.parse((event as MessageEvent).data) as OverlayEvent[]);
+        setEvents(adoptServerEvents(JSON.parse((event as MessageEvent).data) as OverlayEvent[]));
       });
       source.addEventListener("spotlight", (event) => {
         const payload = JSON.parse((event as MessageEvent).data) as {
@@ -174,7 +211,7 @@ export function useWidgetStream(publicToken: string | null) {
       const payload = (await response.json()) as Snapshot;
       setWidget(payload.widget);
       setGoal(payload.goal);
-      setEvents(payload.events ?? []);
+      setEvents(adoptServerEvents(payload.events ?? []));
       setSpin(payload.spin);
       setSpotlight(payload.spotlight ?? null);
       setStreamEvents(payload.streamEvents ?? null);
@@ -200,6 +237,16 @@ export function useWidgetStream(publicToken: string | null) {
   }, [publicToken, poll]);
 
   useWidgetRealtime(widget?.id ?? null, (message) => {
+    if (message.event === "alert") {
+      const preview = previewFromAlert(message.payload);
+      if (preview) {
+        previewTests.current = [
+          preview,
+          ...previewTests.current.filter((event) => event.id !== preview.id),
+        ].slice(0, 8);
+        setEvents((current) => [preview, ...current.filter((event) => event.id !== preview.id)]);
+      }
+    }
     if (message.event === "chat") {
       const payload = message.payload as Partial<ChatMessage>;
       const reply = readReplyMeta(payload);

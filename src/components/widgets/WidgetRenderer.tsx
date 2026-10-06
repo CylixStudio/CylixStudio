@@ -11,6 +11,7 @@ import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKi
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
 import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
+import { useLanguage } from "@/lib/i18n";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
@@ -139,6 +140,7 @@ export function AlertBoxView({
   /** Dashboard preview: keep the card visible instead of auto-hiding. */
   demo?: boolean;
 }) {
+  const { t } = useLanguage();
   const style = parseAlertConfig(config);
   const skin = widgetThemeSkin(parseWidgetThemeId(config));
   const expiry = useReplyAlertExpiry(events, {
@@ -215,6 +217,7 @@ export function AlertBoxView({
           color: style.accentColor,
         }}
       >
+        {latest.isTest ? `${t("activity.testEvent")} · ` : ""}
         {latest.platform}
       </span>
       <span style={{ fontSize: `${style.fontSize}px`, fontWeight: 700, lineHeight: 1.15 }}>
@@ -1500,7 +1503,7 @@ function TapperAvatar({
 
 /** Most recent event that actually added time — shown under the timer. */
 function latestSupporter(events: OverlayEvent[]) {
-  const event = events.find((entry) => entry.secondsAdded > 0);
+  const event = events.find((entry) => !entry.isTest && entry.secondsAdded > 0);
   if (!event) return null;
   return {
     name: event.actorName ?? "Anonymous",
@@ -1511,6 +1514,7 @@ function latestSupporter(events: OverlayEvent[]) {
 
 function subscriptionMilestone(events: OverlayEvent[]): number {
   return events.reduce((total, event) => {
+    if (event.isTest) return total;
     if (event.eventType === "GIFT_SUB") return total + Math.max(1, event.quantity);
     if (event.eventType === "SUBSCRIPTION" || event.eventType === "MEMBERSHIP") return total + 1;
     return total;

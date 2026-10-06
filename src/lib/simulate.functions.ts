@@ -47,7 +47,8 @@ export const simulateStreamEvent = createServerFn({ method: "POST" })
         amount,
         currency: data.eventType === "DONATION" ? "USD" : null,
         quantity: Math.max(1, Math.round(data.quantity ?? 1)),
-        rawPayload: { simulated: true },
+        isTest: true,
+        rawPayload: { simulated: true, isTest: true },
     });
 
     return { ok: true as const, result };
@@ -130,7 +131,13 @@ export const fireTestEvent = createServerFn({ method: "POST" })
       amount,
       currency: data.eventType === "DONATION" ? "USD" : null,
       quantity,
-      rawPayload: { test_harness: true, platform: data.platform, ...(message ? { message } : {}) },
+      isTest: true,
+      rawPayload: {
+        test_harness: true,
+        isTest: true,
+        platform: data.platform,
+        ...(message ? { message } : {}),
+      },
     });
 
     return { ok: true as const, result };

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isAllowedPlatformEvent, timerUnits } from "@/lib/platformEvents";
 import { annotateReplyPayload } from "@/lib/replyAlert";
 import type { Database } from "@/lib/supabase/types";
+import { isDispatchedTest, testStorageFields } from "@/lib/testAlert";
 
 export type Platform = Database["public"]["Enums"]["platform_type"];
 export type EventType = Database["public"]["Enums"]["rule_event_type"];
@@ -33,6 +34,11 @@ export type NormalizedEvent = {
    * enabled, only the gift event adds time.
    */
   isGiftedSubscription?: boolean;
+  /**
+   * Set only by the test buttons. A real Kick, Twitch, YouTube, or Streamlabs
+   * webhook never sets this, so production events keep their normal totals.
+   */
+  isTest?: boolean;
 };
 
 export type IngestResult =
@@ -113,11 +119,59 @@ export async function activeSubathonFor(
  * A Twitch follow rule does not fire for Kick, and a MANUAL rule does not
  * cover other platforms. No matching rule means zero seconds.
  */
+type RuleAward = {
+  platform: string;
+  event_type: string;
+  is_enabled?: boolean;
+  min_amount: number | null;
+  seconds_per_unit: number;
+  unit_amount: number;
+  max_seconds_per_event: number | null;
+  priority?: number;
+};
+
+/**
+ * Seconds an already-loaded rule list awards. Test alerts add nothing.
+ * Matching is unchanged for a real event: enabled rule, same platform and
+ * event, raids are one unit, and a missing or zero donation adds nothing.
+ */
+export function subathonSecondsForRules(
+  event: Pick<NormalizedEvent, "isTest" | "countsTowardTimer" | "eventType" | "platform" | "amount" | "quantity">,
+  rules: RuleAward[],
+): number {
+  if (isDispatchedTest(event)) return 0;
+  if (event.countsTowardTimer === false) return 0;
+
+  const matched = rules
+    .filter(
+      (entry) =>
+        entry.is_enabled !== false &&
+        entry.platform === event.platform &&
+        entry.event_type === event.eventType,
+    )
+    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  if (!matched.length) return 0;
+
+  const units = timerUnits(event);
+  if (units <= 0) return 0;
+
+  const rule = matched.find((entry) => entry.min_amount === null || units >= Number(entry.min_amount));
+  if (!rule || rule.seconds_per_unit <= 0) return 0;
+
+  const unitAmount = Number(rule.unit_amount) || 1;
+  let seconds = Math.floor((units / unitAmount) * rule.seconds_per_unit);
+  if (rule.max_seconds_per_event !== null) {
+    seconds = Math.min(seconds, rule.max_seconds_per_event);
+  }
+  return Math.max(seconds, 0);
+}
+
 export async function evaluateRules(
   admin: Admin,
   subathonId: string,
   event: NormalizedEvent,
 ): Promise<number> {
+  if (isDispatchedTest(event)) return 0;
   if (event.countsTowardTimer === false) return 0;
 
   if (event.isGiftedSubscription) {
@@ -141,20 +195,7 @@ export async function evaluateRules(
     .eq("is_enabled", true)
     .order("priority", { ascending: false });
 
-  if (!rules?.length) return 0;
-
-  const units = timerUnits(event);
-  if (units <= 0) return 0;
-
-  const rule = rules.find((entry) => entry.min_amount === null || units >= Number(entry.min_amount));
-  if (!rule || rule.seconds_per_unit <= 0) return 0;
-
-  const unitAmount = Number(rule.unit_amount) || 1;
-  let seconds = Math.floor((units / unitAmount) * rule.seconds_per_unit);
-  if (rule.max_seconds_per_event !== null) {
-    seconds = Math.min(seconds, rule.max_seconds_per_event);
-  }
-  return Math.max(seconds, 0);
+  return subathonSecondsForRules(event, rules ?? []);
 }
 
 const REPLAY_WINDOW_MS = 12_000;
@@ -215,6 +256,54 @@ async function findReplayTwin(
   return null;
 }
 
+function storedPayload(event: NormalizedEvent): unknown {
+  const base =
+    event.rawPayload && typeof event.rawPayload === "object" && !Array.isArray(event.rawPayload)
+      ? { ...(event.rawPayload as Record<string, unknown>) }
+      : {};
+  const display = testStorageFields(event);
+  return annotateReplyPayload(display ? { ...base, ...display } : (event.rawPayload ?? {}));
+}
+
+function alertPayload(
+  event: NormalizedEvent,
+  extra: { eventId: string; secondsAdded: number; goals: string[]; milestones: string[] },
+) {
+  return {
+    reason: "event",
+    platform: event.platform,
+    eventType: event.eventType,
+    actorName: event.actorName,
+    amount: event.amount,
+    currency: event.currency,
+    quantity: event.quantity,
+    secondsAdded: extra.secondsAdded,
+    goals: extra.goals,
+    milestones: extra.milestones,
+    isTest: isDispatchedTest(event),
+    eventId: extra.eventId,
+  };
+}
+
+/**
+ * Goal progress one enabled rule would add. A test alert adds none.
+ * Real events still use the same unit, minimum, and increment math.
+ */
+export function goalProgressDelta(
+  event: Pick<NormalizedEvent, "isTest" | "eventType" | "amount" | "quantity">,
+  rule: { goal_increment: number | null; unit_amount: number; min_amount: number | null },
+): number {
+  if (isDispatchedTest(event)) return 0;
+  const increment = Number(rule.goal_increment ?? 0);
+  if (increment <= 0) return 0;
+  const units = timerUnits(event);
+  if (units <= 0) return 0;
+  if (rule.min_amount !== null && units < Number(rule.min_amount)) return 0;
+  const unitAmount = Number(rule.unit_amount) || 1;
+  const delta = (units / unitAmount) * increment;
+  return delta > 0 ? delta : 0;
+}
+
 /**
  * Full ingest pipeline: rule evaluation -> deduplicated insert -> timer update.
  * Deduplication relies on the unique (platform, provider_event_id) constraint.
@@ -231,7 +320,9 @@ export async function ingestEvent(
     };
   }
 
-  if (event.providerEventId) {
+  const preview = isDispatchedTest(event);
+
+  if (!preview && event.providerEventId) {
     const { data: existing } = await admin
       .from("events")
       .select("id")
@@ -241,8 +332,10 @@ export async function ingestEvent(
     if (existing) return { status: "duplicate", eventId: existing.id };
   }
 
-  const replay = await findReplayTwin(admin, { subathonId: target.subathonId, userId: target.userId }, event);
-  if (replay) return { status: "duplicate", eventId: replay };
+  if (!preview) {
+    const replay = await findReplayTwin(admin, { subathonId: target.subathonId, userId: target.userId }, event);
+    if (replay) return { status: "duplicate", eventId: replay };
+  }
 
   const seconds = await evaluateRules(admin, target.subathonId, event);
 
@@ -255,11 +348,11 @@ export async function ingestEvent(
       provider_event_id: event.providerEventId,
       actor_name: event.actorName,
       actor_platform_id: event.actorPlatformId,
-      amount: event.amount,
-      currency: event.currency,
-      quantity: event.quantity,
+      amount: preview ? null : event.amount,
+      currency: preview ? null : event.currency,
+      quantity: preview ? 1 : event.quantity,
       seconds_added: seconds,
-      raw_payload: annotateReplyPayload(event.rawPayload ?? {}) as never,
+      raw_payload: storedPayload(event) as never,
       processed_at: new Date().toISOString(),
     })
     .select("id")
@@ -302,24 +395,25 @@ export async function ingestEvent(
     } as never,
   });
 
-  const skipped = await applyGoalIncrements(admin, target.subathonId, event);
-  const { advanceTargets } = await import("@/lib/targets.server");
-  const targets = await advanceTargets(admin, target.userId, event, skipped);
+  const skipped = preview ? new Set<string>() : await applyGoalIncrements(admin, target.subathonId, event);
+  const targets = preview
+    ? { updated: [] as string[], milestones: [] as string[] }
+    : await (await import("@/lib/targets.server")).advanceTargets(admin, target.userId, event, skipped);
 
   // Push every overlay owned by this creator immediately (OBS refreshes
   // without waiting for its next poll).
   const { broadcastUserWidgets } = await import("@/lib/realtime.server");
-  await broadcastUserWidgets(admin as never, target.userId, "alert", {
-    reason: "event",
-    platform: event.platform,
-    eventType: event.eventType,
-    actorName: event.actorName,
-    amount: event.amount,
-    quantity: event.quantity,
-    secondsAdded: seconds,
-    goals: targets.updated,
-    milestones: targets.milestones,
-  });
+  await broadcastUserWidgets(
+    admin as never,
+    target.userId,
+    "alert",
+    alertPayload(event, {
+      eventId: inserted.id,
+      secondsAdded: seconds,
+      goals: targets.updated,
+      milestones: targets.milestones,
+    }),
+  );
 
 
 
@@ -342,6 +436,7 @@ export async function applyGoalIncrements(
   event: NormalizedEvent,
 ): Promise<Set<string>> {
   const touched = new Set<string>();
+  if (isDispatchedTest(event)) return touched;
   const { data: rules } = await admin
     .from("rules")
     .select("widget_id, goal_increment, unit_amount, min_amount, platform")
@@ -353,15 +448,9 @@ export async function applyGoalIncrements(
 
   if (!rules?.length) return touched;
 
-  const units = timerUnits(event);
-  if (units <= 0) return touched;
-
   for (const rule of rules) {
-    const increment = Number(rule.goal_increment ?? 0);
-    if (!rule.widget_id || increment <= 0) continue;
-    if (rule.min_amount !== null && units < Number(rule.min_amount)) continue;
-    const unitAmount = Number(rule.unit_amount) || 1;
-    const delta = (units / unitAmount) * increment;
+    if (!rule.widget_id) continue;
+    const delta = goalProgressDelta(event, rule);
     if (delta <= 0) continue;
     await admin.rpc("apply_goal_increment", {
       p_widget_id: rule.widget_id,
@@ -391,6 +480,18 @@ export async function receivePlatformEvent(
   const target = await activeSubathonFor(admin, userId);
   if (target) return ingestEvent(admin, target, event);
 
+  if (isDispatchedTest(event)) {
+    const { broadcastUserWidgets } = await import("@/lib/realtime.server");
+    const eventId = event.providerEventId ?? `test-${crypto.randomUUID()}`;
+    await broadcastUserWidgets(
+      admin as never,
+      userId,
+      "alert",
+      alertPayload(event, { eventId, secondsAdded: 0, goals: [], milestones: [] }),
+    );
+    return { status: "accepted", eventId, secondsAdded: 0, remainingSeconds: 0 };
+  }
+
   const replay = await findReplayTwin(admin, { userId }, event);
   if (replay) return { status: "duplicate", eventId: replay };
 
@@ -400,16 +501,17 @@ export async function receivePlatformEvent(
 
   const targets = await advanceTargets(admin, userId, event, new Set());
   const { broadcastUserWidgets } = await import("@/lib/realtime.server");
-  await broadcastUserWidgets(admin as never, userId, "alert", {
-    reason: "event",
-    platform: event.platform,
-    eventType: event.eventType,
-    actorName: event.actorName,
-    amount: event.amount,
-    quantity: event.quantity,
-    goals: targets.updated,
-    milestones: targets.milestones,
-  });
+  await broadcastUserWidgets(
+    admin as never,
+    userId,
+    "alert",
+    alertPayload(event, {
+      eventId: recorded.id ?? "",
+      secondsAdded: 0,
+      goals: targets.updated,
+      milestones: targets.milestones,
+    }),
+  );
 
   return { status: "accepted", eventId: recorded.id ?? "", secondsAdded: 0, remainingSeconds: 0 };
 }

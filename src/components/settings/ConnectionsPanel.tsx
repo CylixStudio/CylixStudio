@@ -12,6 +12,7 @@ import {
   disconnectPlatformConnection,
   startPlatformLink,
 } from "@/lib/connections.functions";
+import { BotRixPanel } from "@/components/hub/BotRixPanel";
 import { InfoTip } from "@/components/ui/info-tip";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { STUDIO_PLATFORMS, parseStudioPlatform, type StudioPlatform } from "@/lib/defaultPlatform";
@@ -593,6 +594,8 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
           }
         />
       </div>
+
+      <BotRixPanel />
     </section>
   );
 }

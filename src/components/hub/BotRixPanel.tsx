@@ -1,15 +1,19 @@
 import { useState, type FormEvent, type ReactNode } from "react";
+import { toast } from "sonner";
 
 import { DarkSelect } from "@/components/ui/dark-select";
 import { Input } from "@/components/ui/input";
 import {
   BOTRIX_PLATFORMS,
+  type BotRixCommand,
   type BotRixLookupResult,
   type BotRixPlatform,
   type BotRixSection,
 } from "@/lib/botrix";
-import { lookupBotRixPublic } from "@/lib/botrix.functions";
+import { importBotRixCommands, lookupBotRixPublic } from "@/lib/botrix.functions";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { isMissingViewerSession } from "@/lib/supabase/sessionError";
+import { isTestMode } from "@/lib/testMode";
 
 const PLATFORM_KEYS: Record<BotRixPlatform, TranslationKey> = {
   kick: "botrix.platform.kick",
@@ -27,21 +31,39 @@ function formatCount(value: number, lang: string) {
   return value.toLocaleString(lang === "ar" ? "ar" : "en-US");
 }
 
+function isSignedOutFailure(error: unknown): boolean {
+  if (isTestMode() || isMissingViewerSession(error)) return true;
+  if (error instanceof Response && (error.status === 401 || error.status === 403)) return true;
+  const record = error && typeof error === "object" ? (error as { status?: unknown; message?: unknown; statusCode?: unknown }) : null;
+  const status = record?.status ?? record?.statusCode;
+  if (status === 401 || status === 403) return true;
+  const message = error instanceof Error ? error.message : typeof record?.message === "string" ? record.message : "";
+  return /unauthorized|auth session missing|signed_out/i.test(message);
+}
+
 function SectionFrame({
   title,
   section,
   empty,
+  action,
+  note,
   children,
 }: {
   title: string;
   section: BotRixSection<unknown>;
   empty: string;
+  action?: ReactNode;
+  note?: string | undefined;
   children: ReactNode;
 }) {
   const { t } = useLanguage();
   return (
     <section className="rounded-xl border border-white/10 bg-zinc-950/50 p-3">
-      <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</h3>
+        {action}
+      </div>
+      {note ? <p className="mt-2 text-xs text-muted-foreground">{note}</p> : null}
       {section.ok ? (
         section.items.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">{empty}</p>
@@ -63,14 +85,18 @@ export function BotRixPanel() {
   const [platform, setPlatform] = useState<BotRixPlatform>("kick");
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<TranslationKey | null>(null);
+  const [importNotice, setImportNotice] = useState<TranslationKey | null>(null);
+  const [importing, setImporting] = useState<string | null>(null);
   const [result, setResult] = useState<Extract<BotRixLookupResult, { ok: true }> | null>(null);
 
   const count = (value: number) => formatCount(value, lang);
+  const importLocked = importing !== null;
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
     setFormError(null);
+    setImportNotice(null);
     setResult(null);
     try {
       const next = await lookupBotRixPublic({ data: { streamerName, platform } });
@@ -86,8 +112,57 @@ export function BotRixPanel() {
     }
   };
 
+  const importCommands = async (key: string, commands: BotRixCommand[]) => {
+    if (!result || importLocked) return;
+    setImporting(key);
+    setImportNotice(null);
+    try {
+      if (isTestMode()) {
+        setImportNotice("widget.signedOut");
+        return;
+      }
+      const saved = await importBotRixCommands({
+        data: {
+          platform: result.platform,
+          commands: commands.map((item) => ({ cmd: item.cmd, message: item.message, mods: item.mods })),
+        },
+      });
+      if (!saved.ok) {
+        if (saved.error === "invalid_platform") setImportNotice("botrix.error.invalidPlatform");
+        else toast.error(t("botrix.importFailed"));
+        return;
+      }
+      if (saved.limited && saved.imported === 0) {
+        toast.error(t("botrix.importLimit"));
+        return;
+      }
+      toast.success(
+        saved.skipped > 0
+          ? t("botrix.importedCount", { imported: saved.imported, skipped: saved.skipped })
+          : t("botrix.imported"),
+      );
+      if (saved.limited) toast.error(t("botrix.importLimit"));
+    } catch (error) {
+      if (isSignedOutFailure(error)) setImportNotice("widget.signedOut");
+      else toast.error(t("botrix.importFailed"));
+    } finally {
+      setImporting(null);
+    }
+  };
+
+  const importButton = (key: string, label: TranslationKey, onClick: () => void, disabled = false) => (
+    <button
+      type="button"
+      disabled={disabled || importLocked}
+      onClick={onClick}
+      className="h-7 shrink-0 rounded-lg border border-white/10 px-2.5 text-[0.7rem] font-medium text-foreground hover:bg-white/5 disabled:opacity-50"
+    >
+      {importing === key ? t("botrix.importing") : t(label)}
+    </button>
+  );
+
   return (
-    <section aria-busy={loading} className="glass-3d mb-5 rounded-2xl border border-white/10 bg-zinc-950 p-5">
+    <section aria-busy={loading} className="glass-3d mt-6 rounded-2xl border border-white/10 bg-zinc-950 p-5">
       <h2 className="text-base font-medium tracking-tight">{t("botrix.title")}</h2>
       <p className="mt-1 text-[0.78rem] text-muted-foreground">{t("botrix.subtitle")}</p>
 
@@ -135,6 +210,11 @@ export function BotRixPanel() {
           {t(formError)}
         </p>
       ) : null}
+      {importNotice ? (
+        <p role="status" className="mt-3 text-sm text-muted-foreground">
+          {t(importNotice)}
+        </p>
+      ) : null}
 
       {result ? (
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -142,18 +222,30 @@ export function BotRixPanel() {
             title={t("botrix.commands")}
             section={result.commands}
             empty={t("botrix.empty.commands")}
+            action={
+              result.commands.ok && result.commands.items.length > 0
+                ? importButton("commands-all", "botrix.importAll", () => {
+                    if (result.commands.ok) void importCommands("commands-all", result.commands.items);
+                  })
+                : null
+            }
           >
             {result.commands.ok
               ? result.commands.items.map((item, index) => (
                   <li key={`${item.cmd}-${index}`} className="rounded-lg border border-white/5 px-2.5 py-2">
-                    <p className="flex flex-wrap items-center gap-2 font-mono text-sm" dir="ltr">
-                      {item.cmd}
-                      {item.mods ? (
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 font-sans text-[0.65rem] text-muted-foreground">
-                          {t("botrix.mods")}
-                        </span>
-                      ) : null}
-                    </p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="flex min-w-0 flex-wrap items-center gap-2 font-mono text-sm" dir="ltr">
+                        {item.cmd}
+                        {item.mods ? (
+                          <span className="rounded-full bg-white/10 px-2 py-0.5 font-sans text-[0.65rem] text-muted-foreground">
+                            {t("botrix.mods")}
+                          </span>
+                        ) : null}
+                      </p>
+                      {importButton(`command-${index}`, "botrix.import", () => {
+                        void importCommands(`command-${index}`, [item]);
+                      })}
+                    </div>
                     {item.message ? (
                       <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{item.message}</p>
                     ) : null}
@@ -162,7 +254,17 @@ export function BotRixPanel() {
               : null}
           </SectionFrame>
 
-          <SectionFrame title={t("botrix.shop")} section={result.shop} empty={t("botrix.empty.shop")}>
+          <SectionFrame
+            title={t("botrix.shop")}
+            section={result.shop}
+            empty={t("botrix.empty.shop")}
+            note={result.shop.ok && result.shop.items.length > 0 ? t("botrix.shopNoDestination") : undefined}
+            action={
+              result.shop.ok && result.shop.items.length > 0
+                ? importButton("shop-all", "botrix.importAll", () => {}, true)
+                : null
+            }
+          >
             {result.shop.ok
               ? result.shop.items.map((item, index) => (
                   <li
@@ -172,8 +274,11 @@ export function BotRixPanel() {
                     {item.image ? (
                       <img src={item.image} alt="" className="size-12 shrink-0 rounded-lg object-cover" />
                     ) : null}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{item.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium">{item.name}</p>
+                        {importButton(`shop-${index}`, "botrix.import", () => {}, true)}
+                      </div>
                       {item.price !== null ? (
                         <p className="text-xs text-muted-foreground">{t("botrix.points", { count: count(item.price) })}</p>
                       ) : null}
