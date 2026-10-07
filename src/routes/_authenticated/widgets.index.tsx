@@ -9,7 +9,6 @@ import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
 import { ToolCard } from "@/components/hub/ToolCard";
 import {
   DonationGoalPreview,
-  GOAL_CARD_ACCENT,
   EventLabelsPreview,
   FollowerGoalPreview,
   KicksGoalPreview,
@@ -33,15 +32,15 @@ const TIKTOK_COMING_SOON: WidgetType[] = ["TIKTOK_TAPPERS", "TIKTOK_TAP_GOAL"];
 
 const TOOL_VISUAL: Record<
   (typeof STANDALONE_TOOLS)[number]["slug"],
-  { icon: LucideIcon; preview: () => ReactElement; accent?: string }
+  { icon: LucideIcon; preview: () => ReactElement }
 > = {
-  "kicks-goal": { icon: Coins, preview: KicksGoalPreview, accent: GOAL_CARD_ACCENT["kicks-goal"] },
+  "kicks-goal": { icon: Coins, preview: KicksGoalPreview },
   "viewer-counter": { icon: Users, preview: ViewerCounterPreview },
   wheel: { icon: Disc3, preview: WheelPreview },
   "event-labels": { icon: Tags, preview: EventLabelsPreview },
-  "donation-goal": { icon: Gift, preview: DonationGoalPreview, accent: GOAL_CARD_ACCENT["donation-goal"] },
-  "follower-goal": { icon: Users, preview: FollowerGoalPreview, accent: GOAL_CARD_ACCENT["follower-goal"] },
-  "subscriber-goal": { icon: Star, preview: SubscriberGoalPreview, accent: GOAL_CARD_ACCENT["subscriber-goal"] },
+  "donation-goal": { icon: Gift, preview: DonationGoalPreview },
+  "follower-goal": { icon: Users, preview: FollowerGoalPreview },
+  "subscriber-goal": { icon: Star, preview: SubscriberGoalPreview },
 };
 const CREATABLE_WIDGET_TYPES = OFFERED_WIDGET_TYPES.filter(
   (entry) => !TIKTOK_COMING_SOON.includes(entry.value) && !isSplitGoalKind(entry.value),
@@ -183,7 +182,6 @@ function WidgetHub() {
               description={t(tool.descriptionKey)}
               category={t("nav.tools")}
               icon={visual.icon}
-              {...(visual.accent ? { accent: visual.accent } : {})}
               preview={<Preview />}
               status={
                 existing?.is_enabled

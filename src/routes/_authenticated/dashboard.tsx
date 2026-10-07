@@ -41,7 +41,6 @@ import {
 import {
   ChatPreview,
   DonationGoalPreview,
-  GOAL_CARD_ACCENT,
   EmotePreview,
   FollowerGoalPreview,
   EventLabelsPreview,
@@ -56,6 +55,8 @@ import {
   SubscriberGoalPreview,
   TimerPreview,
 } from "@/components/hub/previews";
+
+const GIVEAWAY_PREVIEW_NAMES = ["@Creovix", "@Nova", "@ليان", "@mira", "@فهد"] as const;
 
 function GiveawayPreview() {
   const { t } = useLanguage();
@@ -76,7 +77,10 @@ function GiveawayPreview() {
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) return;
-    const timer = window.setInterval(() => setSeat((value) => (value + 1) % 3), 1400);
+    const timer = window.setInterval(
+      () => setSeat((value) => (value + 1) % GIVEAWAY_PREVIEW_NAMES.length),
+      1600,
+    );
     return () => window.clearInterval(timer);
   }, []);
 
@@ -86,25 +90,36 @@ function GiveawayPreview() {
       : t("giveaway.pendingConfirm")
     : t("giveaway.stageTitle");
 
+  const visible = [
+    GIVEAWAY_PREVIEW_NAMES[seat % GIVEAWAY_PREVIEW_NAMES.length],
+    GIVEAWAY_PREVIEW_NAMES[(seat + 1) % GIVEAWAY_PREVIEW_NAMES.length],
+    GIVEAWAY_PREVIEW_NAMES[(seat + 2) % GIVEAWAY_PREVIEW_NAMES.length],
+  ];
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-3">
-      <span className="hub-giveaway-mark grid size-11 place-items-center rounded-full border border-[#bee1fc]/30 bg-zinc-900 text-[#bee1fc]">
+    <div className="relative flex h-full flex-col items-center justify-center gap-2.5 overflow-hidden px-3">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute start-1/2 top-[42%] size-24 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl"
+        style={{ background: "#bee1fc", opacity: 0.16 }}
+      />
+      <span className="hub-giveaway-mark relative grid size-10 place-items-center rounded-full border border-[#bee1fc]/35 bg-zinc-950 text-[#bee1fc]">
         <Gift className="size-4" aria-hidden />
       </span>
-      <p className="text-[0.78rem] font-medium tracking-tight">{t("home.tool.giveaway.name")}</p>
-      <div className="flex items-center gap-0.5 rounded-full border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.03)] p-0.5">
-        {["A", "B", "C"].map((letter, index) => (
+      <div className="relative flex max-w-full items-center gap-1 overflow-hidden rounded-full border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.03)] px-1.5 py-1">
+        {visible.map((name, index) => (
           <span
-            key={letter}
-            className={`rounded-full px-2 py-0.5 text-[0.58rem] font-medium transition-colors ${
-              index === seat ? "bg-[#bee1fc]/15 text-[#bee1fc]" : "text-zinc-200"
+            key={`${name}-${index}`}
+            className={`truncate rounded-full px-2 py-0.5 text-[0.58rem] font-medium transition-colors duration-300 ${
+              index === 0 ? "bg-[#bee1fc]/18 text-[#bee1fc]" : "text-zinc-400"
             }`}
+            dir="ltr"
           >
-            @{letter}
+            {name}
           </span>
         ))}
       </div>
-      <p className="max-w-full truncate text-[0.58rem] text-muted-foreground">{drawState}</p>
+      <p className="relative max-w-full truncate text-[0.58rem] text-muted-foreground">{drawState}</p>
     </div>
   );
 }
@@ -585,9 +600,6 @@ function HomePage() {
                   description={t(tool.descriptionKey)}
                   category={t(tool.categoryKey)}
                   icon={tool.icon}
-                  {...(GOAL_CARD_ACCENT[tool.id as keyof typeof GOAL_CARD_ACCENT]
-                    ? { accent: GOAL_CARD_ACCENT[tool.id as keyof typeof GOAL_CARD_ACCENT] }
-                    : {})}
                   platforms={tool.platforms}
                   comingSoon={Boolean(tool.comingSoon)}
                   preview={<Preview />}

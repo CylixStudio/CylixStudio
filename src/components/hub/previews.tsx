@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Coins, Gift, Star, Users } from "lucide-react";
 
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { useLanguage } from "@/lib/i18n";
@@ -300,188 +299,103 @@ export const GOAL_CARD_ACCENT = {
   "kicks-goal": "#67E8F9",
 } as const;
 
-function GoalIcon({
+/**
+ * Same preview chrome for every goal: soft inner wash, percent + amount, one horizontal bar.
+ * Card title/icon live on ToolCard — not duplicated here.
+ */
+function UnifiedGoalPreview({
   accent,
-  children,
+  base,
+  target,
+  steps,
+  labels,
+  formatAmount,
 }: {
   accent: string;
-  children: React.ReactNode;
+  base: number;
+  target: number;
+  steps: readonly number[];
+  labels: readonly string[];
+  formatAmount: (current: number) => string;
 }) {
+  const { current, pop } = usePreviewGoal(base, target, steps, labels);
+  const percent = Math.min(100, Math.max(0, Math.round((current / target) * 100)));
   return (
-    <span
-      className="hub-goal-icon grid size-8 shrink-0 place-items-center rounded-xl border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.04)]"
-      style={{ color: accent }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function GoalWash({
-  accent,
-  className,
-}: {
-  accent: string;
-  className: string;
-}) {
-  return (
-    <span
-      aria-hidden
-      className={`pointer-events-none absolute size-28 rounded-full blur-2xl ${className}`}
-      style={{ background: accent, opacity: 0.16 }}
-    />
-  );
-}
-
-/** Followers: percentage is the large mark on one side, bar under the title. */
-export function FollowerGoalPreview() {
-  const { t } = useLanguage();
-  const accent = GOAL_CARD_ACCENT["follower-goal"];
-  const { current, pop } = usePreviewGoal(640, 1000, [1, 3], ["+1", "+3"]);
-  const percent = Math.round((current / 1000) * 100);
-  return (
-    <div className="relative flex h-full items-center gap-3 overflow-hidden px-3.5">
+    <div className="relative flex h-full flex-col justify-center gap-2 overflow-hidden px-3.5">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute start-1/2 top-1/2 size-28 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl"
+        style={{ background: accent, opacity: 0.14 }}
+      />
       <GoalDelta pop={pop} accent={accent} />
-      <GoalWash accent={accent} className="end-0 top-1/2 -translate-y-1/2" />
-      <div className="relative min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <GoalIcon accent={accent}>
-            <Users className="size-3.5" aria-hidden />
-          </GoalIcon>
-          <p className="truncate text-[0.72rem] font-medium">{t("home.tool.followerGoal.name")}</p>
-        </div>
-        <div className="mt-2.5 flex h-1.5 gap-0.5">
-          {Array.from({ length: 10 }, (_, index) => (
-            <span
-              key={index}
-              className="h-full flex-1 rounded-sm"
-              style={{ background: index < Math.round(percent / 10) ? accent : "oklch(1 0 0 / 0.08)" }}
-            />
-          ))}
-        </div>
-        <p className="mt-1 text-[0.6rem] tabular-nums text-muted-foreground" dir="ltr">
-          {current.toLocaleString("en-US")} / 1,000
-        </p>
+      <div className="relative flex items-center justify-between text-[0.6rem] uppercase tracking-[0.2em] text-muted-foreground">
+        <span>goal</span>
+        <span className="tabular-nums text-foreground" style={{ color: accent }}>
+          {percent}%
+        </span>
       </div>
-      <p className="relative text-[1.65rem] font-semibold leading-none tabular-nums" style={{ color: accent }}>
-        {percent}%
+      <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-[oklch(1_0_0/0.06)]">
+        <div
+          className="h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
+          style={{ width: `${percent}%`, background: accent }}
+        />
+      </div>
+      <p className="relative text-[0.66rem] tabular-nums text-muted-foreground" dir="ltr">
+        {formatAmount(current)} / {formatAmount(target)}
       </p>
     </div>
   );
 }
 
-/** Donations: amount sits in the middle, percentage is a corner mark, bar is the footer. */
+export function FollowerGoalPreview() {
+  return (
+    <UnifiedGoalPreview
+      accent={GOAL_CARD_ACCENT["follower-goal"]}
+      base={640}
+      target={1000}
+      steps={[1, 3]}
+      labels={["+1", "+3"]}
+      formatAmount={(n) => n.toLocaleString("en-US")}
+    />
+  );
+}
+
 export function DonationGoalPreview() {
-  const { t } = useLanguage();
-  const accent = GOAL_CARD_ACCENT["donation-goal"];
-  const { current, pop } = usePreviewGoal(360, 500, [10, 3], ["+$10", "+$3"]);
-  const percent = Math.round((current / 500) * 100);
   return (
-    <div className="relative flex h-full flex-col justify-between overflow-hidden px-3.5 py-3">
-      <GoalDelta pop={pop} accent={accent} />
-      <GoalWash accent={accent} className="bottom-0 start-1/3" />
-      <div className="relative flex items-start justify-between gap-2">
-        <p className="truncate text-[0.72rem] font-medium">{t("home.tool.donationGoal.name")}</p>
-        <GoalIcon accent={accent}>
-          <Gift className="size-3.5" aria-hidden />
-        </GoalIcon>
-      </div>
-      <div className="relative">
-        <p className="text-[1.35rem] font-semibold leading-none tabular-nums" dir="ltr">
-          ${current.toLocaleString("en-US")}{" "}
-          <span className="text-[0.68rem] font-medium text-muted-foreground">USD</span>
-        </p>
-        <p className="mt-1 text-[0.62rem] font-semibold tabular-nums" style={{ color: accent }}>
-          {percent}%
-        </p>
-      </div>
-      <div className="relative h-2 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
-        <div
-          className="h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
-          style={{
-            width: `${percent}%`,
-            background: `linear-gradient(90deg, ${accent}, #a7f3d0)`,
-            boxShadow: `inset 0 1px 0 oklch(1 0 0 / 0.35), 0 0 12px ${accent}`,
-          }}
-        />
-      </div>
-    </div>
+    <UnifiedGoalPreview
+      accent={GOAL_CARD_ACCENT["donation-goal"]}
+      base={360}
+      target={500}
+      steps={[10, 3]}
+      labels={["+$10", "+$3"]}
+      formatAmount={(n) => `$${n.toLocaleString("en-US")}`}
+    />
   );
 }
 
-/** Subscribers: star and percent stacked in the center, progress as a bottom strip. */
 export function SubscriberGoalPreview() {
-  const { t } = useLanguage();
-  const accent = GOAL_CARD_ACCENT["subscriber-goal"];
-  const { current, pop } = usePreviewGoal(18, 50, [2, 4], ["+2", "+4"]);
-  const percent = Math.round((current / 50) * 100);
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      <GoalDelta pop={pop} accent={accent} />
-      <GoalWash accent={accent} className="start-1/2 top-0 -translate-x-1/2 rtl:translate-x-1/2" />
-      <div className="relative flex flex-1 flex-col items-center justify-center">
-        <GoalIcon accent={accent}>
-          <Star className="size-3.5" aria-hidden />
-        </GoalIcon>
-        <p className="mt-1.5 text-[0.72rem] font-medium">{t("home.tool.subscriberGoal.name")}</p>
-        <p className="mt-0.5 text-lg font-semibold tabular-nums" style={{ color: accent }}>
-          {percent}%
-        </p>
-      </div>
-      <div className="relative px-3.5 pb-3">
-        <div className="flex h-2 items-end gap-1">
-          {Array.from({ length: 8 }, (_, index) => (
-            <span
-              key={index}
-              className="flex-1 rounded-t-sm"
-              style={{
-                height: index < Math.round((percent / 100) * 8) ? "100%" : "35%",
-                background: index < Math.round((percent / 100) * 8) ? accent : "oklch(1 0 0 / 0.08)",
-              }}
-            />
-          ))}
-        </div>
-        <p className="mt-1 text-center text-[0.58rem] tabular-nums text-muted-foreground" dir="ltr">
-          {current} / 50
-        </p>
-      </div>
-    </div>
+    <UnifiedGoalPreview
+      accent={GOAL_CARD_ACCENT["subscriber-goal"]}
+      base={18}
+      target={50}
+      steps={[2, 4]}
+      labels={["+2", "+4"]}
+      formatAmount={(n) => String(n)}
+    />
   );
 }
 
-/** Kicks: a vertical rail, title in the middle, icon and percent stacked on the end. */
 export function KicksGoalCardPreview() {
-  const { t } = useLanguage();
-  const accent = GOAL_CARD_ACCENT["kicks-goal"];
-  const { current, pop } = usePreviewGoal(420, 1000, [100, 500], ["+100", "+500"]);
-  const percent = Math.round((current / 1000) * 100);
   return (
-    <div className="relative flex h-full items-stretch gap-3 overflow-hidden px-3.5 py-3">
-      <GoalDelta pop={pop} accent={accent} />
-      <GoalWash accent={accent} className="start-0 top-1/2 -translate-y-1/2" />
-      <div className="relative flex w-2 shrink-0 items-end">
-        <div className="relative h-full w-2 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
-          <div
-            className="absolute bottom-0 w-full rounded-full transition-[height] duration-500 motion-reduce:transition-none"
-            style={{ height: `${percent}%`, background: `linear-gradient(180deg, #ecfeff, ${accent})` }}
-          />
-        </div>
-      </div>
-      <div className="relative flex min-w-0 flex-1 flex-col justify-center">
-        <p className="truncate text-[0.72rem] font-medium">{t("home.tool.kicksGoal.name")}</p>
-        <p className="mt-1 text-[0.6rem] tabular-nums text-muted-foreground" dir="ltr">
-          {current.toLocaleString("en-US")} / 1,000
-        </p>
-      </div>
-      <div className="relative flex flex-col items-end justify-center gap-1.5">
-        <GoalIcon accent={accent}>
-          <Coins className="size-3.5" aria-hidden />
-        </GoalIcon>
-        <p className="text-sm font-semibold tabular-nums" style={{ color: accent }}>
-          {percent}%
-        </p>
-      </div>
-    </div>
+    <UnifiedGoalPreview
+      accent={GOAL_CARD_ACCENT["kicks-goal"]}
+      base={420}
+      target={1000}
+      steps={[100, 500]}
+      labels={["+100", "+500"]}
+      formatAmount={(n) => n.toLocaleString("en-US")}
+    />
   );
 }
 

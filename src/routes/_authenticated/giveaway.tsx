@@ -438,8 +438,13 @@ function GiveawayPage() {
         <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_15.5rem] lg:gap-14">
           <div className="min-w-0">
             <p className={label}>{t("giveaway.stageTitle")}</p>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-              <div className="grid min-h-[9.5rem] place-items-center">
+            <div className="relative overflow-hidden rounded-2xl border border-[oklch(1_0_0/0.08)] bg-zinc-950 p-6">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute start-1/2 top-10 size-36 -translate-x-1/2 rounded-full blur-3xl"
+                style={{ background: "#bee1fc", opacity: 0.12 }}
+              />
+              <div className="relative grid min-h-[9.5rem] place-items-center">
                 {drawPhase === "shuffling" && rollName ? (
                   <p className="max-w-full truncate text-4xl font-semibold text-zinc-100" dir="auto">
                     {rollName}
@@ -459,11 +464,10 @@ function GiveawayPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-3 text-center">
-                    <span className="hub-giveaway-mark grid size-14 place-items-center rounded-full border border-[#bee1fc]/30 bg-zinc-900 text-[#bee1fc]">
+                    <span className="hub-giveaway-mark grid size-12 place-items-center rounded-full border border-[#bee1fc]/35 bg-zinc-950 text-[#bee1fc]">
                       <Gift className="size-5" aria-hidden />
                     </span>
-                    <p className="text-sm font-medium text-zinc-100">{t("giveaway.title")}</p>
-                    <p className="text-xs tabular-nums text-[#bee1fc]" dir="ltr">
+                    <p className="text-xs tabular-nums tracking-wide text-[#bee1fc]" dir="ltr">
                       {participants.length}
                     </p>
                     <p className="max-w-sm text-sm text-muted-foreground">
