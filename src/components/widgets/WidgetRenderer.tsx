@@ -1765,29 +1765,40 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
   const lines = resolveEventLabelLines(events, parsed.labels);
   const lineKey = lines.map((line) => `${line.option}:${line.username}:${line.amount ?? ""}`).join("|");
   const [slot, setSlot] = useState(0);
-  const [shown, setShown] = useState(true);
+  const [motion, setMotion] = useState<"shown" | "exit" | "enter">("shown");
 
   useEffect(() => {
     setSlot(0);
-    setShown(true);
   }, [lineKey]);
+
+  useEffect(() => {
+    const reduced =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || lines.length <= 1) {
+      setMotion("shown");
+      return;
+    }
+    setMotion("enter");
+    let frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => setMotion("shown"));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [slot, lines.length, lineKey]);
 
   useEffect(() => {
     if (lines.length <= 1) return;
     const reduced =
       typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const fadeMs = reduced ? 0 : 400;
-    let fadeTimer = 0;
-    const holdTimer = window.setTimeout(() => {
-      setShown(false);
-      fadeTimer = window.setTimeout(() => {
-        setSlot((current) => (current + 1) % lines.length);
-        setShown(true);
-      }, fadeMs);
+    const exitTimer = window.setTimeout(() => {
+      if (!reduced) setMotion("exit");
     }, 3500);
+    const swapTimer = window.setTimeout(() => {
+      setSlot((current) => (current + 1) % lines.length);
+    }, 3500 + fadeMs);
     return () => {
-      window.clearTimeout(holdTimer);
-      window.clearTimeout(fadeTimer);
+      window.clearTimeout(exitTimer);
+      window.clearTimeout(swapTimer);
     };
   }, [slot, lines.length, lineKey]);
 
@@ -1806,14 +1817,7 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
         {parsed.title}
       </span>
       {line ? (
-        <span
-          className="rounded-xl border px-3 py-1.5 transition-opacity duration-[400ms] ease-out motion-reduce:transition-none"
-          style={{
-            borderColor: withAlpha(parsed.accentColor, 45),
-            fontSize: parsed.fontSize * 0.55,
-            opacity: shown ? 1 : 0,
-          }}
-        >
+        <span className="event-line-swap" data-motion={motion} style={{ fontSize: parsed.fontSize * 0.55 }}>
           {translate(EVENT_LABEL_I18N[line.option], undefined, lang)}
           <span dir="ltr">
             {" · "}

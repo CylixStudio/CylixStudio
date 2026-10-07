@@ -125,7 +125,7 @@ export function ToolCard({
 
       <div className="relative mt-3.5 flex items-start gap-2.5">
         <span
-          className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.04)]"
+          className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.04)] ${accent ? "hub-goal-icon" : ""}`}
           style={accent ? { color: accent } : undefined}
         >
           <Icon className={`size-4 ${accent ? "" : "text-primary"}`} aria-hidden />

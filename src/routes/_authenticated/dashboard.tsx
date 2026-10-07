@@ -58,16 +58,16 @@ import {
 
 function GiveawayPreview() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-3">
-      <span className="grid size-10 place-items-center rounded-full border border-[#bee1fc]/35 bg-[#bee1fc]/12 text-[#bee1fc]">
+    <div className="flex h-full flex-col items-center justify-center gap-2.5 bg-zinc-950 px-3">
+      <span className="hub-giveaway-mark grid size-10 place-items-center rounded-full bg-zinc-800 text-[#bee1fc]">
         <Gift className="size-4" aria-hidden />
       </span>
       <p className="text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">+1</p>
-      <div className="flex gap-1">
+      <div className="flex flex-row flex-nowrap items-center justify-center gap-2">
         {["A", "B", "C"].map((letter) => (
           <span
             key={letter}
-            className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[0.52rem] text-foreground/80"
+            className="rounded-md bg-zinc-800 px-2 py-0.5 text-[0.52rem] text-zinc-200"
           >
             @{letter}
           </span>

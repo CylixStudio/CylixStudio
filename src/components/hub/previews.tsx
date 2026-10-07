@@ -834,14 +834,44 @@ export function ViewerCounterPreview() {
   );
 }
 
+const EVENT_PREVIEW_LINES = ["آخر متابع", "آخر متبرع", "أفضل Bits"] as const;
+
 export function EventLabelsPreview() {
+  const reduced = useReducedMotion();
+  const [index, setIndex] = useState(0);
+  const [motion, setMotion] = useState<"shown" | "exit" | "enter">("shown");
+
+  useEffect(() => {
+    if (reduced) {
+      setMotion("shown");
+      return;
+    }
+    setMotion("enter");
+    let frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => setMotion("shown"));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [index, reduced]);
+
+  useEffect(() => {
+    const fadeMs = reduced ? 0 : 400;
+    const exitTimer = window.setTimeout(() => {
+      if (!reduced) setMotion("exit");
+    }, 3500);
+    const swapTimer = window.setTimeout(() => {
+      setIndex((current) => (current + 1) % EVENT_PREVIEW_LINES.length);
+    }, 3500 + fadeMs);
+    return () => {
+      window.clearTimeout(exitTimer);
+      window.clearTimeout(swapTimer);
+    };
+  }, [index, reduced]);
+
   return (
-    <div className="flex h-full flex-col justify-center gap-1.5 px-4">
-      {["آخر متابع", "آخر متبرع", "أفضل Bits"].map((label) => (
-        <span key={label} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[0.62rem]">
-          {label}
-        </span>
-      ))}
+    <div className="grid h-full place-items-center overflow-hidden px-4">
+      <p className="event-line-swap text-center text-[0.72rem] text-foreground" data-motion={motion}>
+        {EVENT_PREVIEW_LINES[index]}
+      </p>
     </div>
   );
 }
