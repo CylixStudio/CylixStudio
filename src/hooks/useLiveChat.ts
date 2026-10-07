@@ -12,6 +12,8 @@ export type ChatMessage = {
   /** Full, ordered badge objects exactly as the provider sent them (Kick). */
   badgeList?: KickBadge[];
   text: string;
+  /** Second language already on the message. Never fetched from a translation API. */
+  altText?: string;
   at: number;
   isReply?: boolean;
   replyQuote?: string | null;

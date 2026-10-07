@@ -31,6 +31,95 @@ function useReducedMotion() {
   return reduced;
 }
 
+/** On-screen sample rises only. Never written to goals, stats, or the database. */
+function usePreviewGoal(base: number, target: number, steps: readonly number[], labels: readonly string[]) {
+  const reduced = useReducedMotion();
+  const [current, setCurrent] = useState(base);
+  const [pop, setPop] = useState<{ id: number; label: string } | null>(null);
+  const currentRef = useRef(base);
+  const stepsRef = useRef(steps);
+  const labelsRef = useRef(labels);
+  stepsRef.current = steps;
+  labelsRef.current = labels;
+
+  useEffect(() => {
+    if (reduced) return;
+    let step = 0;
+    let timer = 0;
+    const tick = () => {
+      const amounts = stepsRef.current;
+      const names = labelsRef.current;
+      if (amounts.length === 0) return;
+      const index = step % amounts.length;
+      const add = amounts[index] ?? 0;
+      const label = names[index] ?? `+${add}`;
+      step += 1;
+      const next = currentRef.current + add;
+      if (next > target) {
+        currentRef.current = base;
+        setCurrent(base);
+      } else {
+        currentRef.current = next;
+        setCurrent(next);
+      }
+      setPop({ id: step, label });
+      timer = window.setTimeout(tick, 2400);
+    };
+    timer = window.setTimeout(tick, 700);
+    return () => window.clearTimeout(timer);
+  }, [reduced, base, target]);
+
+  return { current, pop };
+}
+
+function GoalDelta({ pop, accent }: { pop: { id: number; label: string } | null; accent: string }) {
+  if (!pop) return null;
+  return (
+    <span
+      key={pop.id}
+      className="goal-delta-pop pointer-events-none absolute end-3 top-2 z-10 text-[0.72rem] font-semibold tabular-nums"
+      style={{ color: accent }}
+      dir="ltr"
+    >
+      {pop.label}
+    </span>
+  );
+}
+
+/** English first, then Arabic, looping. Reduced motion swaps with no slide. */
+function useLangBeat(active: boolean) {
+  const reduced = useReducedMotion();
+  const [english, setEnglish] = useState(true);
+  const [motion, setMotion] = useState<"shown" | "exit">("shown");
+
+  useEffect(() => {
+    if (!active) return;
+    let timer = 0;
+    let cancelled = false;
+    const hold = 2200;
+    const fade = reduced ? 0 : 280;
+    const arm = () => {
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        if (!reduced) setMotion("exit");
+        timer = window.setTimeout(() => {
+          if (cancelled) return;
+          setEnglish((value) => !value);
+          setMotion("shown");
+          arm();
+        }, fade);
+      }, hold);
+    };
+    arm();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [active, reduced]);
+
+  return { english, motion };
+}
+
 function formatPlus(total: number) {
   const days = Math.floor(total / 86400);
   const rest = total % 86400;
@@ -248,8 +337,11 @@ function GoalWash({
 export function FollowerGoalPreview() {
   const { t } = useLanguage();
   const accent = GOAL_CARD_ACCENT["follower-goal"];
+  const { current, pop } = usePreviewGoal(640, 1000, [1, 3], ["+1", "+3"]);
+  const percent = Math.round((current / 1000) * 100);
   return (
     <div className="relative flex h-full items-center gap-3 overflow-hidden px-3.5">
+      <GoalDelta pop={pop} accent={accent} />
       <GoalWash accent={accent} className="end-0 top-1/2 -translate-y-1/2" />
       <div className="relative min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -258,13 +350,21 @@ export function FollowerGoalPreview() {
           </GoalIcon>
           <p className="truncate text-[0.72rem] font-medium">{t("home.tool.followerGoal.name")}</p>
         </div>
-        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
-          <div className="h-full rounded-full" style={{ width: "64%", background: accent }} />
+        <div className="mt-2.5 flex h-1.5 gap-0.5">
+          {Array.from({ length: 10 }, (_, index) => (
+            <span
+              key={index}
+              className="h-full flex-1 rounded-sm"
+              style={{ background: index < Math.round(percent / 10) ? accent : "oklch(1 0 0 / 0.08)" }}
+            />
+          ))}
         </div>
-        <p className="mt-1 text-[0.6rem] text-muted-foreground">640 / 1,000</p>
+        <p className="mt-1 text-[0.6rem] tabular-nums text-muted-foreground" dir="ltr">
+          {current.toLocaleString("en-US")} / 1,000
+        </p>
       </div>
       <p className="relative text-[1.65rem] font-semibold leading-none tabular-nums" style={{ color: accent }}>
-        64%
+        {percent}%
       </p>
     </div>
   );
@@ -274,8 +374,11 @@ export function FollowerGoalPreview() {
 export function DonationGoalPreview() {
   const { t } = useLanguage();
   const accent = GOAL_CARD_ACCENT["donation-goal"];
+  const { current, pop } = usePreviewGoal(360, 500, [10, 3], ["+$10", "+$3"]);
+  const percent = Math.round((current / 500) * 100);
   return (
     <div className="relative flex h-full flex-col justify-between overflow-hidden px-3.5 py-3">
+      <GoalDelta pop={pop} accent={accent} />
       <GoalWash accent={accent} className="bottom-0 start-1/3" />
       <div className="relative flex items-start justify-between gap-2">
         <p className="truncate text-[0.72rem] font-medium">{t("home.tool.donationGoal.name")}</p>
@@ -284,15 +387,23 @@ export function DonationGoalPreview() {
         </GoalIcon>
       </div>
       <div className="relative">
-        <p className="text-[1.35rem] font-semibold leading-none tabular-nums">
-          360 <span className="text-[0.68rem] font-medium text-muted-foreground">USD</span>
+        <p className="text-[1.35rem] font-semibold leading-none tabular-nums" dir="ltr">
+          ${current.toLocaleString("en-US")}{" "}
+          <span className="text-[0.68rem] font-medium text-muted-foreground">USD</span>
         </p>
         <p className="mt-1 text-[0.62rem] font-semibold tabular-nums" style={{ color: accent }}>
-          72%
+          {percent}%
         </p>
       </div>
-      <div className="relative h-1 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
-        <div className="h-full rounded-full" style={{ width: "72%", background: accent }} />
+      <div className="relative h-2 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
+        <div
+          className="h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
+          style={{
+            width: `${percent}%`,
+            background: `linear-gradient(90deg, ${accent}, #a7f3d0)`,
+            boxShadow: `inset 0 1px 0 oklch(1 0 0 / 0.35), 0 0 12px ${accent}`,
+          }}
+        />
       </div>
     </div>
   );
@@ -302,8 +413,11 @@ export function DonationGoalPreview() {
 export function SubscriberGoalPreview() {
   const { t } = useLanguage();
   const accent = GOAL_CARD_ACCENT["subscriber-goal"];
+  const { current, pop } = usePreviewGoal(18, 50, [2, 4], ["+2", "+4"]);
+  const percent = Math.round((current / 50) * 100);
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
+      <GoalDelta pop={pop} accent={accent} />
       <GoalWash accent={accent} className="start-1/2 top-0 -translate-x-1/2 rtl:translate-x-1/2" />
       <div className="relative flex flex-1 flex-col items-center justify-center">
         <GoalIcon accent={accent}>
@@ -311,14 +425,25 @@ export function SubscriberGoalPreview() {
         </GoalIcon>
         <p className="mt-1.5 text-[0.72rem] font-medium">{t("home.tool.subscriberGoal.name")}</p>
         <p className="mt-0.5 text-lg font-semibold tabular-nums" style={{ color: accent }}>
-          36%
+          {percent}%
         </p>
       </div>
       <div className="relative px-3.5 pb-3">
-        <div className="h-1.5 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
-          <div className="h-full rounded-full" style={{ width: "36%", background: accent }} />
+        <div className="flex h-2 items-end gap-1">
+          {Array.from({ length: 8 }, (_, index) => (
+            <span
+              key={index}
+              className="flex-1 rounded-t-sm"
+              style={{
+                height: index < Math.round((percent / 100) * 8) ? "100%" : "35%",
+                background: index < Math.round((percent / 100) * 8) ? accent : "oklch(1 0 0 / 0.08)",
+              }}
+            />
+          ))}
         </div>
-        <p className="mt-1 text-center text-[0.58rem] text-muted-foreground">18 / 50</p>
+        <p className="mt-1 text-center text-[0.58rem] tabular-nums text-muted-foreground" dir="ltr">
+          {current} / 50
+        </p>
       </div>
     </div>
   );
@@ -328,27 +453,32 @@ export function SubscriberGoalPreview() {
 export function KicksGoalCardPreview() {
   const { t } = useLanguage();
   const accent = GOAL_CARD_ACCENT["kicks-goal"];
+  const { current, pop } = usePreviewGoal(420, 1000, [100, 500], ["+100", "+500"]);
+  const percent = Math.round((current / 1000) * 100);
   return (
     <div className="relative flex h-full items-stretch gap-3 overflow-hidden px-3.5 py-3">
+      <GoalDelta pop={pop} accent={accent} />
       <GoalWash accent={accent} className="start-0 top-1/2 -translate-y-1/2" />
       <div className="relative flex w-2 shrink-0 items-end">
-        <div className="relative h-full w-1.5 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
+        <div className="relative h-full w-2 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
           <div
-            className="absolute bottom-0 w-full rounded-full"
-            style={{ height: "42%", background: accent }}
+            className="absolute bottom-0 w-full rounded-full transition-[height] duration-500 motion-reduce:transition-none"
+            style={{ height: `${percent}%`, background: `linear-gradient(180deg, #ecfeff, ${accent})` }}
           />
         </div>
       </div>
       <div className="relative flex min-w-0 flex-1 flex-col justify-center">
         <p className="truncate text-[0.72rem] font-medium">{t("home.tool.kicksGoal.name")}</p>
-        <p className="mt-1 text-[0.6rem] text-muted-foreground">420 / 1,000</p>
+        <p className="mt-1 text-[0.6rem] tabular-nums text-muted-foreground" dir="ltr">
+          {current.toLocaleString("en-US")} / 1,000
+        </p>
       </div>
       <div className="relative flex flex-col items-end justify-center gap-1.5">
         <GoalIcon accent={accent}>
           <Coins className="size-3.5" aria-hidden />
         </GoalIcon>
         <p className="text-sm font-semibold tabular-nums" style={{ color: accent }}>
-          42%
+          {percent}%
         </p>
       </div>
     </div>
@@ -410,35 +540,40 @@ export function AlertPreview() {
 const CHAT_POOL = [
   {
     who: "مشرف",
-    msg: "يا جماعة التفاعل حلو اليوم",
+    en: "chat looks good today",
+    ar: "يا جماعة التفاعل حلو اليوم",
     role: "Mod" as const,
     platform: "KICK",
     color: "#86EFAC",
   },
   {
     who: "Nova",
-    msg: "that clutch was clean",
+    en: "that clutch was clean",
+    ar: "تلك اللقطة كانت نظيفة",
     role: "VIP" as const,
     platform: "TWITCH",
     color: "#F0ABFC",
   },
   {
     who: "ليان",
-    msg: "مرحبا من البث",
+    en: "hello from the stream",
+    ar: "مرحبا من البث",
     role: null,
     platform: "YOUTUBE",
     color: "#FCA5A5",
   },
   {
     who: "فهد",
-    msg: "سطر معاينة يطلع مع الحركة",
+    en: "a preview line sliding in",
+    ar: "سطر معاينة يطلع مع الحركة",
     role: "VIP" as const,
     platform: "KICK",
     color: "#67E8F9",
   },
   {
     who: "mira",
-    msg: "preview line, not a live event",
+    en: "preview line, not a live event",
+    ar: "سطر معاينة وليس حدثاً حياً",
     role: null,
     platform: "TWITCH",
     color: "#FDE68A",
@@ -461,6 +596,7 @@ function ChatRolePill({ label }: { label: "Mod" | "VIP" }) {
 export function ChatPreview() {
   const { t } = useLanguage();
   const reduced = useReducedMotion();
+  const langBeat = useLangBeat(true);
   const [lines, setLines] = useState(() =>
     CHAT_POOL.slice(0, 3).map((line, index) => ({ ...line, id: `hub-chat-${index}` })),
   );
@@ -539,7 +675,12 @@ export function ChatPreview() {
                   {line.role ? <ChatRolePill label={line.role} /> : null}
                   <PlatformIcon platform={line.platform} size={12} />
                 </span>{" "}
-                <span className="text-muted-foreground">{line.msg}</span>
+                <span
+                  className="chat-lang-swap text-muted-foreground"
+                  data-motion={langBeat.motion}
+                >
+                  {langBeat.english ? line.en : line.ar}
+                </span>
               </p>
             </div>
           );
@@ -685,12 +826,67 @@ function wheelPreviewWedge(index: number) {
 }
 
 export function WheelPreview() {
+  const reduced = useReducedMotion();
+  const [rotation, setRotation] = useState(0);
+  const [winner, setWinner] = useState<number | null>(null);
+  const rotationRef = useRef(0);
+
+  useEffect(() => {
+    let frame = 0;
+    let hold = 0;
+    let cancelled = false;
+    const mod360 = (value: number) => ((value % 360) + 360) % 360;
+    const spinTo = (index: number) => {
+      if (cancelled) return;
+      const center = index * 60 + 30;
+      const from = rotationRef.current;
+      const desired = mod360(-center);
+      const currentMod = mod360(from);
+      let delta = desired - currentMod;
+      if (delta < 0) delta += 360;
+      const to = reduced ? from + delta : from + 5 * 360 + delta;
+      setWinner(null);
+      const started = performance.now();
+      const duration = reduced ? 280 : 5600;
+      const tick = (now: number) => {
+        if (cancelled) return;
+        const progress = Math.min(1, (now - started) / duration);
+        const eased = 1 - (1 - progress) ** 5;
+        const value = from + (to - from) * eased;
+        rotationRef.current = value;
+        setRotation(value);
+        if (progress < 1) {
+          frame = window.requestAnimationFrame(tick);
+          return;
+        }
+        setWinner(index);
+        hold = window.setTimeout(() => spinTo((index + 1) % WHEEL_PREVIEW_FILLS.length), 10_000);
+      };
+      frame = window.requestAnimationFrame(tick);
+    };
+    const start = window.setTimeout(() => spinTo(0), 240);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(hold);
+      window.clearTimeout(start);
+    };
+  }, [reduced]);
+
   return (
     <div className="grid h-full place-items-center overflow-hidden">
       <svg viewBox="0 0 86 86" className="size-[86px]" aria-hidden>
-        {WHEEL_PREVIEW_FILLS.map((fill, index) => (
-          <path key={fill + index} d={wheelPreviewWedge(index)} fill={fill} stroke="#18181B" strokeWidth="0.6" />
-        ))}
+        <g style={{ transform: `rotate(${rotation}deg)`, transformOrigin: "43px 43px" }}>
+          {WHEEL_PREVIEW_FILLS.map((fill, index) => (
+            <path
+              key={fill + index}
+              d={wheelPreviewWedge(index)}
+              fill={fill}
+              stroke={winner === index ? "#FAFAFA" : "#18181B"}
+              strokeWidth={winner === index ? 1.4 : 0.6}
+            />
+          ))}
+        </g>
         <circle cx="43" cy="43" r="38" fill="none" stroke="#E4E4E7" strokeWidth="2.5" />
         <circle cx="43" cy="43" r="5" fill="#18181B" stroke="#A1A1AA" strokeWidth="1.2" />
         <path d="M43 15 L37.5 3.5 H48.5 Z" fill="#FAFAFA" stroke="#09090B" strokeWidth="1" strokeLinejoin="round" />
@@ -1026,20 +1222,70 @@ export function KicksGoalPreview() {
   return <KicksGoalCardPreview />;
 }
 
+const VIEWER_PREVIEW_SAMPLES = [1284, 1291, 1302, 1296, 1288] as const;
+
+function useEasedInteger(target: number) {
+  const reduced = useReducedMotion();
+  const [shown, setShown] = useState(target);
+  const shownRef = useRef(target);
+
+  useEffect(() => {
+    const from = shownRef.current;
+    if (from === target) return;
+    if (reduced) {
+      shownRef.current = target;
+      setShown(target);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const duration = Math.min(720, 140 + Math.abs(target - from) * 28);
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - progress) ** 3;
+      const value = Math.round(from + (target - from) * eased);
+      shownRef.current = value;
+      setShown(value);
+      if (progress < 1) frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [target, reduced]);
+
+  return shown;
+}
+
 export function ViewerCounterPreview() {
+  const [target, setTarget] = useState<number>(VIEWER_PREVIEW_SAMPLES[0]);
+
+  useEffect(() => {
+    let index = 1;
+    const timer = window.setInterval(() => {
+      const next = VIEWER_PREVIEW_SAMPLES[index % VIEWER_PREVIEW_SAMPLES.length] ?? VIEWER_PREVIEW_SAMPLES[0];
+      index += 1;
+      setTarget(next);
+    }, 2800);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const shown = useEasedInteger(target);
   return (
     <div className="grid h-full place-items-center">
       <div className="text-center">
         <p className="text-[0.55rem] uppercase tracking-[0.18em] text-[#bee1fc]">viewers</p>
         <p className="text-2xl font-semibold tabular-nums" dir="ltr">
-          1,284
+          {shown.toLocaleString("en-US")}
         </p>
       </div>
     </div>
   );
 }
 
-const EVENT_PREVIEW_LINES = ["آخر متابع", "آخر متبرع", "أفضل Bits"] as const;
+const EVENT_PREVIEW_LINES = [
+  "آخر متابع: CreovixStudio",
+  "آخر متبرع: CylixBot",
+  "آخر هوست: zR3d",
+] as const;
 
 export function EventLabelsPreview() {
   const reduced = useReducedMotion();

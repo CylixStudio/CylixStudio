@@ -1158,7 +1158,7 @@ const DICT = {
   "nav.tools.viewerCounter": "عداد المشاهدين",
   "nav.tools.wheel": "عجلة الحظ",
   "nav.tools.eventLabels": "آخر الأحداث",
-  "nav.tools.loyalty": "نظام الولاء",
+  "nav.tools.loyalty": "الولاء",
   "home.tool.kicksGoal.name": "هدف الكيكس",
   "home.tool.kicksGoal.desc": "شريط هدف للكيكس: العنوان، الهدف، التقدم، والألوان.",
   "home.tool.viewerCounter.name": "عداد المشاهدين",
@@ -1170,7 +1170,7 @@ const DICT = {
   "tools.signedOut": "سجّل الدخول لفتح هذه الأداة.",
   "tools.opening": "جارٍ فتح الأداة…",
   "tools.openFailed": "تعذّر فتح الأداة.",
-  "loyalty.title": "نظام الولاء",
+  "loyalty.title": "الولاء",
   "loyalty.subtitle": "الترتيب، المتجر، وسجل المبيعات.",
   "loyalty.tab.ranking": "الترتيب",
   "loyalty.tab.shop": "المتجر",
@@ -1187,7 +1187,7 @@ const DICT = {
   "loyalty.save": "حفظ",
   "loyalty.cancel": "إلغاء",
   "loyalty.empty": "لا يوجد أعضاء بعد.",
-  "loyalty.signedOut": "سجّل الدخول لعرض نظام الولاء.",
+  "loyalty.signedOut": "سجّل الدخول لعرض الولاء.",
   "loyalty.prev": "السابق",
   "loyalty.next": "التالي",
   "loyalty.page": "صفحة {page} من {pages}",
@@ -1303,7 +1303,7 @@ const DICT = {
   "widget.eventLabel.topGift": "أفضل مهدي اشتراكات اليوم",
   "giveaway.pendingConfirm": "بانتظار تأكيد الكلمة في الشات",
   "giveaway.enteredAt": "دخل {time}",
-  "chat.previewSample": "عيّنة معاينة",
+  "chat.previewSample": "معاينة",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

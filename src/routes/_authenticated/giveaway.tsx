@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, Lock, Sparkles, Unlock } from "lucide-react";
+import { Gift, Loader2, Lock, Sparkles, Unlock } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -458,11 +458,20 @@ function GiveawayPage() {
                     </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {participants.length === 0
-                      ? t("giveaway.peopleEmpty", { keyword: form.keyword || "+1" })
-                      : t("giveaway.drawHint")}
-                  </p>
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <span className="hub-giveaway-mark grid size-14 place-items-center rounded-full border border-[#bee1fc]/30 bg-zinc-900 text-[#bee1fc]">
+                      <Gift className="size-5" aria-hidden />
+                    </span>
+                    <p className="text-sm font-medium text-zinc-100">{t("giveaway.title")}</p>
+                    <p className="text-xs tabular-nums text-[#bee1fc]" dir="ltr">
+                      {participants.length}
+                    </p>
+                    <p className="max-w-sm text-sm text-muted-foreground">
+                      {participants.length === 0
+                        ? t("giveaway.peopleEmpty", { keyword: form.keyword || "+1" })
+                        : t("giveaway.drawHint")}
+                    </p>
+                  </div>
                 )}
               </div>
               <div className="mt-5 flex justify-center">

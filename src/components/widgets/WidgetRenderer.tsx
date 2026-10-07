@@ -11,7 +11,7 @@ import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKi
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
 import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
-import { EVENT_LABEL_I18N, resolveEventLabelLines } from "@/lib/eventLabels";
+import { EVENT_LABEL_I18N, resolveEventLabelLines, type EventLabelOption } from "@/lib/eventLabels";
 import { t as translate, useLanguage } from "@/lib/i18n";
 import { lookupChannel } from "@/lib/liveCounter.functions";
 import { readOverlayViewers } from "@/lib/toolWidgets.functions";
@@ -44,12 +44,21 @@ import {
 
 /* ------------------------------- Goal bar ------------------------------- */
 
+type GoalKind = "donation" | "follower" | "subscriber" | "kicks" | "bar";
+
+function goalDeltaLabel(kind: GoalKind, delta: number) {
+  const amount = Number.isInteger(delta) ? String(delta) : delta.toFixed(2);
+  return kind === "donation" ? `+$${amount}` : `+${amount}`;
+}
+
 export function GoalBarView({
   config,
   goal,
+  kind = "bar",
 }: {
   config: unknown;
   goal: GoalSnapshot | null;
+  kind?: GoalKind;
 }) {
   const style = parseGoalConfig(config);
   const skin = widgetThemeSkin(parseWidgetThemeId(config));
@@ -57,10 +66,28 @@ export function GoalBarView({
   const target = goal?.target && goal.target > 0 ? goal.target : 100;
   const percent = Math.min(100, Math.max(0, (current / target) * 100));
   const unit = goal?.unit ?? "";
+  const previous = useRef<number | null>(null);
+  const [pop, setPop] = useState<{ id: number; label: string } | null>(null);
+
+  useEffect(() => {
+    if (previous.current == null) {
+      previous.current = current;
+      return;
+    }
+    const delta = current - previous.current;
+    previous.current = current;
+    if (!(delta > 0) || kind === "bar") return;
+    const id = Date.now();
+    setPop({ id, label: goalDeltaLabel(kind, delta) });
+    const timer = window.setTimeout(() => {
+      setPop((active) => (active?.id === id ? null : active));
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [current, kind]);
 
   return (
     <div
-      className="flex min-w-[420px] flex-col gap-3 rounded-2xl px-8 py-6"
+      className="relative flex min-w-[420px] flex-col gap-3 rounded-2xl px-8 py-6"
       style={{
         boxSizing: "border-box",
         background: withAlpha(
@@ -118,19 +145,98 @@ export function GoalBarView({
         </span>
       </span>
 
-      <div
-        className="h-4 w-full overflow-hidden rounded-full"
-        style={{ background: withAlpha(style.textColor, 15) }}
-      >
-        <div
-          className="h-full rounded-full transition-[width] duration-600 ease-out motion-reduce:transition-none"
-          style={{
-            width: `${percent}%`,
-            background: `linear-gradient(90deg, ${style.accentColor}, ${withAlpha(style.accentColor, 55)})`,
-            boxShadow: `0 0 18px ${withAlpha(style.accentColor, 60)}`,
-          }}
-        />
+      {pop ? (
+        <span
+          key={pop.id}
+          className="goal-delta-pop pointer-events-none absolute end-6 top-3 text-sm font-semibold tabular-nums"
+          style={{ color: style.accentColor }}
+          dir="ltr"
+        >
+          {pop.label}
+        </span>
+      ) : null}
+
+      <GoalTrack kind={kind} percent={percent} accent={style.accentColor} ink={style.textColor} />
+    </div>
+  );
+}
+
+function GoalTrack({
+  kind,
+  percent,
+  accent,
+  ink,
+}: {
+  kind: GoalKind;
+  percent: number;
+  accent: string;
+  ink: string;
+}) {
+  if (kind === "follower") {
+    return (
+      <div className="flex h-2 gap-1">
+        {Array.from({ length: 12 }, (_, index) => (
+          <span
+            key={index}
+            className="h-full flex-1 rounded-sm"
+            style={{ background: index < Math.round(percent / (100 / 12)) ? accent : withAlpha(ink, 14) }}
+          />
+        ))}
       </div>
+    );
+  }
+  if (kind === "subscriber") {
+    return (
+      <div className="flex h-3 items-end gap-1">
+        {Array.from({ length: 10 }, (_, index) => {
+          const filled = index < Math.round((percent / 100) * 10);
+          return (
+            <span
+              key={index}
+              className="flex-1 rounded-t-md"
+              style={{
+                height: filled ? "100%" : "40%",
+                background: filled ? accent : withAlpha(ink, 14),
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+  if (kind === "kicks") {
+    return (
+      <div className="flex h-5 items-end gap-3">
+        <div className="relative h-full w-2 overflow-hidden rounded-full" style={{ background: withAlpha(ink, 14) }}>
+          <div
+            className="absolute bottom-0 w-full rounded-full transition-[height] duration-500 motion-reduce:transition-none"
+            style={{ height: `${percent}%`, background: `linear-gradient(180deg, #ecfeff, ${accent})` }}
+          />
+        </div>
+        <div className="h-1.5 flex-1 self-center overflow-hidden rounded-full" style={{ background: withAlpha(ink, 12) }}>
+          <div className="h-full rounded-full" style={{ width: `${percent}%`, background: accent }} />
+        </div>
+      </div>
+    );
+  }
+  const donation = kind === "donation";
+  return (
+    <div
+      className={donation ? "h-3.5 w-full overflow-hidden rounded-full" : "h-4 w-full overflow-hidden rounded-full"}
+      style={{ background: withAlpha(ink, 15) }}
+    >
+      <div
+        className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
+        style={{
+          width: `${percent}%`,
+          background: donation
+            ? `linear-gradient(90deg, ${accent}, #a7f3d0)`
+            : `linear-gradient(90deg, ${accent}, ${withAlpha(accent, 55)})`,
+          boxShadow: donation
+            ? `inset 0 1px 0 rgba(255,255,255,0.35), 0 0 16px ${withAlpha(accent, 70)}`
+            : `0 0 18px ${withAlpha(accent, 60)}`,
+        }}
+      />
     </div>
   );
 }
@@ -377,7 +483,7 @@ function ChatBadgePill({ label }: { label: "Mod" | "VIP" }) {
   );
 }
 
-/** Static rows so an empty customize preview still reads as chat. */
+/** Static rows so an empty customize preview still reads as chat. Both languages stay local. */
 const SAMPLE_CHAT: ChatMessage[] = [
   {
     id: "sample-mod",
@@ -385,7 +491,8 @@ const SAMPLE_CHAT: ChatMessage[] = [
     author: "مشرف",
     color: "#86EFAC",
     badges: ["moderator"],
-    text: "يا جماعة التفاعل حلو اليوم",
+    text: "chat looks good today",
+    altText: "يا جماعة التفاعل حلو اليوم",
     at: 3,
   },
   {
@@ -395,6 +502,7 @@ const SAMPLE_CHAT: ChatMessage[] = [
     color: "#F0ABFC",
     badges: ["vip"],
     text: "that clutch was clean",
+    altText: "تلك اللقطة كانت نظيفة",
     at: 2,
   },
   {
@@ -403,7 +511,8 @@ const SAMPLE_CHAT: ChatMessage[] = [
     author: "ليان",
     color: "#FCA5A5",
     badges: [],
-    text: "مرحبا من البث",
+    text: "hello from the stream",
+    altText: "مرحبا من البث",
     at: 1,
   },
 ];
@@ -415,7 +524,8 @@ const PREVIEW_ROTATION: Array<Omit<ChatMessage, "id" | "at">> = [
     author: "فهد",
     color: "#67E8F9",
     badges: ["vip"],
-    text: "سطر معاينة يطلع مع الحركة",
+    text: "a preview line sliding in",
+    altText: "سطر معاينة يطلع مع الحركة",
     previewSample: true,
   },
   {
@@ -424,6 +534,7 @@ const PREVIEW_ROTATION: Array<Omit<ChatMessage, "id" | "at">> = [
     color: "#FDE68A",
     badges: [],
     text: "preview line, not a live event",
+    altText: "سطر معاينة وليس حدثاً حياً",
     previewSample: true,
   },
 ];
@@ -452,7 +563,72 @@ function readableChatMessage(message: ChatMessage | null | undefined, index: num
     replyQuote: typeof message.replyQuote === "string" ? message.replyQuote : null,
   };
   if (Array.isArray(message.badgeList)) readable.badgeList = message.badgeList;
+  if (typeof message.altText === "string" && message.altText.trim().length > 0) readable.altText = message.altText;
+  if (message.previewSample) readable.previewSample = true;
   return readable;
+}
+
+function hasArabic(value: string) {
+  return /[\u0600-\u06FF]/.test(value);
+}
+
+/** English first, then Arabic, only when both strings already exist. */
+function bilingualPair(text: string, altText?: string): [string, string] | null {
+  const alt = altText?.trim() ?? "";
+  if (!alt || alt === text.trim()) return null;
+  const textArabic = hasArabic(text);
+  const altArabic = hasArabic(alt);
+  if (textArabic && !altArabic) return [alt, text];
+  if (!textArabic && altArabic) return [text, alt];
+  return [text, alt];
+}
+
+function ChatLineText({
+  text,
+  altText,
+  reduced,
+  render,
+}: {
+  text: string;
+  altText?: string;
+  reduced: boolean;
+  render: (value: string) => React.ReactNode;
+}) {
+  const pair = bilingualPair(text, altText);
+  const [english, setEnglish] = useState(true);
+  const [motion, setMotion] = useState<"shown" | "exit">("shown");
+
+  useEffect(() => {
+    if (!pair) return;
+    let timer = 0;
+    let cancelled = false;
+    const hold = 2200;
+    const fade = reduced ? 0 : 280;
+    const arm = () => {
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        if (!reduced) setMotion("exit");
+        timer = window.setTimeout(() => {
+          if (cancelled) return;
+          setEnglish((value) => !value);
+          setMotion("shown");
+          arm();
+        }, fade);
+      }, hold);
+    };
+    arm();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [reduced, text, altText]);
+
+  if (!pair) return <>{render(text)}</>;
+  return (
+    <span className="chat-lang-swap" data-motion={motion}>
+      {render(english ? pair[0] : pair[1])}
+    </span>
+  );
 }
 
 /** Keeps trimmed rows mounted long enough to play the leave animation. */
@@ -896,7 +1072,9 @@ export function ChatBoxView({
         >
           <span style={{ display: "inline", minWidth: 0 }}>
             {identity}
-            <span dir="auto" style={islandTextStyle}>{renderChatText(text)}</span>
+            <span dir="auto" style={islandTextStyle}>
+              <ChatLineText text={text} altText={message?.altText} reduced={reducedMotion} render={renderChatText} />
+            </span>
           </span>
         </div>,
       );
@@ -913,7 +1091,7 @@ export function ChatBoxView({
         >
           {identity}
           <span className="ms-1.5" dir="auto" style={{ ...textStyle, ...transparentTextStyle }}>
-            {renderChatText(text)}
+            <ChatLineText text={text} altText={message?.altText} reduced={reducedMotion} render={renderChatText} />
           </span>
         </span>
       </div>,
@@ -1843,6 +2021,42 @@ function ViewerCounterView({
     };
   }, [publicToken, parsed.channel, parsed.platform, parsed.metric]);
 
+  const [shown, setShown] = useState<number | null>(null);
+  const shownRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (count === null) {
+      shownRef.current = null;
+      setShown(null);
+      return;
+    }
+    const from = shownRef.current;
+    if (from === null || from === count) {
+      shownRef.current = count;
+      setShown(count);
+      return;
+    }
+    const reduced =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      shownRef.current = count;
+      setShown(count);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const duration = Math.min(720, 140 + Math.abs(count - from) * 28);
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - progress) ** 3;
+      const value = Math.round(from + (count - from) * eased);
+      shownRef.current = value;
+      setShown(value);
+      if (progress < 1) frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [count]);
+
   const comingSoon = /coming soon/i.test(error ?? "");
   const style = parsed;
   return (
@@ -1858,7 +2072,7 @@ function ViewerCounterView({
         {parsed.channel || t("widget.viewer.channel")}
       </span>
       <span style={{ fontSize: style.fontSize, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} dir="ltr">
-        {count === null ? "—" : count.toLocaleString("en-US")}
+        {shown === null ? "—" : shown.toLocaleString("en-US")}
       </span>
       <span style={{ fontSize: 13, opacity: 0.7 }}>
         {comingSoon
@@ -1873,12 +2087,43 @@ function ViewerCounterView({
   );
 }
 
+const EMPTY_EVENT_SAMPLES: Partial<Record<EventLabelOption, string>> = {
+  lastFollow: "آخر متابع: CreovixStudio",
+  lastDonation: "آخر متبرع: CylixBot",
+  lastRaid: "آخر هوست: zR3d",
+};
+
+type EventTickerLine =
+  | { key: string; sample: string }
+  | { key: string; option: EventLabelOption; username: string; amount: string | null };
+
+function eventTickerLines(events: OverlayEvent[], labels: readonly EventLabelOption[]): EventTickerLine[] {
+  const resolved = resolveEventLabelLines(events, labels);
+  const byOption = new Map(resolved.map((line) => [line.option, line]));
+  const lines: EventTickerLine[] = [];
+  for (const option of labels) {
+    const real = byOption.get(option);
+    if (real) {
+      lines.push({
+        key: `real:${option}:${real.username}:${real.amount ?? ""}`,
+        option,
+        username: real.username,
+        amount: real.amount,
+      });
+      continue;
+    }
+    const sample = EMPTY_EVENT_SAMPLES[option];
+    if (sample) lines.push({ key: `sample:${option}`, sample });
+  }
+  return lines;
+}
+
 function EventLabelsView({ config, events }: { config: unknown; events: OverlayEvent[] }) {
   const { lang: appLang } = useLanguage();
   const parsed = parseEventLabelsConfig(config);
   const lang = parsed.language ?? appLang;
-  const lines = resolveEventLabelLines(events, parsed.labels);
-  const lineKey = lines.map((line) => `${line.option}:${line.username}:${line.amount ?? ""}`).join("|");
+  const lines = eventTickerLines(events, parsed.labels);
+  const lineKey = lines.map((line) => line.key).join("|");
   const [slot, setSlot] = useState(0);
   const [motion, setMotion] = useState<"shown" | "exit" | "enter">("shown");
 
@@ -1933,12 +2178,18 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
       </span>
       {line ? (
         <span className="event-line-swap" data-motion={motion} style={{ fontSize: parsed.fontSize * 0.55 }}>
-          {translate(EVENT_LABEL_I18N[line.option], undefined, lang)}
-          <span dir="ltr">
-            {" · "}
-            {line.username}
-            {line.amount ? ` · ${line.amount}` : ""}
-          </span>
+          {"sample" in line ? (
+            line.sample
+          ) : (
+            <>
+              {translate(EVENT_LABEL_I18N[line.option], undefined, lang)}
+              <span dir="ltr">
+                {" · "}
+                {line.username}
+                {line.amount ? ` · ${line.amount}` : ""}
+              </span>
+            </>
+          )}
         </span>
       ) : null}
     </div>
@@ -2014,7 +2265,15 @@ export function WidgetRenderer({
     case "SUBSCRIBER_GOAL": {
       const local = dynamicGoalSnapshot(type, config, events);
       const shown = goal ?? local;
-      return shown ? <GoalBarView config={config} goal={shown} /> : null;
+      const kind =
+        type === "DONATION_GOAL"
+          ? "donation"
+          : type === "FOLLOWER_GOAL"
+            ? "follower"
+            : type === "SUBSCRIBER_GOAL"
+              ? "subscriber"
+              : "kicks";
+      return shown ? <GoalBarView config={config} goal={shown} kind={kind} /> : null;
     }
     case "CUSTOM_GOAL": {
       const parsed = parseSplitGoalConfig(type, config);
@@ -2034,7 +2293,15 @@ export function WidgetRenderer({
         <ChatBoxView config={config} chat={chat} testMessages={testMessages} demo={demo} />
       );
     case "SPIN_WHEEL":
-      return <SpinWheelView config={config} spin={spin} onSpin={onSpin} spinning={spinning} />;
+      return (
+        <SpinWheelView
+          config={config}
+          spin={spin}
+          onSpin={onSpin}
+          spinning={spinning}
+          autoSpin={!demo}
+        />
+      );
     case "EMOTE_RAIN":
       return <EmoteRainView config={config} events={events} demo={demo} />;
     case "TIKTOK_TAPPERS":

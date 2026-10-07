@@ -48,6 +48,7 @@ export function WheelGuestCustomize() {
           spin={spin}
           onSpin={onSpin}
           spinning={spinning}
+          demo
         />
       </div>
     </div>

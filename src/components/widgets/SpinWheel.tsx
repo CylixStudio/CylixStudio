@@ -181,11 +181,14 @@ export function SpinWheelView({
   spin,
   onSpin,
   spinning = false,
+  autoSpin = false,
 }: {
   config: unknown;
   spin: SpinState | null;
   onSpin?: (() => void) | undefined;
   spinning?: boolean;
+  /** Visual loop only. Does not call onSpin and does not store a winner. */
+  autoSpin?: boolean;
 }) {
   const { t } = useLanguage();
   const uid = useId().replace(/:/g, "");
@@ -206,9 +209,13 @@ export function SpinWheelView({
   const [rotation, setRotation] = useState(0);
   const [turning, setTurning] = useState(false);
   const [landed, setLanded] = useState(false);
+  const [idleIndex, setIdleIndex] = useState(-1);
+  const [idleLanded, setIdleLanded] = useState(false);
   const rotationRef = useRef(0);
   const lastNonce = useRef<number | null>(null);
   const animatingUntil = useRef(0);
+  const spinToken = useRef(0);
+  const pauseIdleUntil = useRef(0);
 
   const applyRotation = (value: number) => {
     rotationRef.current = value;
@@ -232,6 +239,10 @@ export function SpinWheelView({
       return;
     }
     lastNonce.current = nonce;
+    spinToken.current += 1;
+    setIdleIndex(-1);
+    setIdleLanded(false);
+    pauseIdleUntil.current = performance.now() + SPIN_MS + 10_000;
     if (winnerIndex < 0) {
       setLanded(false);
       return;
@@ -262,6 +273,62 @@ export function SpinWheelView({
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
   }, [spin?.nonce, center, winnerIndex]);
+
+  const sliceKey = slices.map((slice) => `${slice.placeholder ? "p" : slice.label}:${slice.visualCenter}`).join("|");
+  const slicesRef = useRef(slices);
+  slicesRef.current = slices;
+
+  useEffect(() => {
+    if (!autoSpin) return;
+    let frame = 0;
+    let hold = 0;
+    let cancelled = false;
+
+    const spinTo = (index: number) => {
+      const current = slicesRef.current;
+      const prizeCount = current.length;
+      if (cancelled || prizeCount === 0) return;
+      const wait = pauseIdleUntil.current - performance.now();
+      if (wait > 0) {
+        hold = window.setTimeout(() => spinTo(index % prizeCount), wait + 40);
+        return;
+      }
+      const slice = current[index % prizeCount];
+      if (!slice) return;
+      const reduced = prefersReducedMotion();
+      const from = rotationRef.current;
+      const to = landRotation(from, slice.visualCenter, reduced);
+      const token = ++spinToken.current;
+      const empty = slice.placeholder;
+      setLanded(false);
+      setIdleLanded(false);
+      setIdleIndex(empty ? -1 : index % prizeCount);
+      const started = performance.now();
+      const duration = reduced ? REDUCED_SPIN_MS : SPIN_MS;
+      animatingUntil.current = started + duration;
+      const tick = (now: number) => {
+        if (cancelled || spinToken.current !== token) return;
+        const progress = Math.min(1, (now - started) / duration);
+        applyRotation(from + (to - from) * easeOutQuint(progress));
+        if (progress < 1) {
+          frame = window.requestAnimationFrame(tick);
+          return;
+        }
+        if (!empty) setIdleLanded(true);
+        hold = window.setTimeout(() => spinTo((index + 1) % prizeCount), 10_000);
+      };
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    const start = window.setTimeout(() => spinTo(0), 280);
+    return () => {
+      cancelled = true;
+      spinToken.current += 1;
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(hold);
+      window.clearTimeout(start);
+    };
+  }, [autoSpin, sliceKey]);
 
   const canSpin = Boolean(onSpin) && !placeholder && !spinning && !turning;
 
@@ -305,7 +372,9 @@ export function SpinWheelView({
               const flip = screenMid > 90 && screenMid < 270;
               const textRotation = (radial ? mid - 90 : mid) + (flip ? 180 : 0);
               const label = slice.placeholder ? "" : fitLabel(slice.label, maxWidth, fontSize);
-              const winner = landed && !slice.placeholder && index === winnerIndex;
+              const litIndex = winnerIndex >= 0 ? winnerIndex : idleIndex;
+              const winner =
+                (landed || idleLanded) && !slice.placeholder && litIndex >= 0 && index === litIndex;
               return (
                 <g key={`slice-${index}`}>
                   <path
