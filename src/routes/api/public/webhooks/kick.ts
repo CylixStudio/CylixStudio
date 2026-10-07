@@ -496,7 +496,15 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           deferRequestWork(
             request,
             (async () => {
-              const { captureGiveawayEntry } = await import("@/lib/giveaway.server");
+              const { captureGiveawayEntry, confirmGiveawayPresence } = await import("@/lib/giveaway.server");
+              const isTest =
+                (body as { isTest?: unknown }).isTest === true ||
+                (body as { is_test?: unknown }).is_test === true;
+              await confirmGiveawayPresence(supabaseAdmin, connection.user_id, {
+                username,
+                text,
+                isTest,
+              });
               await captureGiveawayEntry(supabaseAdmin, connection.user_id, {
                 platform: "KICK",
                 username,

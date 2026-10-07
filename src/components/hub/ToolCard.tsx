@@ -123,12 +123,33 @@ export function ToolCard({
         ) : null}
       </div>
 
+      {accent ? (
+        <div className="relative mt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {platforms.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5 overflow-visible" aria-hidden>
+                {sortHubPlatforms(platforms).map((id) => (
+                  <HubPlatformDot key={id} id={id} title={PLATFORM_META[id].label.ar} />
+                ))}
+              </span>
+            ) : null}
+            {comingSoon ? (
+              <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[0.62rem] text-muted-foreground">
+                {t("home.comingSoon")}
+              </span>
+            ) : locked ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[0.62rem] font-medium text-primary">
+                <Lock className="size-2.5" aria-hidden />
+                Pro
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 line-clamp-2 text-[0.74rem] leading-relaxed text-muted-foreground">{description}</p>
+        </div>
+      ) : (
       <div className="relative mt-3.5 flex items-start gap-2.5">
-        <span
-          className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.04)] ${accent ? "hub-goal-icon" : ""}`}
-          style={accent ? { color: accent } : undefined}
-        >
-          <Icon className={`size-4 ${accent ? "" : "text-primary"}`} aria-hidden />
+        <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.04)]">
+          <Icon className="size-4 text-primary" aria-hidden />
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 overflow-visible">
@@ -156,6 +177,7 @@ export function ToolCard({
           </p>
         </div>
       </div>
+      )}
 
       <div className="relative mt-auto flex items-center justify-between gap-2 pt-4">
         <span className="flex items-center gap-1.5 text-[0.58rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">

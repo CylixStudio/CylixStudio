@@ -1301,6 +1301,9 @@ const DICT = {
   "widget.eventLabel.topRaid": "أفضل Raid اليوم",
   "widget.eventLabel.topBits": "أفضل Bits",
   "widget.eventLabel.topGift": "أفضل مهدي اشتراكات اليوم",
+  "giveaway.pendingConfirm": "بانتظار تأكيد الكلمة في الشات",
+  "giveaway.enteredAt": "دخل {time}",
+  "chat.previewSample": "عيّنة معاينة",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

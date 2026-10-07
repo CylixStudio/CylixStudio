@@ -157,7 +157,8 @@ export function GiveawayDisplay({
 
               {phase === "settled" && claimState === "pending" ? (
                 <div className="mt-5">
-                  <p className="font-mono text-3xl font-semibold tabular-nums text-foreground">
+                  <p className="text-sm font-medium text-foreground">{t("giveaway.pendingConfirm")}</p>
+                  <p className="mt-2 font-mono text-3xl font-semibold tabular-nums text-foreground">
                     {Math.floor(claimLeft / 60)}:{String(claimLeft % 60).padStart(2, "0")}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">

@@ -1,5 +1,6 @@
 ﻿import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, type ReactElement } from "react";
 import {
   Coins,
@@ -57,26 +58,44 @@ import {
 } from "@/components/hub/previews";
 
 function GiveawayPreview() {
+  const { t } = useLanguage();
+  const guest = isTestMode();
+  const fetchState = useServerFn(getGiveawayState);
+  const state = useQuery({
+    queryKey: ["giveaway-card"],
+    queryFn: () => fetchState(),
+    enabled: !guest,
+    retry: false,
+    staleTime: 8000,
+    refetchInterval: guest ? false : 8000,
+  });
+  const pending = state.data?.pendingWinner;
+  const confirmed = Boolean(state.data?.confirmedAt);
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2.5 bg-zinc-950 px-3">
-      <span className="hub-giveaway-mark grid size-10 place-items-center rounded-full bg-zinc-800 text-[#bee1fc]">
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-3">
+      <span className="hub-giveaway-mark grid size-11 place-items-center rounded-full border border-[oklch(1_0_0/0.08)] bg-zinc-900 text-[#bee1fc]">
         <Gift className="size-4" aria-hidden />
       </span>
-      <p className="text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">+1</p>
-      <div className="flex flex-row flex-nowrap items-center justify-center gap-2">
+      <p className="text-[0.78rem] font-medium tracking-tight">{t("home.tool.giveaway.name")}</p>
+      <div className="flex items-center gap-0.5 rounded-full border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.03)] p-0.5">
         {["A", "B", "C"].map((letter) => (
           <span
             key={letter}
-            className="rounded-md bg-zinc-800 px-2 py-0.5 text-[0.52rem] text-zinc-200"
+            className="rounded-full px-2 py-0.5 text-[0.58rem] font-medium text-zinc-200"
           >
             @{letter}
           </span>
         ))}
       </div>
+      {pending ? (
+        <p className="max-w-full truncate text-[0.58rem] text-muted-foreground">
+          {confirmed ? t("giveaway.confirmed") : t("giveaway.pendingConfirm")}
+        </p>
+      ) : null}
     </div>
   );
 }
-import { useQuery } from "@tanstack/react-query";
 import { getMediaRequestDashboard } from "@/lib/mediaRequests.functions";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -84,6 +103,7 @@ import { createWidget, widgetErrorText } from "@/lib/createWidget";
 import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 import type { WidgetType } from "@/lib/widgets";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { getGiveawayState } from "@/lib/giveaway.functions";
 import { isTestMode } from "@/lib/testMode";
 import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
 

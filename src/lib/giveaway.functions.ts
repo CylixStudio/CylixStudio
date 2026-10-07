@@ -53,7 +53,7 @@ export const getGiveawayState = createServerFn({ method: "GET" })
     const [{ data: settings }, { data: participants }] = await Promise.all([
       supabase
         .from("giveaway_settings")
-        .select("keyword, sub_multiplier, subs_only, spin_duration, claim_seconds, is_open, last_winner")
+        .select("keyword, sub_multiplier, subs_only, spin_duration, claim_seconds, is_open, last_winner, draw_state")
         .eq("user_id", userId)
         .maybeSingle(),
       supabase
@@ -63,6 +63,9 @@ export const getGiveawayState = createServerFn({ method: "GET" })
         .order("created_at", { ascending: false })
         .limit(500),
     ]);
+
+    const { readGiveawayDraw } = await import("@/lib/giveaway.server");
+    const draw = readGiveawayDraw(settings?.draw_state);
 
     return {
       settings: settings
@@ -78,6 +81,10 @@ export const getGiveawayState = createServerFn({ method: "GET" })
       lastWinner: (settings?.last_winner ?? null) as
         | { username: string; platform: string; at: string }
         | null,
+      pendingWinner: draw.pending_winner,
+      confirmedAt: draw.confirmed_at,
+      claimUntil: draw.claimUntil,
+      claimState: draw.pending_winner ? draw.claimState : null,
       participants: (participants ?? []).map((row) => ({
         id: row.id,
         platform: row.platform,
@@ -113,11 +120,34 @@ export const saveGiveawaySettings = createServerFn({ method: "POST" })
 export const clearGiveawayParticipants = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { error } = await context.supabase
-      .from("giveaway_participants")
-      .delete()
-      .eq("user_id", context.userId);
+    const { supabase, userId } = context;
+    const { error } = await supabase.from("giveaway_participants").delete().eq("user_id", userId);
     if (error) return { ok: false as const, error: error.message };
+    const { readGiveawayDraw } = await import("@/lib/giveaway.server");
+    const { data: settings } = await supabase
+      .from("giveaway_settings")
+      .select("keyword, draw_state")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (settings) {
+      const prev = readGiveawayDraw(settings.draw_state);
+      await supabase
+        .from("giveaway_settings")
+        .update({
+          draw_state: {
+            ...prev,
+            phase: "idle",
+            winner: null,
+            claimState: "pending",
+            claimUntil: null,
+            pending_winner: null,
+            confirmed_at: null,
+            confirm_nonce: null,
+            keyword: prev.keyword || settings.keyword || "+1",
+          } as never,
+        })
+        .eq("user_id", userId);
+    }
     return { ok: true as const };
   });
 
@@ -144,14 +174,36 @@ export const pickGiveawayWinner = createServerFn({ method: "POST" })
       }
     }
 
+    const at = new Date().toISOString();
     const payload = {
       username: winner.username,
       platform: winner.platform,
-      at: new Date().toISOString(),
+      at,
     };
-    await supabase
+    const { data: settings } = await supabase
       .from("giveaway_settings")
-      .upsert({ user_id: userId, last_winner: payload as never }, { onConflict: "user_id" });
+      .select("keyword, claim_seconds")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const claimSeconds = settings?.claim_seconds ?? 120;
+    await supabase.from("giveaway_settings").upsert(
+      {
+        user_id: userId,
+        last_winner: payload as never,
+        draw_state: {
+          phase: "settled",
+          winner: { username: winner.username, platform: winner.platform },
+          claimState: "pending",
+          claimUntil: new Date(Date.now() + claimSeconds * 1000).toISOString(),
+          keyword: settings?.keyword || "+1",
+          pending_winner: payload,
+          confirmed_at: null,
+          confirm_nonce: null,
+        } as never,
+        updated_at: at,
+      },
+      { onConflict: "user_id" },
+    );
 
     return { ok: true as const, winner: payload };
   });
@@ -170,6 +222,22 @@ export const joinGiveaway = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/lib/supabase/client.server");
     const { captureGiveawayEntry } = await import("@/lib/giveaway.server");
     return captureGiveawayEntry(supabaseAdmin, context.userId, data);
+  });
+
+/** Confirms a pending winner when their chat message equals the keyword. */
+export const confirmGiveawayFromChat = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: { username: string; text: string; isTest?: boolean }) => input,
+  )
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+    const { confirmGiveawayPresence } = await import("@/lib/giveaway.server");
+    return confirmGiveawayPresence(supabaseAdmin, context.userId, {
+      username: data.username,
+      text: data.text,
+      isTest: data.isTest === true,
+    });
   });
 
 /** Posts the winner announcement + claim instructions into the live chat. */
@@ -208,9 +276,27 @@ export const publishGiveawayDraw = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: GiveawayDrawState) => input)
   .handler(async ({ data, context }) => {
+    const { readGiveawayDraw } = await import("@/lib/giveaway.server");
+    const { data: row } = await context.supabase
+      .from("giveaway_settings")
+      .select("keyword, draw_state")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    const prev = readGiveawayDraw(row?.draw_state);
+    const idle = data.phase === "idle";
+    const next = {
+      phase: data.phase,
+      winner: idle ? null : (data.winner ?? prev.winner),
+      claimState: !idle && prev.confirmed_at ? "confirmed" : data.claimState,
+      claimUntil: idle ? null : (data.claimUntil ?? prev.claimUntil),
+      keyword: data.keyword || prev.keyword || row?.keyword || "+1",
+      pending_winner: idle ? null : prev.pending_winner,
+      confirmed_at: idle ? null : prev.confirmed_at,
+      confirm_nonce: idle ? null : prev.confirm_nonce,
+    };
     const { error } = await context.supabase
       .from("giveaway_settings")
-      .update({ draw_state: data as never })
+      .update({ draw_state: next as never })
       .eq("user_id", context.userId);
     if (error) return { ok: false as const, error: error.message };
     return { ok: true as const };

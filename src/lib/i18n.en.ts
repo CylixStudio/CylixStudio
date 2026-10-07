@@ -1232,4 +1232,7 @@ export const EN = {
   "widget.eventLabel.topRaid": "Top Raid today",
   "widget.eventLabel.topBits": "Top Bits today",
   "widget.eventLabel.topGift": "Top gift-sub giver today",
+  "giveaway.pendingConfirm": "Waiting for the keyword in chat",
+  "giveaway.enteredAt": "Entered {time}",
+  "chat.previewSample": "Preview sample",
 } as const;

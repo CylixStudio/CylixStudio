@@ -15,6 +15,8 @@ export type ChatMessage = {
   at: number;
   isReply?: boolean;
   replyQuote?: string | null;
+  /** Local customize-preview row. Never written as an event. */
+  previewSample?: boolean;
 };
 
 function replyFields(

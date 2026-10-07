@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 
 import { OverlayView } from "@/components/overlay/OverlayView";
@@ -408,6 +408,26 @@ const SAMPLE_CHAT: ChatMessage[] = [
   },
 ];
 
+const PREVIEW_ROTATION: Array<Omit<ChatMessage, "id" | "at">> = [
+  ...SAMPLE_CHAT.map(({ id: _id, at: _at, ...line }) => ({ ...line, previewSample: true as const })),
+  {
+    platform: "KICK",
+    author: "فهد",
+    color: "#67E8F9",
+    badges: ["vip"],
+    text: "سطر معاينة يطلع مع الحركة",
+    previewSample: true,
+  },
+  {
+    platform: "TWITCH",
+    author: "mira",
+    color: "#FDE68A",
+    badges: [],
+    text: "preview line, not a live event",
+    previewSample: true,
+  },
+];
+
 function readableChatMessage(message: ChatMessage | null | undefined, index: number): ChatMessage | null {
   if (!message || typeof message !== "object") return null;
   const text = typeof message.text === "string" ? message.text : "";
@@ -488,6 +508,48 @@ function useChatDepartures(messages: ChatMessage[]) {
   return leaving;
 }
 
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return reduced;
+}
+
+function useChatStackShift(signature: string, reduced: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const tops = useRef<Map<string, number>>(new Map());
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const nodes = [...root.querySelectorAll<HTMLElement>("[data-chat-id]")];
+    const next = new Map<string, number>();
+    for (const node of nodes) {
+      const id = node.dataset["chatId"] ?? "";
+      if (!id) continue;
+      const top = node.getBoundingClientRect().top;
+      next.set(id, top);
+      const previous = tops.current.get(id);
+      if (reduced || previous == null || Math.abs(previous - top) < 1) continue;
+      const delta = previous - top;
+      node.style.transition = "none";
+      node.style.transform = `translateY(${delta}px)`;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          node.style.transition = "transform 320ms ease";
+          node.style.transform = "";
+        });
+      });
+    }
+    tops.current = next;
+  }, [signature, reduced]);
+  return ref;
+}
+
 
 /**
  * Chat Box renders viewer text messages ONLY. Stream activity (follows, subs,
@@ -534,9 +596,48 @@ export function ChatBoxView({
     appearanceMs: (message) => message?.at ?? null,
   });
   const visibleChat = chatExpiry.items;
-  const leavingChat = useChatDepartures(visibleChat);
-  const previewSamples = demo && visibleChat.length === 0;
-  const shownChat = previewSamples ? SAMPLE_CHAT : visibleChat;
+  const { t } = useLanguage();
+  const reducedMotion = usePrefersReducedMotion();
+  const demoActive = demo && visibleChat.length === 0;
+  const [demoLines, setDemoLines] = useState<ChatMessage[]>(() =>
+    SAMPLE_CHAT.map((line) => ({ ...line, previewSample: true })),
+  );
+  const sampleCursor = useRef(3);
+  useEffect(() => {
+    if (!demoActive || reducedMotion) return;
+    const timer = window.setInterval(() => {
+      const template = PREVIEW_ROTATION[sampleCursor.current % PREVIEW_ROTATION.length]!;
+      const id = `sample-live-${sampleCursor.current}`;
+      sampleCursor.current += 1;
+      setDemoLines((rows) =>
+        [{ ...template, id, at: Date.now(), previewSample: true }, ...rows].slice(0, 4),
+      );
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [demoActive, reducedMotion]);
+  const shownChat = demoActive ? demoLines : visibleChat;
+  const leavingChat = useChatDepartures(shownChat);
+  const shownSignature = shownChat.map((message) => message.id).join("\0");
+  const stackRef = useChatStackShift(shownSignature, reducedMotion);
+  const [enteringId, setEnteringId] = useState<string | null>(null);
+  const knownIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ids = shownSignature ? shownSignature.split("\0") : [];
+    if (knownIds.current === null) {
+      knownIds.current = new Set(ids);
+      const newest = ids[0];
+      if (newest && !reducedMotion) setEnteringId(newest);
+      return;
+    }
+    const fresh = ids.find((id) => !knownIds.current?.has(id));
+    knownIds.current = new Set(ids);
+    if (!fresh || reducedMotion) return;
+    setEnteringId(fresh);
+    const timer = window.setTimeout(() => {
+      setEnteringId((current) => (current === fresh ? null : current));
+    }, 460);
+    return () => window.clearTimeout(timer);
+  }, [shownSignature, reducedMotion]);
 
   const containerClass =
     layout === "glass"
@@ -544,7 +645,7 @@ export function ChatBoxView({
       : "flex w-full min-w-[380px] max-w-[520px] flex-col items-start overflow-visible rounded-2xl bg-transparent p-0";
 
   const rowClassForLayout = (messageLayout: ChatLayout, motion: string) => {
-    const base = `${motion} items-baseline`;
+    const base = `overlay-chat-row ${motion} items-baseline`;
     switch (messageLayout) {
       case "bubble":
         return `${base} flex w-full flex-wrap gap-1.5 rounded-2xl rounded-ss-sm bg-slate-800/90 p-3 border border-slate-700/50 mb-2`;
@@ -615,7 +716,8 @@ export function ChatBoxView({
     const badges = Array.isArray(message?.badges)
       ? message.badges.filter((role): role is string => typeof role === "string")
       : [];
-    const motion = leaving ? "overlay-anim-fade-out" : "overlay-anim-fade";
+    const entering = !leaving && !reducedMotion && message?.id === enteringId;
+    const motion = leaving ? "overlay-anim-fade-out" : entering ? "overlay-anim-fade" : "";
 
     const nameBlock = (
       <span dir="auto" style={{ color: message?.color ?? accent, fontWeight: 700, whiteSpace: "nowrap", ...skin.text }}>
@@ -765,6 +867,9 @@ export function ChatBoxView({
         {initialNode}
         {nameBlock}
         {badgesBlock}
+        {message?.previewSample ? (
+          <span style={{ fontSize: 9, letterSpacing: "0.04em", opacity: 0.6 }}>{t("chat.previewSample")}</span>
+        ) : null}
         {platformBlock}
         <span style={{ color: style.textColor, opacity: 0.7, ...skin.text }}>:</span>
       </span>
@@ -783,7 +888,12 @@ export function ChatBoxView({
 
     if (layout === "island") {
       return replyWrap(
-        <div dir="auto" className={motion} style={islandCapsuleStyle}>
+        <div
+          dir="auto"
+          data-chat-id={leaving ? undefined : message?.id}
+          className={`overlay-chat-row ${motion}`}
+          style={islandCapsuleStyle}
+        >
           <span style={{ display: "inline", minWidth: 0 }}>
             {identity}
             <span dir="auto" style={islandTextStyle}>{renderChatText(text)}</span>
@@ -793,7 +903,11 @@ export function ChatBoxView({
     }
 
     return replyWrap(
-      <div dir="auto" className={rowClassForLayout(layout, motion)}>
+      <div
+        dir="auto"
+        data-chat-id={leaving ? undefined : message?.id}
+        className={rowClassForLayout(layout, motion)}
+      >
         <span
           className={`message-line block w-full ${layout === "transparent" ? "px-2 py-1" : ""}`}
         >
@@ -806,10 +920,11 @@ export function ChatBoxView({
     );
   };
 
-  const quiet = shownChat.length === 0 && (previewSamples || leavingChat.length === 0);
+  const quiet = shownChat.length === 0 && leavingChat.length === 0;
 
   return (
     <div
+      ref={stackRef}
       className={containerClass}
       style={{
         boxSizing: "border-box",
@@ -820,7 +935,7 @@ export function ChatBoxView({
       }}
     >
       {shownChat.map((message) => renderMessage(message, false))}
-      {previewSamples ? null : leavingChat.map((message) => renderMessage(message, true))}
+      {leavingChat.map((message) => renderMessage(message, true))}
       {quiet ? <span style={{ opacity: 0.6 }}>Waiting for chat…</span> : null}
     </div>
   );

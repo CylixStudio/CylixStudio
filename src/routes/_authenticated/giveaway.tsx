@@ -18,6 +18,7 @@ import {
   announceGiveawayWinner,
   clearGiveawayParticipants,
   getGiveawayChatSources,
+  confirmGiveawayFromChat,
   getGiveawayOverlayToken,
   getGiveawayState,
   publishGiveawayDraw,
@@ -28,6 +29,7 @@ import {
   type GiveawaySettings,
 } from "@/lib/giveaway.functions";
 import { useLanguage } from "@/lib/i18n";
+import { isTestMode } from "@/lib/testMode";
 
 export const Route = createFileRoute("/_authenticated/giveaway")({
   head: () => ({
@@ -70,11 +72,23 @@ const SPIN_DURATIONS = [3, 5, 8, 10, 15];
 const CLAIM_WINDOWS = [60, 120, 300, 600];
 const MULTIPLIERS = [1, 2, 3, 5, 10];
 
+function formatEntered(iso: string, lang: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(lang === "ar" ? "ar" : "en", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function GiveawayPage() {
   const { user } = Route.useRouteContext();
   const { data: workspace } = useWorkspace(user.id);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const queryClient = useQueryClient();
+  const guest = isTestMode();
 
   const fetchState = useServerFn(getGiveawayState);
   const fetchSources = useServerFn(getGiveawayChatSources);
@@ -84,15 +98,28 @@ function GiveawayPage() {
   const join = useServerFn(joinGiveaway);
   const announce = useServerFn(announceGiveawayWinner);
   const publishDraw = useServerFn(publishGiveawayDraw);
+  const confirmChat = useServerFn(confirmGiveawayFromChat);
   const fetchOverlayToken = useServerFn(getGiveawayOverlayToken);
 
   const state = useQuery({
     queryKey: ["giveaway"],
     queryFn: () => fetchState(),
-    refetchInterval: 4000,
+    enabled: !guest,
+    retry: false,
+    refetchInterval: guest ? false : 4000,
   });
-  const sources = useQuery({ queryKey: ["giveaway-chat-sources"], queryFn: () => fetchSources() });
-  const overlay = useQuery({ queryKey: ["giveaway-overlay-token"], queryFn: () => fetchOverlayToken() });
+  const sources = useQuery({
+    queryKey: ["giveaway-chat-sources"],
+    queryFn: () => fetchSources(),
+    enabled: !guest,
+    retry: false,
+  });
+  const overlay = useQuery({
+    queryKey: ["giveaway-overlay-token"],
+    queryFn: () => fetchOverlayToken(),
+    enabled: !guest,
+    retry: false,
+  });
   const overlayUrl = overlay.data?.overlayUrl || "";
 
   const [form, setForm] = useState<GiveawaySettings>(DEFAULT_GIVEAWAY);
@@ -121,7 +148,7 @@ function GiveawayPage() {
 
   // Mirror the live draw into the OBS browser source.
   const push = (next: Partial<GiveawayDrawState>) =>
-    void publishDraw({
+    publishDraw({
       data: {
         phase: "idle",
         winner: null,
@@ -144,6 +171,27 @@ function GiveawayPage() {
     return () => clearTimeout(id);
   }, [winner, drawPhase, claimState, claimLeft]);
 
+  const pendingStamp = state.data?.pendingWinner
+    ? `${state.data.pendingWinner.username}|${state.data.pendingWinner.at}|${state.data.confirmedAt ?? ""}`
+    : "";
+  const hydrated = useRef("");
+  useEffect(() => {
+    if (guest || spinning || !pendingStamp || hydrated.current === pendingStamp) return;
+    const pending = state.data?.pendingWinner;
+    if (!pending) return;
+    hydrated.current = pendingStamp;
+    const confirmedAt = state.data?.confirmedAt ?? null;
+    setWinner({ username: pending.username, platform: pending.platform });
+    setDrawPhase("settled");
+    setClaimState(confirmedAt ? "confirmed" : "pending");
+    winnerRef.current = confirmedAt ? null : pending.username.toLowerCase();
+    if (confirmedAt) return;
+    const until = state.data?.claimUntil ? new Date(state.data.claimUntil).getTime() : 0;
+    if (until > Date.now()) setClaimLeft(Math.ceil((until - Date.now()) / 1000));
+    else if (!state.data?.claimUntil) setClaimLeft(form.claimSeconds);
+    else setClaimLeft(0);
+  }, [guest, spinning, pendingStamp, state.data, form.claimSeconds]);
+
   // ---- Live keyword capture from the connected chats (Twitch + Kick) ----
   const seen = useRef(new Set<string>());
   useLiveChat(
@@ -157,17 +205,17 @@ function GiveawayPage() {
     30,
     (message) => {
       const keyword = (form.keyword || "+1").trim().toLowerCase();
-      const author = message.author.toLowerCase();
-      // Winner re-typing the keyword confirms the prize claim.
-      if (
-        winnerRef.current &&
-        author === winnerRef.current &&
-        message.text.toLowerCase().includes(keyword)
-      ) {
-        winnerRef.current = null;
-        setClaimState("confirmed");
-        push({ phase: "settled", winner, claimState: "confirmed", claimUntil: null });
-        return;
+      const text = message.text.trim().toLowerCase();
+      if (keyword && text === keyword && message.platform !== "TEST") {
+        void confirmChat({
+          data: { username: message.author, text: message.text.trim(), isTest: false },
+        }).then((result) => {
+          if (result.status !== "confirmed") return;
+          winnerRef.current = null;
+          setClaimState("confirmed");
+          void queryClient.invalidateQueries({ queryKey: ["giveaway"] });
+          void push({ phase: "settled", winner, claimState: "confirmed", claimUntil: null });
+        });
       }
       if (!keyword || !form.isOpen) return;
       if (!message.text.toLowerCase().includes(keyword)) return;
@@ -211,7 +259,8 @@ function GiveawayPage() {
       setRollName(null);
       setDrawPhase("idle");
       winnerRef.current = null;
-      push({ phase: "idle" });
+      hydrated.current = "";
+      void push({ phase: "idle" });
       toast.success(t("giveaway.cleared"));
       void queryClient.invalidateQueries({ queryKey: ["giveaway"] });
     },
@@ -224,7 +273,7 @@ function GiveawayPage() {
     setSpinning(true);
     setWinner(null);
     setDrawPhase("shuffling");
-    push({ phase: "shuffling" });
+    await push({ phase: "shuffling" });
 
     const names = participants.map((person) => person.username);
     let cursor = 0;
@@ -253,7 +302,7 @@ function GiveawayPage() {
     winnerRef.current = result.winner.username.toLowerCase();
     setClaimState("pending");
     setClaimLeft(form.claimSeconds);
-    push({
+    await push({
       phase: "settled",
       winner: result.winner,
       claimState: "pending",
@@ -404,6 +453,9 @@ function GiveawayPage() {
                       {winner.username}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">{winner.platform}</p>
+                    <p className="mt-3 text-sm text-zinc-100">
+                      {claimState === "confirmed" ? t("giveaway.confirmed") : t("giveaway.pendingConfirm")}
+                    </p>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
@@ -450,7 +502,16 @@ function GiveawayPage() {
                     className="flex items-center gap-2.5 border-b border-zinc-800 py-2.5 last:border-b-0"
                   >
                     <PlatformIcon platform={participant.platform} size={16} />
-                    <span className="min-w-0 flex-1 truncate text-sm" dir="auto">{participant.username}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm" dir="auto">{participant.username}</p>
+                      {participant.createdAt ? (
+                        <p className="text-[0.68rem] text-muted-foreground">
+                          {t("giveaway.enteredAt", {
+                            time: formatEntered(participant.createdAt, lang),
+                          })}
+                        </p>
+                      ) : null}
+                    </div>
                     <span className="font-mono text-[0.72rem] text-muted-foreground">
                       ×{participant.entries}
                     </span>

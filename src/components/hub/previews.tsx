@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Coins, Gift, Star, Users } from "lucide-react";
 
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { useLanguage } from "@/lib/i18n";
+import type React from "react";
 
 const HUB_LOOP_MS = 10_000;
 const HUB_STAGGER_MS = 500;
@@ -209,20 +211,148 @@ export const GOAL_CARD_ACCENT = {
   "kicks-goal": "#67E8F9",
 } as const;
 
-export function DonationGoalPreview() {
-  return <Bar percent={72} label="هدف التبرعات" value="360 / 500 USD" accent={GOAL_CARD_ACCENT["donation-goal"]} />;
+function GoalIcon({
+  accent,
+  children,
+}: {
+  accent: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className="hub-goal-icon grid size-8 shrink-0 place-items-center rounded-xl border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.04)]"
+      style={{ color: accent }}
+    >
+      {children}
+    </span>
+  );
 }
 
+function GoalWash({
+  accent,
+  className,
+}: {
+  accent: string;
+  className: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute size-28 rounded-full blur-2xl ${className}`}
+      style={{ background: accent, opacity: 0.16 }}
+    />
+  );
+}
+
+/** Followers: percentage is the large mark on one side, bar under the title. */
 export function FollowerGoalPreview() {
-  return <Bar percent={64} label="هدف المتابعين" value="640 / 1,000" accent={GOAL_CARD_ACCENT["follower-goal"]} />;
+  const { t } = useLanguage();
+  const accent = GOAL_CARD_ACCENT["follower-goal"];
+  return (
+    <div className="relative flex h-full items-center gap-3 overflow-hidden px-3.5">
+      <GoalWash accent={accent} className="end-0 top-1/2 -translate-y-1/2" />
+      <div className="relative min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <GoalIcon accent={accent}>
+            <Users className="size-3.5" aria-hidden />
+          </GoalIcon>
+          <p className="truncate text-[0.72rem] font-medium">{t("home.tool.followerGoal.name")}</p>
+        </div>
+        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
+          <div className="h-full rounded-full" style={{ width: "64%", background: accent }} />
+        </div>
+        <p className="mt-1 text-[0.6rem] text-muted-foreground">640 / 1,000</p>
+      </div>
+      <p className="relative text-[1.65rem] font-semibold leading-none tabular-nums" style={{ color: accent }}>
+        64%
+      </p>
+    </div>
+  );
 }
 
+/** Donations: amount sits in the middle, percentage is a corner mark, bar is the footer. */
+export function DonationGoalPreview() {
+  const { t } = useLanguage();
+  const accent = GOAL_CARD_ACCENT["donation-goal"];
+  return (
+    <div className="relative flex h-full flex-col justify-between overflow-hidden px-3.5 py-3">
+      <GoalWash accent={accent} className="bottom-0 start-1/3" />
+      <div className="relative flex items-start justify-between gap-2">
+        <p className="truncate text-[0.72rem] font-medium">{t("home.tool.donationGoal.name")}</p>
+        <GoalIcon accent={accent}>
+          <Gift className="size-3.5" aria-hidden />
+        </GoalIcon>
+      </div>
+      <div className="relative">
+        <p className="text-[1.35rem] font-semibold leading-none tabular-nums">
+          360 <span className="text-[0.68rem] font-medium text-muted-foreground">USD</span>
+        </p>
+        <p className="mt-1 text-[0.62rem] font-semibold tabular-nums" style={{ color: accent }}>
+          72%
+        </p>
+      </div>
+      <div className="relative h-1 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
+        <div className="h-full rounded-full" style={{ width: "72%", background: accent }} />
+      </div>
+    </div>
+  );
+}
+
+/** Subscribers: star and percent stacked in the center, progress as a bottom strip. */
 export function SubscriberGoalPreview() {
-  return <Bar percent={36} label="هدف المشتركين" value="18 / 50" accent={GOAL_CARD_ACCENT["subscriber-goal"]} />;
+  const { t } = useLanguage();
+  const accent = GOAL_CARD_ACCENT["subscriber-goal"];
+  return (
+    <div className="relative flex h-full flex-col overflow-hidden">
+      <GoalWash accent={accent} className="start-1/2 top-0 -translate-x-1/2 rtl:translate-x-1/2" />
+      <div className="relative flex flex-1 flex-col items-center justify-center">
+        <GoalIcon accent={accent}>
+          <Star className="size-3.5" aria-hidden />
+        </GoalIcon>
+        <p className="mt-1.5 text-[0.72rem] font-medium">{t("home.tool.subscriberGoal.name")}</p>
+        <p className="mt-0.5 text-lg font-semibold tabular-nums" style={{ color: accent }}>
+          36%
+        </p>
+      </div>
+      <div className="relative px-3.5 pb-3">
+        <div className="h-1.5 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
+          <div className="h-full rounded-full" style={{ width: "36%", background: accent }} />
+        </div>
+        <p className="mt-1 text-center text-[0.58rem] text-muted-foreground">18 / 50</p>
+      </div>
+    </div>
+  );
 }
 
+/** Kicks: a vertical rail, title in the middle, icon and percent stacked on the end. */
 export function KicksGoalCardPreview() {
-  return <Bar percent={42} label="هدف الكيكس" value="420 / 1,000" accent={GOAL_CARD_ACCENT["kicks-goal"]} />;
+  const { t } = useLanguage();
+  const accent = GOAL_CARD_ACCENT["kicks-goal"];
+  return (
+    <div className="relative flex h-full items-stretch gap-3 overflow-hidden px-3.5 py-3">
+      <GoalWash accent={accent} className="start-0 top-1/2 -translate-y-1/2" />
+      <div className="relative flex w-2 shrink-0 items-end">
+        <div className="relative h-full w-1.5 overflow-hidden rounded-full bg-[oklch(1_0_0/0.08)]">
+          <div
+            className="absolute bottom-0 w-full rounded-full"
+            style={{ height: "42%", background: accent }}
+          />
+        </div>
+      </div>
+      <div className="relative flex min-w-0 flex-1 flex-col justify-center">
+        <p className="truncate text-[0.72rem] font-medium">{t("home.tool.kicksGoal.name")}</p>
+        <p className="mt-1 text-[0.6rem] text-muted-foreground">420 / 1,000</p>
+      </div>
+      <div className="relative flex flex-col items-end justify-center gap-1.5">
+        <GoalIcon accent={accent}>
+          <Coins className="size-3.5" aria-hidden />
+        </GoalIcon>
+        <p className="text-sm font-semibold tabular-nums" style={{ color: accent }}>
+          42%
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export function GoalTypePreview({
@@ -277,7 +407,7 @@ export function AlertPreview() {
   );
 }
 
-const CHAT_ROWS = [
+const CHAT_POOL = [
   {
     who: "مشرف",
     msg: "يا جماعة التفاعل حلو اليوم",
@@ -299,6 +429,20 @@ const CHAT_ROWS = [
     platform: "YOUTUBE",
     color: "#FCA5A5",
   },
+  {
+    who: "فهد",
+    msg: "سطر معاينة يطلع مع الحركة",
+    role: "VIP" as const,
+    platform: "KICK",
+    color: "#67E8F9",
+  },
+  {
+    who: "mira",
+    msg: "preview line, not a live event",
+    role: null,
+    platform: "TWITCH",
+    color: "#FDE68A",
+  },
 ] as const;
 
 function ChatRolePill({ label }: { label: "Mod" | "VIP" }) {
@@ -315,31 +459,92 @@ function ChatRolePill({ label }: { label: "Mod" | "VIP" }) {
 }
 
 export function ChatPreview() {
+  const { t } = useLanguage();
+  const reduced = useReducedMotion();
+  const [lines, setLines] = useState(() =>
+    CHAT_POOL.slice(0, 3).map((line, index) => ({ ...line, id: `hub-chat-${index}` })),
+  );
+  const [enteringId, setEnteringId] = useState<string | null>(reduced ? null : "hub-chat-0");
+  const cursor = useRef(3);
+  const stackRef = useRef<HTMLDivElement>(null);
+  const tops = useRef<Map<string, number>>(new Map());
+  const signature = lines.map((line) => line.id).join("\0");
+
+  useEffect(() => {
+    if (reduced) return;
+    const timer = window.setInterval(() => {
+      const source = CHAT_POOL[cursor.current % CHAT_POOL.length]!;
+      const id = `hub-chat-${cursor.current}`;
+      cursor.current += 1;
+      setEnteringId(id);
+      setLines((current) => [{ ...source, id }, ...current].slice(0, 3));
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [reduced]);
+
+  useLayoutEffect(() => {
+    const root = stackRef.current;
+    if (!root) return;
+    const nodes = [...root.querySelectorAll<HTMLElement>("[data-chat-id]")];
+    const next = new Map<string, number>();
+    for (const node of nodes) {
+      const id = node.dataset["chatId"] ?? "";
+      if (!id) continue;
+      const top = node.getBoundingClientRect().top;
+      next.set(id, top);
+      const previous = tops.current.get(id);
+      if (reduced || previous == null || Math.abs(previous - top) < 1) continue;
+      const delta = previous - top;
+      node.style.transition = "none";
+      node.style.transform = `translateY(${delta}px)`;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          node.style.transition = "transform 320ms ease";
+          node.style.transform = "";
+        });
+      });
+    }
+    tops.current = next;
+  }, [signature, reduced]);
+
   return (
-    <div className="flex h-full flex-col justify-end gap-1.5 overflow-hidden px-2.5 py-2">
-      {CHAT_ROWS.map((line) => {
-        const initial = [...line.who][0] ?? "?";
-        return (
-          <div key={line.who} dir="auto" className="flex min-w-0 items-start gap-1.5 text-[0.68rem] leading-tight">
-            <span
-              aria-hidden
-              className="grid size-5 shrink-0 place-items-center rounded-full bg-zinc-800 text-[0.55rem] font-semibold text-zinc-100"
+    <div className="flex h-full flex-col justify-end overflow-hidden px-2.5 py-2">
+      <p className="mb-1 text-[0.48rem] font-medium tracking-wide text-muted-foreground">
+        {t("chat.previewSample")}
+      </p>
+      <div ref={stackRef} className="flex flex-col justify-end gap-1.5">
+        {lines.map((line) => {
+          const initial = [...line.who][0] ?? "?";
+          const entering = !reduced && enteringId === line.id;
+          return (
+            <div
+              key={line.id}
+              data-chat-id={line.id}
+              dir="auto"
+              className={`overlay-chat-row flex min-w-0 items-start gap-1.5 text-[0.68rem] leading-tight ${
+                entering ? "overlay-anim-fade" : ""
+              }`}
             >
-              {initial}
-            </span>
-            <p className="min-w-0">
-              <span className="inline-flex max-w-full flex-wrap items-center gap-1 align-middle">
-                <span className="font-semibold" style={{ color: line.color }}>
-                  {line.who}
-                </span>
-                {line.role ? <ChatRolePill label={line.role} /> : null}
-                <PlatformIcon platform={line.platform} size={12} />
-              </span>{" "}
-              <span className="text-muted-foreground">{line.msg}</span>
-            </p>
-          </div>
-        );
-      })}
+              <span
+                aria-hidden
+                className="grid size-5 shrink-0 place-items-center rounded-full bg-zinc-800 text-[0.55rem] font-semibold text-zinc-100"
+              >
+                {initial}
+              </span>
+              <p className="min-w-0">
+                <span className="inline-flex max-w-full flex-wrap items-center gap-1 align-middle">
+                  <span className="font-semibold" style={{ color: line.color }}>
+                    {line.who}
+                  </span>
+                  {line.role ? <ChatRolePill label={line.role} /> : null}
+                  <PlatformIcon platform={line.platform} size={12} />
+                </span>{" "}
+                <span className="text-muted-foreground">{line.msg}</span>
+              </p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
