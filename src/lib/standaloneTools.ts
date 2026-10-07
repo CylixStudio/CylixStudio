@@ -9,8 +9,7 @@ export type StandaloneTool = {
     | "event-labels"
     | "donation-goal"
     | "follower-goal"
-    | "subscriber-goal"
-    | "custom-goal";
+    | "subscriber-goal";
   type: WidgetType;
   /** Stable English name stored on the widget row. */
   name: string;
@@ -45,7 +44,7 @@ export const STANDALONE_TOOLS: StandaloneTool[] = [
   {
     slug: "event-labels",
     type: "EVENT_LABELS",
-    name: "Event labels",
+    name: "Latest events",
     nameKey: "home.tool.eventLabels.name",
     descriptionKey: "home.tool.eventLabels.desc",
   },
@@ -71,14 +70,6 @@ export const STANDALONE_TOOLS: StandaloneTool[] = [
     name: "Subscriber Goal",
     nameKey: "home.tool.subscriberGoal.name",
     descriptionKey: "home.tool.subscriberGoal.desc",
-    goalEditor: true,
-  },
-  {
-    slug: "custom-goal",
-    type: "CUSTOM_GOAL",
-    name: "Custom Goal",
-    nameKey: "home.tool.customGoal.name",
-    descriptionKey: "home.tool.customGoal.desc",
     goalEditor: true,
   },
 ];

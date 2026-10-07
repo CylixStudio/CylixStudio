@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { useLanguage } from "@/lib/i18n";
 
 const HUB_LOOP_MS = 10_000;
@@ -205,7 +206,7 @@ export const GOAL_CARD_ACCENT = {
   "donation-goal": "#34D399",
   "follower-goal": "#38BDF8",
   "subscriber-goal": "#A78BFA",
-  "custom-goal": "#F59E0B",
+  "kicks-goal": "#67E8F9",
 } as const;
 
 export function DonationGoalPreview() {
@@ -220,8 +221,8 @@ export function SubscriberGoalPreview() {
   return <Bar percent={36} label="هدف المشتركين" value="18 / 50" accent={GOAL_CARD_ACCENT["subscriber-goal"]} />;
 }
 
-export function CustomGoalPreview() {
-  return <Bar percent={40} label="هدف مخصص" value="40 / 100 نقطة" accent={GOAL_CARD_ACCENT["custom-goal"]} />;
+export function KicksGoalCardPreview() {
+  return <Bar percent={42} label="هدف الكيكس" value="420 / 1,000" accent={GOAL_CARD_ACCENT["kicks-goal"]} />;
 }
 
 export function GoalTypePreview({
@@ -276,27 +277,69 @@ export function AlertPreview() {
   );
 }
 
-const CHAT_LINES = [
-  { who: "kira", msg: "let's goooo" },
-  { who: "mox", msg: "that clutch though" },
-  { who: "ari", msg: "gg" },
-  { who: "nova", msg: "timer just popped" },
-  { who: "lex", msg: "one more gift" },
+const CHAT_ROWS = [
+  {
+    who: "مشرف",
+    msg: "يا جماعة التفاعل حلو اليوم",
+    role: "Mod" as const,
+    platform: "KICK",
+    color: "#86EFAC",
+  },
+  {
+    who: "Nova",
+    msg: "that clutch was clean",
+    role: "VIP" as const,
+    platform: "TWITCH",
+    color: "#F0ABFC",
+  },
+  {
+    who: "ليان",
+    msg: "مرحبا من البث",
+    role: null,
+    platform: "YOUTUBE",
+    color: "#FCA5A5",
+  },
 ] as const;
+
+function ChatRolePill({ label }: { label: "Mod" | "VIP" }) {
+  const vip = label === "VIP";
+  return (
+    <span
+      className={`inline-flex h-3.5 shrink-0 items-center rounded px-1 text-[0.48rem] font-bold uppercase leading-none tracking-wide ${
+        vip ? "bg-amber-400/15 text-amber-300" : "bg-sky-400/15 text-sky-300"
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
 
 export function ChatPreview() {
   return (
-    <div className="flex h-full flex-col justify-end gap-1 overflow-hidden px-3 py-2">
-      {CHAT_LINES.map((line, index) => (
-        <div
-          key={line.who}
-          className="hub-chat-line rounded-xl border border-[oklch(1_0_0/0.07)] bg-[oklch(1_0_0/0.035)] px-2.5 py-1.5 text-[0.68rem]"
-          style={{ animationDelay: `${index * (HUB_STAGGER_MS / 1000)}s` }}
-        >
-          <span className="font-semibold text-primary">{line.who}</span>{" "}
-          <span className="text-muted-foreground">{line.msg}</span>
-        </div>
-      ))}
+    <div className="flex h-full flex-col justify-end gap-1.5 overflow-hidden px-2.5 py-2">
+      {CHAT_ROWS.map((line) => {
+        const initial = [...line.who][0] ?? "?";
+        return (
+          <div key={line.who} dir="auto" className="flex min-w-0 items-start gap-1.5 text-[0.68rem] leading-tight">
+            <span
+              aria-hidden
+              className="grid size-5 shrink-0 place-items-center rounded-full bg-zinc-800 text-[0.55rem] font-semibold text-zinc-100"
+            >
+              {initial}
+            </span>
+            <p className="min-w-0">
+              <span className="inline-flex max-w-full flex-wrap items-center gap-1 align-middle">
+                <span className="font-semibold" style={{ color: line.color }}>
+                  {line.who}
+                </span>
+                {line.role ? <ChatRolePill label={line.role} /> : null}
+                <PlatformIcon platform={line.platform} size={12} />
+              </span>{" "}
+              <span className="text-muted-foreground">{line.msg}</span>
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -775,20 +818,7 @@ export function MediaRequestPreview() {
 }
 
 export function KicksGoalPreview() {
-  return (
-    <div className="flex h-full flex-col justify-center gap-2 px-4">
-      <div className="flex items-center justify-between text-[0.58rem] text-[#53FC18]">
-        <span>Kicks Goal</span>
-        <span>42%</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full w-[42%] rounded-full bg-[#53FC18]" />
-      </div>
-      <p className="text-[0.62rem] tabular-nums text-foreground/80" dir="ltr">
-        420 / 1000
-      </p>
-    </div>
-  );
+  return <KicksGoalCardPreview />;
 }
 
 export function ViewerCounterPreview() {

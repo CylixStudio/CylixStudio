@@ -13,7 +13,7 @@ export const WHEEL_SLICE_COLORS = [
 ] as const;
 
 const PLACEHOLDER_SLICES = 6;
-const SPIN_MS = 5000;
+const SPIN_MS = 5600;
 const REDUCED_SPIN_MS = 280;
 const CX = 160;
 const CY = 160;
@@ -45,8 +45,9 @@ export function wheelSpinLockMs() {
   return prefersReducedMotion() ? REDUCED_SPIN_MS : SPIN_MS + 200;
 }
 
-function easeOutCubic(t: number) {
-  return 1 - (1 - t) ** 3;
+/** Ease-out with a long deceleration so the wheel feels heavy near the pointer. */
+function easeOutQuint(t: number) {
+  return 1 - (1 - t) ** 5;
 }
 
 function polar(radius: number, clockwiseFromTop: number) {
@@ -204,6 +205,7 @@ export function SpinWheelView({
 
   const [rotation, setRotation] = useState(0);
   const [turning, setTurning] = useState(false);
+  const [landed, setLanded] = useState(false);
   const rotationRef = useRef(0);
   const lastNonce = useRef<number | null>(null);
   const animatingUntil = useRef(0);
@@ -219,6 +221,7 @@ export function SpinWheelView({
     if (lastNonce.current === null) {
       lastNonce.current = nonce;
       applyRotation(mod(-center, 360));
+      if (winnerIndex >= 0) setLanded(true);
       return;
     }
     if (nonce === lastNonce.current) {
@@ -229,12 +232,17 @@ export function SpinWheelView({
       return;
     }
     lastNonce.current = nonce;
-    if (winnerIndex < 0) return;
+    if (winnerIndex < 0) {
+      setLanded(false);
+      return;
+    }
 
     const from = rotationRef.current;
     const to = landRotation(from, center, reduced);
+    setLanded(false);
     if (reduced || to === from) {
       applyRotation(to);
+      setLanded(true);
       return;
     }
 
@@ -242,10 +250,14 @@ export function SpinWheelView({
     animatingUntil.current = started + SPIN_MS;
     let frame = 0;
     const tick = (now: number) => {
-      const t = Math.min(1, (now - started) / SPIN_MS);
-      const value = from + (to - from) * easeOutCubic(t);
+      const progress = Math.min(1, (now - started) / SPIN_MS);
+      const value = from + (to - from) * easeOutQuint(progress);
       applyRotation(value);
-      if (t < 1) frame = window.requestAnimationFrame(tick);
+      if (progress < 1) {
+        frame = window.requestAnimationFrame(tick);
+      } else {
+        setLanded(true);
+      }
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
@@ -268,6 +280,9 @@ export function SpinWheelView({
         <div className="absolute inset-0 will-change-transform" style={{ transform: `rotate(${rotation}deg)` }}>
           <svg viewBox="0 0 320 320" className="size-full overflow-visible" aria-hidden>
             <defs>
+              <filter id={`${uid}-win`} x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#FFFFFF" floodOpacity="0.85" />
+              </filter>
               {slices.map((slice, index) => (
                 <clipPath key={`clip-${index}`} id={`${uid}-slice-${index}`}>
                   <path d={wedgePath(slice.start, slice.start + slice.span)} />
@@ -290,13 +305,15 @@ export function SpinWheelView({
               const flip = screenMid > 90 && screenMid < 270;
               const textRotation = (radial ? mid - 90 : mid) + (flip ? 180 : 0);
               const label = slice.placeholder ? "" : fitLabel(slice.label, maxWidth, fontSize);
+              const winner = landed && !slice.placeholder && index === winnerIndex;
               return (
                 <g key={`slice-${index}`}>
                   <path
                     d={wedgePath(slice.start, slice.start + slice.span)}
                     fill={slice.fill}
-                    stroke="#18181B"
-                    strokeWidth="1.4"
+                    stroke={winner ? "#FAFAFA" : "#18181B"}
+                    strokeWidth={winner ? 3.2 : 1.4}
+                    filter={winner ? `url(#${uid}-win)` : undefined}
                     data-label={slice.placeholder ? undefined : slice.label}
                   />
                   {label ? (
@@ -343,6 +360,14 @@ export function SpinWheelView({
           />
         </svg>
       </div>
+
+      {landed && winnerIndex >= 0 ? (
+        <p className="max-w-full truncate text-center text-lg font-semibold text-zinc-50" dir="auto">
+          {slices[winnerIndex]?.label}
+        </p>
+      ) : (
+        <p className="h-7" aria-hidden />
+      )}
 
       {onSpin ? (
         <button

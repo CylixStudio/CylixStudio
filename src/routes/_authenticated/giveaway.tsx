@@ -112,6 +112,7 @@ function GiveawayPage() {
 
   const [spinning, setSpinning] = useState(false);
   const [winner, setWinner] = useState<{ username: string; platform: string } | null>(null);
+  const [rollName, setRollName] = useState<string | null>(null);
   const [drawPhase, setDrawPhase] = useState<DrawPhase>("idle");
   const [claimState, setClaimState] = useState<"pending" | "confirmed" | "expired">("pending");
   const [claimLeft, setClaimLeft] = useState(0);
@@ -207,6 +208,7 @@ function GiveawayPage() {
     onSuccess: () => {
       seen.current.clear();
       setWinner(null);
+      setRollName(null);
       setDrawPhase("idle");
       winnerRef.current = null;
       push({ phase: "idle" });
@@ -218,12 +220,26 @@ function GiveawayPage() {
 
   const runDraw = async () => {
     if (!participants.length || spinning) return;
+    const started = Date.now();
     setSpinning(true);
     setWinner(null);
     setDrawPhase("shuffling");
     push({ phase: "shuffling" });
 
+    const names = participants.map((person) => person.username);
+    let cursor = 0;
+    setRollName(names[0] ?? "");
+    const rollTimer = window.setInterval(() => {
+      cursor = (cursor + 1) % names.length;
+      setRollName(names[cursor] ?? "");
+    }, 70);
+
     const result = await pick();
+    const wait = Math.max(0, 1200 - (Date.now() - started));
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    window.clearInterval(rollTimer);
+    setRollName(null);
+
     if (!result.ok) {
       setSpinning(false);
       setDrawPhase("idle");
@@ -232,11 +248,6 @@ function GiveawayPage() {
     }
 
     setWinner({ username: result.winner.username, platform: result.winner.platform });
-    const total = Math.max(form.spinDuration, 1) * 1000;
-    await new Promise((resolve) => setTimeout(resolve, total * 0.65));
-    setDrawPhase("revealing");
-    push({ phase: "revealing", winner: result.winner });
-    await new Promise((resolve) => setTimeout(resolve, total * 0.35));
     setDrawPhase("settled");
     setSpinning(false);
     winnerRef.current = result.winner.username.toLowerCase();
@@ -353,7 +364,7 @@ function GiveawayPage() {
               aria-pressed={form.isOpen}
               className={
                 form.isOpen
-                  ? primary
+                  ? "inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-zinc-100"
                   : "inline-flex items-center gap-2 rounded-full border border-red-400/40 bg-red-500/15 px-5 py-2.5 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500/25"
               }
             >
@@ -363,19 +374,6 @@ function GiveawayPage() {
                 <Lock className="size-4" aria-hidden />
               )}
               {form.isOpen ? t("giveaway.entriesOpen") : t("giveaway.entriesClosed")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void runDraw()}
-              disabled={spinning || participants.length === 0}
-              className={primary}
-            >
-              {spinning ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Sparkles className="size-4" aria-hidden />
-              )}
-              {t("giveaway.pick")}
             </button>
             <button
               type="button"
@@ -391,7 +389,46 @@ function GiveawayPage() {
         <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_15.5rem] lg:gap-14">
           <div className="min-w-0">
             <p className={label}>{t("giveaway.stageTitle")}</p>
-            {display}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
+              <div className="grid min-h-[9.5rem] place-items-center">
+                {drawPhase === "shuffling" && rollName ? (
+                  <p className="max-w-full truncate text-4xl font-semibold text-zinc-100" dir="auto">
+                    {rollName}
+                  </p>
+                ) : winner && drawPhase === "settled" ? (
+                  <div className="w-full max-w-md rounded-xl border border-[#bee1fc]/40 bg-[#bee1fc]/10 px-6 py-5 text-center">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#bee1fc]">
+                      {t("giveaway.winnerSelected")}
+                    </p>
+                    <p className="mt-2 truncate text-3xl font-bold text-zinc-50" dir="auto">
+                      {winner.username}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{winner.platform}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {participants.length === 0
+                      ? t("giveaway.peopleEmpty", { keyword: form.keyword || "+1" })
+                      : t("giveaway.drawHint")}
+                  </p>
+                )}
+              </div>
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void runDraw()}
+                  disabled={spinning || participants.length === 0}
+                  className={primary}
+                >
+                  {spinning ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Sparkles className="size-4" aria-hidden />
+                  )}
+                  {t("giveaway.pick")}
+                </button>
+              </div>
+            </div>
           </div>
           <div className="min-w-0">
             <p className={label}>

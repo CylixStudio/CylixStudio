@@ -14,7 +14,7 @@ import { SubathonElementControlPanel } from "@/components/widgets/SubathonElemen
 import { SubathonTimerSidebar } from "@/components/widgets/SubathonTimerSidebar";
 import { SpotlightControlPanel } from "@/components/widgets/SpotlightControlPanel";
 import { StreamEventsScheduleControlPanel } from "@/components/widgets/StreamEventsScheduleControlPanel";
-import { isSplitGoalKind, parseSpotlightConfig, parseStreamEventsScheduleState } from "@/lib/widgets";
+import { isDynamicGoalWidget, isSplitGoalKind, parseSpotlightConfig, parseStreamEventsScheduleState } from "@/lib/widgets";
 import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
 import { supabase } from "@/lib/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
@@ -356,7 +356,16 @@ function WidgetBuilder() {
       user={user}
       profile={workspace?.profile}
       subathons={workspace?.subathons ?? []}
-      title={widget ? widget.name : "Widget builder"}
+      title={
+        widget
+          ? widget.type === "EVENT_LABELS" &&
+            ["Event labels", "Latest events", "تسميات الأحداث", "آخر الأحداث"].includes(widget.name)
+            ? t("home.tool.eventLabels.name")
+            : widget.type === "KICKS_GOAL" && ["Kicks Goal", "هدف الكيكس"].includes(widget.name)
+              ? t("home.tool.kicksGoal.name")
+              : widget.name
+          : "Widget builder"
+      }
       subtitle={widget ? WIDGET_LABEL[widget.type] : "Loading…"}
       actions={
         widget ? (
@@ -410,6 +419,7 @@ function WidgetBuilder() {
               events={[]}
               spin={null}
               chat={null}
+              demo
             />
           </div>
         ) : widgetQuery.isError ? null : (
@@ -1011,14 +1021,16 @@ function WidgetBuilder() {
               frame={stream.frame}
               remaining={stream.remaining}
               goal={
-                goalRow
-                  ? {
-                      title: goalDraft.title,
-                      unit: goalDraft.unit,
-                      target: goalDraft.target,
-                      current: goalDraft.current,
-                    }
-                  : stream.goal
+                isDynamicGoalWidget(widget.type)
+                  ? null
+                  : goalRow
+                    ? {
+                        title: goalDraft.title,
+                        unit: goalDraft.unit,
+                        target: goalDraft.target,
+                        current: goalDraft.current,
+                      }
+                    : stream.goal
               }
               events={stream.events}
               spin={stream.spin}

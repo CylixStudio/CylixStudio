@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
+import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -50,6 +51,7 @@ function GoalKindForm({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hydratedId, setHydratedId] = useState<string | null>(null);
+  const stream = useWidgetStream(existing?.public_token ?? null);
 
   useEffect(() => {
     if (!existing || hydratedId === existing.id) return;
@@ -183,7 +185,7 @@ function GoalKindForm({
           frame={null}
           remaining={0}
           goal={null}
-          events={[]}
+          events={stream.events}
           spin={null}
         />
       </div>

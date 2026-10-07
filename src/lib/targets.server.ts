@@ -185,7 +185,7 @@ export async function listOverlayEvents(
   admin: Admin,
   args: { userId: string; subathonId: string | null; limit: number },
 ): Promise<OverlayEvent[]> {
-  const limit = Math.min(Math.max(args.limit, 1), 50);
+  const limit = Math.min(Math.max(args.limit, 1), 400);
   const combined: OverlayEvent[] = [];
 
   if (args.subathonId) {

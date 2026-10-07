@@ -60,21 +60,24 @@ export const WIDGET_TYPES: { value: WidgetType; label: string; hint: string }[] 
   },
   { value: "KICKS_GOAL", label: "Kicks Goal", hint: "Kick currency progress bar" },
   { value: "VIEWER_COUNTER", label: "Viewer counter", hint: "Live viewer or follower count" },
-  { value: "EVENT_LABELS", label: "Event labels", hint: "Labels the streamer edits for the overlay" },
+  { value: "EVENT_LABELS", label: "Latest events", hint: "Selected event lines, one at a time" },
   { value: "DONATION_GOAL", label: "Donation goal", hint: "Donation progress bar" },
   { value: "FOLLOWER_GOAL", label: "Follower goal", hint: "Follower count progress bar" },
   { value: "SUBSCRIBER_GOAL", label: "Subscriber goal", hint: "Subscriber count progress bar" },
   { value: "CUSTOM_GOAL", label: "Custom goal", hint: "Progress bar with a free unit label" },
 ];
 
+/** Create-menu types. Custom goal remains in the enum and is not offered. */
+export const OFFERED_WIDGET_TYPES = WIDGET_TYPES.filter((entry) => entry.value !== "CUSTOM_GOAL");
+
 export const WIDGET_LABEL: Record<WidgetType, string> = {
   SUBATHON_TIMER: "Subathon timer",
   GOAL_BAR: "Goal bar",
   CHAT_BOX: "Activity feed",
   SPIN_WHEEL: "عجلة الحظ",
-  KICKS_GOAL: "Kicks Goal",
+  KICKS_GOAL: "هدف الكيكس",
   VIEWER_COUNTER: "عداد المشاهدين",
-  EVENT_LABELS: "تسميات الأحداث",
+  EVENT_LABELS: "آخر الأحداث",
   DONATION_GOAL: "هدف التبرعات",
   FOLLOWER_GOAL: "هدف المتابعين",
   SUBSCRIBER_GOAL: "هدف المشتركين",
@@ -433,6 +436,46 @@ export type OverlayEvent = {
   isTest?: boolean;
 };
 
+const DYNAMIC_GOAL_TYPES = ["DONATION_GOAL", "FOLLOWER_GOAL", "SUBSCRIBER_GOAL", "KICKS_GOAL"] as const;
+
+export function isDynamicGoalWidget(type: string): boolean {
+  return (DYNAMIC_GOAL_TYPES as readonly string[]).includes(type);
+}
+
+/** How much one stored event adds. Test alerts add nothing. Each event id counts once. */
+export function dynamicGoalDelta(type: string, event: OverlayEvent): number {
+  if (event.isTest || event.eventType === "test" || !isDynamicGoalWidget(type)) return 0;
+  const kind = event.eventType;
+  const platform = event.platform.toUpperCase();
+  if (type === "DONATION_GOAL") {
+    if (kind !== "DONATION") return 0;
+    const amount = Number(event.amount ?? 0);
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  }
+  if (type === "FOLLOWER_GOAL") return kind === "FOLLOW" ? 1 : 0;
+  if (type === "SUBSCRIBER_GOAL") {
+    if (kind === "GIFT_SUB") return Math.max(1, Math.round(Number(event.quantity) || 1));
+    if (kind === "SUBSCRIPTION") return 1;
+    return 0;
+  }
+  if (kind !== "BITS" || platform !== "KICK") return 0;
+  const kicks = Number(event.amount ?? 0);
+  return Number.isFinite(kicks) && kicks > 0 ? kicks : 0;
+}
+
+/** Saved baseline plus each non-test event once. Do not add a goal-row total on top of this. */
+export function dynamicGoalAdded(type: string, events: readonly OverlayEvent[]): number {
+  if (!isDynamicGoalWidget(type)) return 0;
+  const seen = new Set<string>();
+  let total = 0;
+  for (const event of events) {
+    if (!event.id || seen.has(event.id)) continue;
+    seen.add(event.id);
+    total += dynamicGoalDelta(type, event);
+  }
+  return total;
+}
+
 export type GoalSnapshot = {
   title: string;
   unit: string;
@@ -648,10 +691,32 @@ export function parseKicksGoalConfig(raw: unknown): KicksGoalConfig {
   const target = Number(source["target"]);
   const current = Number(source["current"]);
   return {
-    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 36, accentColor: "#53FC18" }),
-    title: text(source["title"] ?? source["label"], "Kicks Goal", 40),
+    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 36, accentColor: "#67E8F9" }),
+    title: text(source["title"] ?? source["label"], "هدف الكيكس", 40),
     target: Number.isFinite(target) ? Math.min(100_000_000, Math.max(1, Math.round(target))) : 1000,
     current: Number.isFinite(current) ? Math.min(100_000_000, Math.max(0, Math.round(current))) : 0,
+  };
+}
+
+/** Saved current/target plus stored non-test progress. Callers must not add the event sum again. */
+export function dynamicGoalSnapshot(
+  type: string,
+  config: unknown,
+  events: readonly OverlayEvent[],
+): GoalSnapshot | null {
+  if (!isDynamicGoalWidget(type)) return null;
+  const added = dynamicGoalAdded(type, events);
+  if (type === "KICKS_GOAL") {
+    const kicks = parseKicksGoalConfig(config);
+    return { title: kicks.title, unit: "Kicks", target: kicks.target, current: kicks.current + added };
+  }
+  if (type !== "DONATION_GOAL" && type !== "FOLLOWER_GOAL" && type !== "SUBSCRIBER_GOAL") return null;
+  const parsed = parseSplitGoalConfig(type, config);
+  return {
+    title: parsed.title,
+    unit: type === "DONATION_GOAL" ? parsed.unit : "",
+    target: parsed.target,
+    current: parsed.current + added,
   };
 }
 
@@ -688,12 +753,18 @@ export type EventLabelsConfig = BaseStyle & {
   language: "ar" | "en" | null;
 };
 
+function eventLabelsTitle(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || raw === "تسميات الأحداث" || raw === "Event labels") return "آخر الأحداث";
+  return raw.slice(0, 40);
+}
+
 export function parseEventLabelsConfig(raw: unknown): EventLabelsConfig {
   const source = asRecord(raw);
   const language = source["language"] === "ar" || source["language"] === "en" ? source["language"] : null;
   return {
     ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28, backgroundOpacity: 70 }),
-    title: text(source["title"], "تسميات الأحداث", 40),
+    title: eventLabelsTitle(source["title"]),
     labels: selectedEventLabelOptions(source["labels"]),
     language,
   };

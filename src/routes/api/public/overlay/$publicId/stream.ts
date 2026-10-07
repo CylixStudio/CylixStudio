@@ -4,6 +4,8 @@ import type { Database } from "@/lib/supabase/types";
 import { snapshotFromRow, toFrame } from "@/lib/timer";
 import type { OverlayEvent } from "@/lib/widgets";
 import {
+  dynamicGoalSnapshot,
+  isDynamicGoalWidget,
   parseSpinState,
   parseSpotlightState,
   parseStreamEventsScheduleState,
@@ -254,6 +256,25 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
                 }
                 return;
               }
+              if (isDynamicGoalWidget(type)) {
+                const current = await fetchWidgetState();
+                const config = current?.config ?? widget.config;
+                const goalEvents = await fetchEvents(400);
+                const snapshot = dynamicGoalSnapshot(type, config, goalEvents);
+                const goalPayload = JSON.stringify(snapshot);
+                if (goalPayload !== lastGoalPayload) {
+                  lastGoalPayload = goalPayload;
+                  lastBeat = Date.now();
+                  send("goal", snapshot);
+                }
+                const eventsPayload = JSON.stringify(goalEvents);
+                if (eventsPayload !== lastEventsPayload) {
+                  lastEventsPayload = eventsPayload;
+                  lastBeat = Date.now();
+                  send("events", goalEvents);
+                }
+                return;
+              }
               if (type === "ALERT_BOX" || type === "CHAT_BOX" || type === "EMOTE_RAIN" || type === "EVENT_LABELS") {
                 const events = await fetchEvents(type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5);
                 const payload = JSON.stringify(events);
@@ -309,15 +330,24 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
             enqueue(encoder.encode("retry: 2000\n\n"));
 
             if (type === "SUBATHON_TIMER") await fetchTimer();
-            const goal = type === "GOAL_BAR" ? await fetchGoal() : null;
+            const dynamicGoal = isDynamicGoalWidget(type);
             const events =
               type === "ALERT_BOX" ||
               type === "CHAT_BOX" ||
               type === "EMOTE_RAIN" ||
               type === "SUBATHON_TIMER" ||
-              type === "EVENT_LABELS"
-                ? await fetchEvents(type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5)
+              type === "EVENT_LABELS" ||
+              dynamicGoal
+                ? await fetchEvents(
+                    dynamicGoal ? 400 : type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5,
+                  )
                 : [];
+            const goal =
+              type === "GOAL_BAR"
+                ? await fetchGoal()
+                : dynamicGoal
+                  ? dynamicGoalSnapshot(type, widget.config, events)
+                  : null;
             const spin = type === "SPIN_WHEEL" ? parseSpinState(widget.state) : null;
             const spotlight = type === "CHAT_SPOTLIGHT" ? parseSpotlightState(widget.state) : null;
             const streamEvents =

@@ -84,11 +84,7 @@ export function ToolCard({
       className={`glass-3d glass-lift relative flex h-full min-h-[18.5rem] flex-col overflow-visible rounded-2xl p-5 text-start transition-[opacity,transform] duration-300 ease-out ${
         removing ? "pointer-events-none scale-95 opacity-0" : "scale-100 opacity-100"
       } ${comingSoon ? "pointer-events-none opacity-60" : ""}`}
-      style={accent ? { boxShadow: `inset 0 0 0 1px ${accent}66` } : undefined}
     >
-      {accent ? (
-        <span className="absolute inset-x-4 top-0 h-0.5 rounded-full" style={{ background: accent }} aria-hidden />
-      ) : null}
       {onDelete && !locked && !comingSoon ? (
         <button
           type="button"
@@ -130,7 +126,7 @@ export function ToolCard({
       <div className="relative mt-3.5 flex items-start gap-2.5">
         <span
           className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.04)]"
-          style={accent ? { color: accent, borderColor: `${accent}66` } : undefined}
+          style={accent ? { color: accent } : undefined}
         >
           <Icon className={`size-4 ${accent ? "" : "text-primary"}`} aria-hidden />
         </span>

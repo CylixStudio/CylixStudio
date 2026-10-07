@@ -7,7 +7,6 @@ import {
   Gauge,
   Gift,
   Star,
-  Target,
   Lock,
   Tags,
   Users,
@@ -40,7 +39,6 @@ import {
 
 import {
   ChatPreview,
-  CustomGoalPreview,
   DonationGoalPreview,
   GOAL_CARD_ACCENT,
   EmotePreview,
@@ -112,7 +110,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 const HUB_INITIAL_VISIBLE = 20;
 
-const GOAL_TOOL_IDS = new Set(["donation-goal", "follower-goal", "subscriber-goal", "custom-goal"]);
+const GOAL_TOOL_IDS = new Set(["donation-goal", "follower-goal", "subscriber-goal"]);
 const HUB_LOAD_MORE = 8;
 
 /** Hub tools that require an active Pro subscription (matches PLAN_FEATURES). */
@@ -200,18 +198,6 @@ const TOOLS: Tool[] = [
     preview: SubscriberGoalPreview,
     type: "SUBSCRIBER_GOAL",
     keywords: "subscriber goal subs count",
-    platforms: [...ALL_PLATFORMS],
-  },
-  {
-    id: "custom-goal",
-    name: "Custom Goal",
-    nameKey: "home.tool.customGoal.name",
-    descriptionKey: "home.tool.customGoal.desc",
-    categoryKey: "cat.Goals",
-    icon: Target,
-    preview: CustomGoalPreview,
-    type: "CUSTOM_GOAL",
-    keywords: "custom goal unit label",
     platforms: [...ALL_PLATFORMS],
   },
   {
@@ -336,7 +322,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "event-labels",
-    name: "Event labels",
+    name: "Latest events",
     nameKey: "home.tool.eventLabels.name",
     descriptionKey: "home.tool.eventLabels.desc",
     categoryKey: "cat.Utilities",

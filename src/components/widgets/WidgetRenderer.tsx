@@ -4,7 +4,7 @@ import type React from "react";
 import { OverlayView } from "@/components/overlay/OverlayView";
 import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { PlatformIcon, normalizePlatform } from "@/components/widgets/PlatformIcon";
-import { RoleBadgeIcon, resolveBadgeRoles } from "@/components/widgets/RoleBadgeIcon";
+import { RoleBadgeIcon, normalizeBadgeRole, resolveBadgeRoles } from "@/components/widgets/RoleBadgeIcon";
 import { StreamEventsScheduleView } from "@/components/widgets/StreamEventsScheduleCard";
 
 import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKickBadges";
@@ -13,6 +13,7 @@ import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLive
 import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
 import { EVENT_LABEL_I18N, resolveEventLabelLines } from "@/lib/eventLabels";
 import { t as translate, useLanguage } from "@/lib/i18n";
+import { lookupChannel } from "@/lib/liveCounter.functions";
 import { readOverlayViewers } from "@/lib/toolWidgets.functions";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
 import { SpinWheelView } from "@/components/widgets/SpinWheel";
@@ -21,12 +22,12 @@ import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
 import { formatDuration, type TimerFrame } from "@/lib/timer";
 import {
   describeEvent,
+  dynamicGoalSnapshot,
   parseAlertConfig,
   parseChatConfig,
   parseGoalConfig,
   parseEmoteRainConfig,
   parseEventLabelsConfig,
-  parseKicksGoalConfig,
   parseSplitGoalConfig,
   parseSpotlightConfig,
   parseTappersConfig,
@@ -122,7 +123,7 @@ export function GoalBarView({
         style={{ background: withAlpha(style.textColor, 15) }}
       >
         <div
-          className="h-full rounded-full transition-[width] duration-700 ease-out"
+          className="h-full rounded-full transition-[width] duration-600 ease-out motion-reduce:transition-none"
           style={{
             width: `${percent}%`,
             background: `linear-gradient(90deg, ${style.accentColor}, ${withAlpha(style.accentColor, 55)})`,
@@ -337,6 +338,156 @@ function isPlatformMark(type: string | null | undefined): boolean {
   return PLATFORM_MARKS.some((mark) => key === mark || key === `${mark}_logo`);
 }
 
+const CHAT_LEAVE_MS = 260;
+
+function chatInitial(author: string) {
+  const first = [...author.trim()][0];
+  return first || "?";
+}
+
+function shortRoleLabel(type: string | null | undefined): "Mod" | "VIP" | null {
+  const role = normalizeBadgeRole(String(type ?? ""));
+  if (role === "moderator") return "Mod";
+  if (role === "vip") return "VIP";
+  return null;
+}
+
+function ChatBadgePill({ label }: { label: "Mod" | "VIP" }) {
+  const vip = label === "VIP";
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        height: 14,
+        paddingInline: 4,
+        borderRadius: 4,
+        fontSize: 9,
+        fontWeight: 800,
+        letterSpacing: "0.04em",
+        lineHeight: 1,
+        textTransform: "uppercase",
+        color: vip ? "#F5C518" : "#7DD3FC",
+        background: vip ? "rgba(245,197,24,0.16)" : "rgba(125,211,252,0.16)",
+        flexShrink: 0,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** Static rows so an empty customize preview still reads as chat. */
+const SAMPLE_CHAT: ChatMessage[] = [
+  {
+    id: "sample-mod",
+    platform: "KICK",
+    author: "مشرف",
+    color: "#86EFAC",
+    badges: ["moderator"],
+    text: "يا جماعة التفاعل حلو اليوم",
+    at: 3,
+  },
+  {
+    id: "sample-vip",
+    platform: "TWITCH",
+    author: "Nova",
+    color: "#F0ABFC",
+    badges: ["vip"],
+    text: "that clutch was clean",
+    at: 2,
+  },
+  {
+    id: "sample-viewer",
+    platform: "YOUTUBE" as ChatMessage["platform"],
+    author: "ليان",
+    color: "#FCA5A5",
+    badges: [],
+    text: "مرحبا من البث",
+    at: 1,
+  },
+];
+
+function readableChatMessage(message: ChatMessage | null | undefined, index: number): ChatMessage | null {
+  if (!message || typeof message !== "object") return null;
+  const text = typeof message.text === "string" ? message.text : "";
+  if (!text.trim()) return null;
+  const author =
+    typeof message.author === "string" && message.author.trim().length > 0 ? message.author.trim() : "viewer";
+  const platform =
+    typeof message.platform === "string" && message.platform.trim().length > 0 ? message.platform : "TEST";
+  const badges = Array.isArray(message.badges)
+    ? message.badges.filter((badge): badge is string => typeof badge === "string" && badge.trim().length > 0)
+    : [];
+  const id = typeof message.id === "string" && message.id.trim().length > 0 ? message.id : `chat-${index}-${author}`;
+  const readable: ChatMessage = {
+    id,
+    platform: platform as ChatMessage["platform"],
+    author,
+    color: typeof message.color === "string" ? message.color : null,
+    badges,
+    text,
+    at: typeof message.at === "number" && Number.isFinite(message.at) ? message.at : 0,
+    isReply: message.isReply === true,
+    replyQuote: typeof message.replyQuote === "string" ? message.replyQuote : null,
+  };
+  if (Array.isArray(message.badgeList)) readable.badgeList = message.badgeList;
+  return readable;
+}
+
+/** Keeps trimmed rows mounted long enough to play the leave animation. */
+function useChatDepartures(messages: ChatMessage[]) {
+  const [leaving, setLeaving] = useState<ChatMessage[]>([]);
+  const previous = useRef<ChatMessage[]>([]);
+  const timers = useRef(new Map<string, number>());
+  const live = useRef(messages);
+  live.current = messages;
+  const signature = messages.map((message) => message?.id ?? "").join("\0");
+
+  useEffect(() => {
+    const current = live.current;
+    const nextIds = new Set(current.map((message) => message?.id).filter((id): id is string => Boolean(id)));
+    for (const id of nextIds) {
+      const handle = timers.current.get(id);
+      if (!handle) continue;
+      window.clearTimeout(handle);
+      timers.current.delete(id);
+    }
+    const departed = previous.current.filter((message) => message?.id && !nextIds.has(message.id));
+    previous.current = current;
+    if (departed.length === 0) {
+      setLeaving((rows) => {
+        const next = rows.filter((message) => !nextIds.has(message.id));
+        return next.length === rows.length ? rows : next;
+      });
+      return;
+    }
+    setLeaving((rows) => {
+      const kept = rows.filter((message) => !nextIds.has(message.id));
+      const seen = new Set(kept.map((message) => message.id));
+      return [...kept, ...departed.filter((message) => message.id && !seen.has(message.id))];
+    });
+    for (const message of departed) {
+      if (!message.id) continue;
+      const handle = window.setTimeout(() => {
+        timers.current.delete(message.id);
+        setLeaving((rows) => rows.filter((row) => row.id !== message.id));
+      }, CHAT_LEAVE_MS);
+      timers.current.set(message.id, handle);
+    }
+  }, [signature]);
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const handle of pending.values()) window.clearTimeout(handle);
+      pending.clear();
+    };
+  }, []);
+
+  return leaving;
+}
+
 
 /**
  * Chat Box renders viewer text messages ONLY. Stream activity (follows, subs,
@@ -347,12 +498,15 @@ export function ChatBoxView({
   config,
   chat = null,
   testMessages = [],
+  demo = false,
 }: {
   config: unknown;
   /** Public chat coordinates (Twitch login / Kick chatroom id). */
   chat?: ChatSources | null;
   /** Chat lines pushed by the dashboard test-event control. */
   testMessages?: ChatMessage[];
+  /** Empty customize preview shows sample rows instead of a blank line. */
+  demo?: boolean;
 }) {
   const style = parseChatConfig(config);
   const skin = widgetThemeSkin(parseWidgetThemeId(config));
@@ -370,23 +524,27 @@ export function ChatBoxView({
     ...(Array.isArray(testMessages) ? testMessages : []),
     ...(Array.isArray(messages) ? messages : []),
   ]
-    .filter((message) => message.text.trim().length > 0)
+    .map((message, index) => readableChatMessage(message, index))
+    .filter((message): message is ChatMessage => message != null)
     .sort((a, b) => b.at - a.at)
     .slice(0, style.maxMessages);
   const chatExpiry = useReplyAlertExpiry(chatFeed, {
-    getId: (message) => message.id,
-    isReply: (message) => message.isReply === true,
-    appearanceMs: (message) => message.at,
+    getId: (message) => message?.id ?? "",
+    isReply: (message) => message?.isReply === true,
+    appearanceMs: (message) => message?.at ?? null,
   });
   const visibleChat = chatExpiry.items;
+  const leavingChat = useChatDepartures(visibleChat);
+  const previewSamples = demo && visibleChat.length === 0;
+  const shownChat = previewSamples ? SAMPLE_CHAT : visibleChat;
 
   const containerClass =
     layout === "glass"
       ? "flex w-full min-w-[380px] max-w-[520px] flex-col overflow-hidden rounded-xl bg-slate-900/70 p-5 backdrop-blur-lg border border-white/10 shadow-2xl"
       : "flex w-full min-w-[380px] max-w-[520px] flex-col items-start overflow-visible rounded-2xl bg-transparent p-0";
 
-  const rowClassForLayout = (messageLayout: ChatLayout) => {
-    const base = "overlay-anim-fade items-baseline";
+  const rowClassForLayout = (messageLayout: ChatLayout, motion: string) => {
+    const base = `${motion} items-baseline`;
     switch (messageLayout) {
       case "bubble":
         return `${base} flex w-full flex-wrap gap-1.5 rounded-2xl rounded-ss-sm bg-slate-800/90 p-3 border border-slate-700/50 mb-2`;
@@ -448,87 +606,152 @@ export function ChatBoxView({
     minWidth: 0,
   };
 
-  const renderMessage = (message: ChatMessage) => {
+  const renderMessage = (message: ChatMessage, leaving = false) => {
+    const author =
+      typeof message?.author === "string" && message.author.trim().length > 0 ? message.author.trim() : "viewer";
+    const text = typeof message?.text === "string" ? message.text : "";
+    const platform = typeof message?.platform === "string" ? message.platform : "";
+    const platformKey = platform ? normalizePlatform(platform) : null;
+    const badges = Array.isArray(message?.badges)
+      ? message.badges.filter((role): role is string => typeof role === "string")
+      : [];
+    const motion = leaving ? "overlay-anim-fade-out" : "overlay-anim-fade";
+
     const nameBlock = (
-      <span dir="auto" style={{ color: message.color ?? accent, fontWeight: 700, whiteSpace: "nowrap", ...skin.text }}>
-        {message.author}
+      <span dir="auto" style={{ color: message?.color ?? accent, fontWeight: 700, whiteSpace: "nowrap", ...skin.text }}>
+        {author}
       </span>
     );
 
-    const platformBlock = style.showPlatform ? (
-      normalizePlatform(message.platform) ? (
-        <PlatformIcon platform={message.platform} size={18} />
-      ) : (
-        <span
-          style={{
-            color: accent,
-            fontWeight: 700,
-            fontSize: `${Math.max(10, Math.round(style.fontSize * 0.6))}px`,
-            letterSpacing: "0.12em",
-            ...skin.text,
-          }}
-        >
-          {message.platform}
-        </span>
-      )
-    ) : null;
+    const initialNode = (
+      <span
+        aria-hidden
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 999,
+          display: "inline-grid",
+          placeItems: "center",
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: 1,
+          background: "rgba(255,255,255,0.1)",
+          color: message?.color ?? accent,
+          flexShrink: 0,
+        }}
+      >
+        {chatInitial(author)}
+      </span>
+    );
 
-    const isKick = normalizePlatform(message.platform) === "KICK";
+    const platformBlock =
+      style.showPlatform && platform
+        ? platformKey
+          ? <PlatformIcon platform={platform} size={16} />
+          : (
+            <span
+              style={{
+                color: accent,
+                fontWeight: 700,
+                fontSize: `${Math.max(10, Math.round(style.fontSize * 0.6))}px`,
+                letterSpacing: "0.12em",
+                ...skin.text,
+              }}
+            >
+              {platform}
+            </span>
+          )
+        : null;
+
+    const isKick = platformKey === "KICK";
     const kickBadges = (
       isKick
-        ? (message.badgeList ?? []).length > 0
-          ? (message.badgeList ?? [])
-          : message.badges.map((type) => ({ type }) as KickBadge)
+        ? (message?.badgeList ?? []).length > 0
+          ? (message?.badgeList ?? [])
+          : badges.map((type) => ({ type }) as KickBadge)
         : []
-    ).filter((badge) => style.showPlatform || !isPlatformMark(badge.type));
+    ).filter((badge) => badge && (style.showPlatform || !isPlatformMark(badge?.type)));
 
+    const roleKeys = badges.filter((role) => style.showPlatform || !isPlatformMark(role));
+    const pillLabels: Array<"Mod" | "VIP"> = [];
+    for (const role of roleKeys) {
+      const label = shortRoleLabel(role);
+      if (label && !pillLabels.includes(label)) pillLabels.push(label);
+    }
+    const pillNodes = style.showBadges
+      ? pillLabels.map((label) => <ChatBadgePill key={label} label={label} />)
+      : [];
 
-    // Kick: always the original CDN artwork — payload URL first, never a drawn shape.
-    const badgeNodes: React.ReactNode[] = !style.showBadges
+    // Kick: payload artwork first. Mod / VIP stay as short labels beside the name.
+    const artNodes: React.ReactNode[] = !style.showBadges
       ? []
       : isKick
         ? kickBadges.map((badge, index) => {
+            if (shortRoleLabel(badge?.type)) return null;
+            const type = typeof badge?.type === "string" ? badge.type : "";
             const url =
-              badge.imageUrl ?? resolveKickBadge(badge) ?? kickGlobalBadgeUrl(badge.type);
-            if (!url) return null;
-            const label = badge.text || badge.type;
+              badge?.imageUrl ??
+              (type ? resolveKickBadge({ ...badge, type }) : null) ??
+              (type ? kickGlobalBadgeUrl(type) : null);
+            const label = badge?.text || type || "badge";
+            const role = type ? normalizeBadgeRole(type) : null;
+            if (!url) {
+              if (!role) return null;
+              return (
+                <RoleBadgeIcon
+                  key={`${type || "badge"}-${index}`}
+                  role={role}
+                  platform={platform || "KICK"}
+                  size={18}
+                  style={{ marginInlineEnd: 4 }}
+                />
+              );
+            }
             return (
               <BadgeImg
-                key={`${badge.type}-${index}`}
+                key={`${type || "badge"}-${index}`}
                 src={url}
                 label={label}
                 pixelated
-                size={22}
-                marginRight={5}
+                size={18}
+                marginRight={4}
+                fallback={
+                  role ? (
+                    <RoleBadgeIcon
+                      role={role}
+                      platform={platform || "KICK"}
+                      size={18}
+                      style={{ marginInlineEnd: 4 }}
+                    />
+                  ) : null
+                }
               />
             );
           })
         : resolveBadgeRoles(
-            message.badges.filter((role) => style.showPlatform || !isPlatformMark(role)),
+            roleKeys.filter((role) => !shortRoleLabel(role)),
             3,
           ).map((role) => (
-
             <RoleBadgeIcon
               key={role}
               role={role}
-              platform={message.platform}
-              size={22}
-              style={{ marginInlineEnd: 5 }}
+              platform={platform || "TWITCH"}
+              size={18}
+              style={{ marginInlineEnd: 4 }}
               imageUrl={
-                normalizePlatform(message.platform) === "TWITCH"
-                  ? (twitchBadgeUrls[TWITCH_BADGE_SET[role] ?? role] ?? null)
-                  : null
+                platformKey === "TWITCH" ? (twitchBadgeUrls?.[TWITCH_BADGE_SET[role] ?? role] ?? null) : null
               }
             />
           ));
 
+    const badgeNodes = [...pillNodes, ...artNodes];
     const badgesBlock =
       badgeNodes.filter(Boolean).length > 0 ? (
         <span
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 0,
+            gap: 4,
             flexShrink: 0,
             verticalAlign: "middle",
           }}
@@ -537,14 +760,22 @@ export function ChatBoxView({
         </span>
       ) : null;
 
-
+    const identity = (
+      <span style={islandNameStyle}>
+        {initialNode}
+        {nameBlock}
+        {badgesBlock}
+        {platformBlock}
+        <span style={{ color: style.textColor, opacity: 0.7, ...skin.text }}>:</span>
+      </span>
+    );
 
     const replyWrap = (node: React.ReactNode) => (
       <ReplyAlertFrame
-        key={message.id}
-        active={message.isReply === true}
-        fading={chatExpiry.fadingIds.has(message.id)}
-        quote={message.replyQuote}
+        key={message?.id ?? author}
+        active={message?.isReply === true}
+        fading={chatExpiry.fadingIds.has(message?.id ?? "")}
+        quote={typeof message?.replyQuote === "string" ? message.replyQuote : null}
       >
         {node}
       </ReplyAlertFrame>
@@ -552,38 +783,30 @@ export function ChatBoxView({
 
     if (layout === "island") {
       return replyWrap(
-        <div className="overlay-anim-fade" style={islandCapsuleStyle}>
+        <div dir="auto" className={motion} style={islandCapsuleStyle}>
           <span style={{ display: "inline", minWidth: 0 }}>
-            <span style={islandNameStyle}>
-              {platformBlock}
-              {badgesBlock}
-              {nameBlock}
-              <span style={{ color: style.textColor, opacity: 0.7, ...skin.text }}>:</span>
-            </span>
-            <span dir="auto" style={islandTextStyle}>{renderChatText(message.text)}</span>
+            {identity}
+            <span dir="auto" style={islandTextStyle}>{renderChatText(text)}</span>
           </span>
         </div>,
       );
     }
 
     return replyWrap(
-      <div className={rowClassForLayout(layout)}>
+      <div dir="auto" className={rowClassForLayout(layout, motion)}>
         <span
           className={`message-line block w-full ${layout === "transparent" ? "px-2 py-1" : ""}`}
         >
-          <span className="inline-flex max-w-full items-center gap-1" style={{ flexShrink: 0 }}>
-            {platformBlock}
-            {badgesBlock}
-            {nameBlock}
-            <span style={{ color: style.textColor, opacity: 0.7, ...skin.text }}>:</span>
-          </span>
+          {identity}
           <span className="ms-1.5" dir="auto" style={{ ...textStyle, ...transparentTextStyle }}>
-            {renderChatText(message.text)}
+            {renderChatText(text)}
           </span>
         </span>
       </div>,
     );
   };
+
+  const quiet = shownChat.length === 0 && (previewSamples || leavingChat.length === 0);
 
   return (
     <div
@@ -596,9 +819,9 @@ export function ChatBoxView({
         fontSize: `${style.fontSize}px`,
       }}
     >
-      {visibleChat.length > 0 ? visibleChat.map((message) => renderMessage(message)) : null}
-
-      {visibleChat.length === 0 ? <span style={{ opacity: 0.6 }}>Waiting for chat…</span> : null}
+      {shownChat.map((message) => renderMessage(message, false))}
+      {previewSamples ? null : leavingChat.map((message) => renderMessage(message, true))}
+      {quiet ? <span style={{ opacity: 0.6 }}>Waiting for chat…</span> : null}
     </div>
   );
 }
@@ -1417,6 +1640,17 @@ function TapperAvatar({
 }
 
 
+const VIEWER_POLL_MS = 25_000;
+
+function viewerDisplayCount(
+  metric: "viewers" | "followers",
+  isLive: boolean,
+  raw: number | null,
+): number {
+  if (metric === "viewers" && !isLive) return raw ?? 0;
+  return raw ?? 0;
+}
+
 function ViewerCounterView({
   config,
   publicToken,
@@ -1430,23 +1664,51 @@ function ViewerCounterView({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!publicToken || !parsed.channel || parsed.platform === "TIKTOK") {
+    if (parsed.platform === "TIKTOK") {
       setCount(null);
-      setError(
-        parsed.platform === "TIKTOK"
-          ? "TikTok live counters are Coming Soon until TikTok OAuth is ready."
-          : null,
-      );
+      setError("TikTok live counters are Coming Soon until TikTok OAuth is ready.");
       return;
     }
+    if (!parsed.channel && !publicToken) {
+      setCount(null);
+      setError(null);
+      return;
+    }
+
+    const onOverlay =
+      typeof window !== "undefined" && window.location.pathname.startsWith("/overlay/");
     let cancelled = false;
+
+    const applySnapshot = (raw: number | null, isLive: boolean, note: string | null) => {
+      setCount(viewerDisplayCount(parsed.metric, isLive, raw));
+      setError(note);
+    };
+
     const load = async () => {
+      if (!onOverlay && parsed.channel) {
+        try {
+          const snapshot = await lookupChannel({
+            data: { platform: parsed.platform, username: parsed.channel },
+          });
+          if (cancelled) return;
+          const raw = parsed.metric === "followers" ? snapshot.followers : snapshot.viewers;
+          applySnapshot(raw, snapshot.isLive, snapshot.note);
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          if (!publicToken) {
+            setCount(null);
+            setError(err instanceof Error ? err.message : "lookup_failed");
+            return;
+          }
+        }
+      }
+      if (!publicToken) return;
       try {
         const result = await readOverlayViewers({ data: { publicToken } });
         if (cancelled) return;
         if (result.ok) {
-          setCount(result.count);
-          setError(result.note);
+          applySnapshot(result.count, result.isLive, result.note);
         } else {
           setCount(null);
           setError(result.message === "channel_missing" ? null : result.message);
@@ -1457,8 +1719,9 @@ function ViewerCounterView({
         setError(err instanceof Error ? err.message : "lookup_failed");
       }
     };
+
     void load();
-    const timer = window.setInterval(() => void load(), 20_000);
+    const timer = window.setInterval(() => void load(), VIEWER_POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -1500,6 +1763,35 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
   const parsed = parseEventLabelsConfig(config);
   const lang = parsed.language ?? appLang;
   const lines = resolveEventLabelLines(events, parsed.labels);
+  const lineKey = lines.map((line) => `${line.option}:${line.username}:${line.amount ?? ""}`).join("|");
+  const [slot, setSlot] = useState(0);
+  const [shown, setShown] = useState(true);
+
+  useEffect(() => {
+    setSlot(0);
+    setShown(true);
+  }, [lineKey]);
+
+  useEffect(() => {
+    if (lines.length <= 1) return;
+    const reduced =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const fadeMs = reduced ? 0 : 400;
+    let fadeTimer = 0;
+    const holdTimer = window.setTimeout(() => {
+      setShown(false);
+      fadeTimer = window.setTimeout(() => {
+        setSlot((current) => (current + 1) % lines.length);
+        setShown(true);
+      }, fadeMs);
+    }, 3500);
+    return () => {
+      window.clearTimeout(holdTimer);
+      window.clearTimeout(fadeTimer);
+    };
+  }, [slot, lines.length, lineKey]);
+
+  const line = lines.length > 0 ? lines[slot % lines.length] : null;
   return (
     <div
       className="flex min-w-[240px] flex-col gap-2 rounded-2xl px-6 py-5"
@@ -1513,11 +1805,14 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
       <span style={{ letterSpacing: "0.18em", fontSize: 12, fontWeight: 700, color: parsed.accentColor }}>
         {parsed.title}
       </span>
-      {lines.map((line) => (
+      {line ? (
         <span
-          key={line.option}
-          className="rounded-xl border px-3 py-1.5"
-          style={{ borderColor: withAlpha(parsed.accentColor, 45), fontSize: parsed.fontSize * 0.55 }}
+          className="rounded-xl border px-3 py-1.5 transition-opacity duration-[400ms] ease-out motion-reduce:transition-none"
+          style={{
+            borderColor: withAlpha(parsed.accentColor, 45),
+            fontSize: parsed.fontSize * 0.55,
+            opacity: shown ? 1 : 0,
+          }}
         >
           {translate(EVENT_LABEL_I18N[line.option], undefined, lang)}
           <span dir="ltr">
@@ -1526,7 +1821,7 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
             {line.amount ? ` · ${line.amount}` : ""}
           </span>
         </span>
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -1594,25 +1889,20 @@ export function WidgetRenderer({
   switch (type) {
     case "GOAL_BAR":
       return <GoalBarView config={config} goal={goal} />;
-    case "KICKS_GOAL": {
-      const kicks = parseKicksGoalConfig(config);
-      return (
-        <GoalBarView
-          config={config}
-          goal={{ title: kicks.title, unit: "Kicks", target: kicks.target, current: kicks.current }}
-        />
-      );
-    }
+    case "KICKS_GOAL":
     case "DONATION_GOAL":
     case "FOLLOWER_GOAL":
-    case "SUBSCRIBER_GOAL":
+    case "SUBSCRIBER_GOAL": {
+      const local = dynamicGoalSnapshot(type, config, events);
+      const shown = goal ?? local;
+      return shown ? <GoalBarView config={config} goal={shown} /> : null;
+    }
     case "CUSTOM_GOAL": {
       const parsed = parseSplitGoalConfig(type, config);
-      const unit = type === "DONATION_GOAL" || type === "CUSTOM_GOAL" ? parsed.unit : "";
       return (
         <GoalBarView
           config={config}
-          goal={{ title: parsed.title, unit, target: parsed.target, current: parsed.current }}
+          goal={{ title: parsed.title, unit: parsed.unit, target: parsed.target, current: parsed.current }}
         />
       );
     }
@@ -1622,7 +1912,7 @@ export function WidgetRenderer({
       return <EventLabelsView config={config} events={events} />;
     case "CHAT_BOX":
       return (
-        <ChatBoxView config={config} chat={chat} testMessages={testMessages} />
+        <ChatBoxView config={config} chat={chat} testMessages={testMessages} demo={demo} />
       );
     case "SPIN_WHEEL":
       return <SpinWheelView config={config} spin={spin} onSpin={onSpin} spinning={spinning} />;

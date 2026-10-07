@@ -300,10 +300,15 @@ body.overlay-transparent {
 .overlay-anim-flash { animation: overlay-flash 0.7s ease-out; }
 .overlay-anim-bounce { animation: overlay-bounce 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes overlay-chat-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
-.overlay-anim-fade { animation: overlay-chat-in 0.28s ease-out; }
+@keyframes overlay-chat-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-8px); }
+}
+.overlay-anim-fade { animation: overlay-chat-in 260ms ease-out both; }
+.overlay-anim-fade-out { animation: overlay-chat-out 260ms ease-in forwards; pointer-events: none; }
 .reply-alert { transition: opacity 500ms ease; }
 .reply-alert[data-fading="true"] { opacity: 0; }
 .overlay-float { animation: overlay-float-up 1.6s ease-out forwards; }
@@ -737,6 +742,8 @@ footer.saudi-identity-footer * {
   .hub-emote-drop { animation: none; opacity: 0.88; transform: translateY(2.2rem); }
   .giveaway-entry-slot, .giveaway-entry, .giveaway-winner-reveal { animation: none; opacity: 1; transform: none; filter: none; }
   .giveaway-entry-slot { transform: translate(-50%, -50%); }
+  .overlay-anim-fade,
+  .overlay-anim-fade-out { animation: none; opacity: 1; transform: none; }
   .hub-chat-line,
   .hub-timer-chip,
   .hub-media-art,

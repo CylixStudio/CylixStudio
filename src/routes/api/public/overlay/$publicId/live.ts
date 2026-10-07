@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { snapshotFromRow, toFrame } from "@/lib/timer";
 import {
+  dynamicGoalSnapshot,
+  isDynamicGoalWidget,
   parseSpinState,
   parseSpotlightState,
   parseStreamEventsScheduleState,
@@ -67,6 +69,24 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
           if (row) frame = toFrame(snapshotFromRow(row, maxTimeSeconds), Date.now());
         }
 
+        let events: OverlayEvent[] = [];
+        const dynamicGoal = isDynamicGoalWidget(type);
+        if (
+          type === "ALERT_BOX" ||
+          type === "CHAT_BOX" ||
+          type === "EMOTE_RAIN" ||
+          type === "SUBATHON_TIMER" ||
+          type === "EVENT_LABELS" ||
+          dynamicGoal
+        ) {
+          const { listOverlayEvents } = await import("@/lib/targets.server");
+          events = await listOverlayEvents(supabase, {
+            userId: widget.user_id,
+            subathonId,
+            limit: dynamicGoal ? 400 : type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5,
+          });
+        }
+
         let goal = null;
         if (type === "GOAL_BAR") {
           const { data } = await supabase
@@ -82,22 +102,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
               current: Number(data.current_value),
             };
           }
-        }
-
-        let events: OverlayEvent[] = [];
-        if (
-          type === "ALERT_BOX" ||
-          type === "CHAT_BOX" ||
-          type === "EMOTE_RAIN" ||
-          type === "SUBATHON_TIMER" ||
-          type === "EVENT_LABELS"
-        ) {
-          const { listOverlayEvents } = await import("@/lib/targets.server");
-          events = await listOverlayEvents(supabase, {
-            userId: widget.user_id,
-            subathonId,
-            limit: type === "CHAT_BOX" ? 25 : type === "EVENT_LABELS" ? 50 : 5,
-          });
+        } else if (dynamicGoal) {
+          goal = dynamicGoalSnapshot(type, widget.config, events);
         }
 
         let tappers = null;
