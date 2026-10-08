@@ -1,7 +1,6 @@
 import { chatMention } from "@/lib/commandTemplate";
 import { captureKickClip, createNativeKickClip, fetchKickChannel, refreshKickBuffer } from "@/lib/kickClip.server";
 import { clipErrorAfterAttempt, shouldAttemptClip } from "@/lib/kickClipLive";
-import { publicSiteUrl } from "@/lib/siteUrl.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 
@@ -115,12 +114,6 @@ type CreatedClip = {
   duration: number;
 };
 
-/** Base URL used for the public, playable clip page linked in chat. */
-function siteOrigin(): string {
-  return publicSiteUrl();
-}
-
-
 /** Resolves the channel slug stored with the Kick connection. */
 async function kickSlug(userId: string): Promise<string | null> {
   const { data } = await supabaseAdmin
@@ -171,13 +164,19 @@ async function createKickClip(
   // A null livestream or a local is_live false does not skip the clip call.
   if (!shouldAttemptClip(liveState)) return { error: "stream_offline" };
 
-  const native = await createNativeKickClip({
-    token,
-    slug: channel?.slug ?? slug,
-    duration,
-    livestreamSlug: channel?.livestreamSlug ?? null,
-    vodId: channel?.vodId ?? null,
-  });
+  let native: Awaited<ReturnType<typeof createNativeKickClip>>;
+  try {
+    native = await createNativeKickClip({
+      token,
+      slug: channel?.slug ?? slug,
+      duration,
+      livestreamSlug: channel?.livestreamSlug ?? null,
+      vodId: channel?.vodId ?? null,
+    });
+  } catch (error) {
+    console.error("[clip-command] kick clip create threw", error);
+    native = { error: "clip_api_failed" };
+  }
   if ("url" in native) {
     return {
       externalId: native.externalId,
@@ -188,21 +187,31 @@ async function createKickClip(
     };
   }
 
-  if (liveState !== false && channel?.playbackUrl) {
-    console.log("[clip-command] capturing clip", { slug, duration, liveState });
-    const captured = await captureKickClip(userId, slug, duration);
-    if (!("error" in captured)) {
-      return {
-        externalId: captured.path,
-        url: captured.url,
-        title: channel.title ?? `Clip from ${slug}`,
-        thumbnail: channel.thumbnail,
-        duration: captured.seconds || duration,
-      };
+  // Rate limit is not an offline stream. HLS runs after the single backoff,
+  // and also after any other non-success clip status that is not an agreed offline.
+  const agreedOffline = native.error === "stream_offline" && liveState === false;
+  if (!agreedOffline && channel?.playbackUrl) {
+    console.log("[clip-command] capturing clip", { slug, duration, liveState, status: native.error });
+    try {
+      const captured = await captureKickClip(userId, slug, duration);
+      if (!("error" in captured)) {
+        return {
+          externalId: captured.path,
+          url: captured.url,
+          title: channel.title ?? `Clip from ${slug}`,
+          thumbnail: channel.thumbnail,
+          duration: captured.seconds || duration,
+        };
+      }
+      if (native.rateLimited) return { error: "clip_api_429" };
+      return { error: clipErrorAfterAttempt(liveState, captured.error) };
+    } catch (error) {
+      console.error("[clip-command] capture threw", error);
+      return { error: native.rateLimited ? "clip_api_429" : "capture_failed" };
     }
-    return { error: clipErrorAfterAttempt(liveState, captured.error) };
   }
 
+  if (native.rateLimited) return { error: "clip_api_429" };
   return { error: clipErrorAfterAttempt(liveState, native.error) };
 }
 
@@ -280,10 +289,8 @@ export async function handleClipCommand(input: {
     .select("id")
     .maybeSingle();
 
-  // Kick's own clip page is the link viewers should get. Local captures still
-  // use the playable site page instead of the raw MPEG-TS file.
-  const kickPage = /^https:\/\/(www\.)?kick\.com\//i.test(created.url);
-  const shareUrl = kickPage ? created.url : row?.id ? `${siteOrigin()}/clip/${row.id}` : created.url;
+  // Kick page when Kick returned an id. HLS uses the signed capture URL.
+  const shareUrl = created.url;
   if (row?.id) await supabaseAdmin.from("clips").update({ share_url: shareUrl }).eq("id", row.id);
 
   const reply = (settings.response || CLIP_DEFAULTS.response)

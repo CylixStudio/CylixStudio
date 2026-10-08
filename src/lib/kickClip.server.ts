@@ -1,4 +1,4 @@
-import { liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
+import { clipHttpNext, liveStateFromLivestream, rateLimitBackoffMs, type KickLivestreamShape } from "@/lib/kickClipLive";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 /**
@@ -175,9 +175,9 @@ function responseSaysOffline(status: number, body: string): boolean {
   return /offline|not[_\s-]?live|no active (live)?stream|livestream not found|channel is not live/i.test(body);
 }
 
-type KickHttpResult = { status: number; json: unknown; text: string };
+type KickHttpResult = { status: number; json: unknown; text: string; retryAfter: string | null };
 
-/** One POST. A 403 is not retried with another user-agent, and 404/405 are not retried at all. */
+/** One POST. A 403 is not retried with another user-agent, and 404/405/429 are not repeated. */
 async function postKickOnce(url: string, token: string, body: Record<string, unknown>): Promise<KickHttpResult> {
   const res = await fetch(url, {
     method: "POST",
@@ -198,7 +198,16 @@ async function postKickOnce(url: string, token: string, body: Record<string, unk
       json = null;
     }
   }
-  return { status: res.status, json, text };
+  return { status: res.status, json, text, retryAfter: res.headers.get("retry-after") };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** One backoff after 429. The caller must not POST that same URL again. */
+async function waitOutRateLimit(result: KickHttpResult): Promise<void> {
+  const waitMs = rateLimitBackoffMs(result.retryAfter);
+  console.warn("[clip-capture] kick clip rate limited", { status: result.status, waitMs });
+  await sleep(waitMs);
 }
 
 function clipIdFrom(payload: unknown): string | null {
@@ -227,51 +236,68 @@ function publishedClip(slug: string, id: string, payload: unknown, duration: num
  * Does not log the token. Does not POST the channel clip list (GET/HEAD only)
  * or the removed `/clips/init` path.
  */
+export type NativeKickClipResult = NativeKickClip | { error: string; rateLimited?: boolean };
+
 export async function createNativeKickClip(input: {
   token: string;
   slug: string;
   duration: number;
   livestreamSlug: string | null;
   vodId: string | null;
-}): Promise<NativeKickClip | { error: string }> {
+}): Promise<NativeKickClipResult> {
   const slug = input.slug.trim().replace(/^@+/, "").toLowerCase();
   const { token, duration, livestreamSlug, vodId } = input;
   const title = "Clip";
   const finalizeBody = { duration, start_time: 0, title };
   let lastError = "clip_api_unavailable";
 
-  const finish = async (opened: KickHttpResult, finalizeUrl: (id: string) => string): Promise<NativeKickClip | { error: string } | null> => {
-    if (opened.status === 404 || opened.status === 405) return null;
+  const finish = async (
+    opened: KickHttpResult,
+    finalizeUrl: (id: string) => string,
+  ): Promise<NativeKickClipResult | null> => {
+    const openedNext = clipHttpNext(opened.status);
+    if (openedNext === "wait-hls") {
+      await waitOutRateLimit(opened);
+      return { error: "clip_api_429", rateLimited: true };
+    }
+    if (openedNext === "next") return null;
     if (responseSaysOffline(opened.status, opened.text)) return { error: "stream_offline" };
-    if (opened.status < 200 || opened.status >= 300) return { error: `clip_api_${opened.status || "failed"}` };
+    if (openedNext === "hls") {
+      console.warn("[clip-capture] kick clip create declined", { status: opened.status });
+      return { error: `clip_api_${opened.status || "failed"}` };
+    }
     const id = clipIdFrom(opened.json);
     if (!id) return { error: "clip_api_unparsed" };
     const finalized = await postKickOnce(finalizeUrl(id), token, finalizeBody);
+    const finalizedNext = clipHttpNext(finalized.status);
+    if (finalizedNext === "wait-hls") {
+      await waitOutRateLimit(finalized);
+      return { error: "clip_api_429", rateLimited: true };
+    }
     if (finalized.status >= 200 && finalized.status < 300) {
       console.log("[clip-capture] kick clip finalized", { slug, status: finalized.status });
       return publishedClip(slug, clipIdFrom(finalized.json) ?? id, finalized.json, duration);
     }
-    if (finalized.status === 404 || finalized.status === 405) {
-      console.warn("[clip-capture] kick clip finalize declined", { slug, status: finalized.status });
+    if (finalizedNext === "next") {
+      console.warn("[clip-capture] kick clip finalize declined", { status: finalized.status });
       return publishedClip(slug, id, opened.json, duration);
     }
     if (responseSaysOffline(finalized.status, finalized.text)) return { error: "stream_offline" };
+    console.warn("[clip-capture] kick clip finalize declined", { status: finalized.status });
     return { error: `clip_api_${finalized.status || "failed"}` };
   };
-
-  const moveOn = (status: number) => status === 404 || status === 405 || status === 401 || status === 403;
 
   try {
     if (vodId) {
       const opened = await postKickOnce("https://web.kick.com/api/v1/clips", token, { video_id: vodId });
       if (opened.status < 200 || opened.status >= 300) {
-        console.warn("[clip-capture] kick clip create", { slug, status: opened.status, via: "web" });
+        console.warn("[clip-capture] kick clip create", { status: opened.status, via: "web" });
       }
       const created = await finish(opened, (id) => `https://web.kick.com/api/v1/clips/${encodeURIComponent(id)}/finalize`);
       if (created && "url" in created) return created;
-      if (created?.error === "stream_offline") return created;
+      if (created?.rateLimited || created?.error === "stream_offline") return created;
+      if (created && clipHttpNext(opened.status) === "hls") return created;
       if (created) lastError = created.error;
-      if (created && !moveOn(opened.status)) return created;
     }
 
     if (livestreamSlug) {
@@ -281,7 +307,7 @@ export async function createNativeKickClip(input: {
         { duration },
       );
       if (opened.status < 200 || opened.status >= 300) {
-        console.warn("[clip-capture] kick clip create", { slug, status: opened.status, via: "internal" });
+        console.warn("[clip-capture] kick clip create", { status: opened.status, via: "internal" });
       }
       const created = await finish(
         opened,
@@ -474,8 +500,6 @@ function tail(segments: Segment[], duration: number): Segment[] {
   }
   return picked;
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Cuts the last `duration` seconds out of the rolling buffer, topping it up
