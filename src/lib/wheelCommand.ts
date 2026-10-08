@@ -1,8 +1,8 @@
 import { pickWeightedPrize, type SpinPrize } from "@/lib/widgets";
 
-/** `!wheel` / `wheel` / `!spin` / `spin`, case-insensitive. */
+/** `!wheel` / `wheel` / `!spin` / `spin` / `!عجلة`, case-insensitive. */
 export function matchWheelCommand(text: string): boolean {
-  return /^!?(?:wheel|spin)$/i.test(text.trim());
+  return /^!?(?:wheel|spin|عجلة)$/i.test(text.trim());
 }
 
 export type WheelMemberSnapshot = {

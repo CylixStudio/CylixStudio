@@ -138,6 +138,17 @@ function extractKickChat(body: KickPayload): KickChatFields {
   };
 }
 
+function viewerChatMessageId(body: KickPayload): string | null {
+  const sources = [body, asRecord(body["data"]), asRecord(body["payload"]), asRecord(body["message"])].filter(
+    (source): source is KickPayload => source != null,
+  );
+  for (const source of sources) {
+    const id = firstString(source, [["message_id"], ["id"]]);
+    if (id && id.length >= 8 && id.length <= 80) return id;
+  }
+  return null;
+}
+
 function isKickChatEvent(type: string, chat: KickChatFields): boolean {
   const normalized = type.toLowerCase().replace(/_/g, ".");
   if (normalized === "chat.message.sent" || normalized.includes("chat.message")) return true;
@@ -455,7 +466,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   sender: { username },
                   isTest: false,
                 });
-              } else if (/^!?(?:wheel|spin)$/i.test(text.trim())) {
+              } else if (/^!?(?:wheel|spin|عجلة)$/i.test(text.trim())) {
                 const { handleWheelChatCommand } = await import("@/lib/wheelCommand.server");
                 commandResult = await handleWheelChatCommand({
                   userId: connection.user_id,
@@ -474,6 +485,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   text,
                   sender: { username },
                   origin,
+                  replyToMessageId: viewerChatMessageId(body),
                 });
                 commandResult = defaultResult;
                 if (defaultResult.status === "ignored" && defaultResult.reason === "no_match") {

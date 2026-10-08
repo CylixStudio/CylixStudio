@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { useLanguage } from "@/lib/i18n";
+import { parseWheelLayout } from "@/lib/widgetLayouts";
 import { parseSpinConfig, type SpinPrize, type SpinState } from "@/lib/widgets";
 
 /** Blue, green, orange, pink, beige — then the list repeats. */
@@ -193,6 +194,7 @@ export function SpinWheelView({
   const { t } = useLanguage();
   const uid = useId().replace(/:/g, "");
   const style = parseSpinConfig(config);
+  const layout = parseWheelLayout(config);
   const slices = drawSlices(style.prizes);
   const placeholder = slices[0]?.placeholder ?? true;
   const winnerIndex =
@@ -334,7 +336,14 @@ export function SpinWheelView({
 
   return (
     <div
-      className="flex w-[min(100%,22.5rem)] flex-col items-center gap-4 rounded-3xl border border-zinc-800 bg-zinc-950 px-5 py-5 text-zinc-100 shadow-[0_24px_60px_-32px_rgba(0,0,0,0.9)]"
+      className={`flex flex-col items-center gap-4 rounded-3xl border border-zinc-800 bg-zinc-950 px-5 py-5 text-zinc-100 ${
+        layout === "compact" ? "w-[min(100%,16rem)]" : "w-[min(100%,22.5rem)]"
+      } ${
+        layout === "glow"
+          ? "shadow-[0_0_48px_rgba(167,139,250,0.45)]"
+          : "shadow-[0_24px_60px_-32px_rgba(0,0,0,0.9)]"
+      }`}
+      data-wheel-layout={layout}
       style={{ fontFamily: style.fontFamily }}
     >
       {rawTitle ? (

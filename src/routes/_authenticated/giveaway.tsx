@@ -25,10 +25,13 @@ import {
   joinGiveaway,
   pickGiveawayWinner,
   saveGiveawaySettings,
+  saveGiveawayLayout,
   type GiveawayDrawState,
   type GiveawaySettings,
 } from "@/lib/giveaway.functions";
 import { useLanguage } from "@/lib/i18n";
+import { LayoutPicker } from "@/components/widgets/LayoutPicker";
+import { CHROME_LAYOUTS, type ChromeLayout } from "@/lib/widgetLayouts";
 import { isTestMode } from "@/lib/testMode";
 
 export const Route = createFileRoute("/_authenticated/giveaway")({
@@ -98,6 +101,7 @@ function GiveawayPage() {
   const join = useServerFn(joinGiveaway);
   const announce = useServerFn(announceGiveawayWinner);
   const publishDraw = useServerFn(publishGiveawayDraw);
+  const saveLayout = useServerFn(saveGiveawayLayout);
   const confirmChat = useServerFn(confirmGiveawayFromChat);
   const fetchOverlayToken = useServerFn(getGiveawayOverlayToken);
 
@@ -122,11 +126,13 @@ function GiveawayPage() {
   });
   const overlayUrl = overlay.data?.overlayUrl || "";
 
+  const [layout, setLayout] = useState<ChromeLayout>("glass");
   const [form, setForm] = useState<GiveawaySettings>(DEFAULT_GIVEAWAY);
   const loaded = useRef(false);
   useEffect(() => {
     if (state.data?.settings && !loaded.current) {
       setForm(state.data.settings);
+      setLayout(state.data.overlayLayout ?? "glass");
       loaded.current = true;
     }
   }, [state.data]);
@@ -330,6 +336,7 @@ function GiveawayPage() {
       keyword={form.keyword}
       lastWinner={state.data?.lastWinner}
       expanded={false}
+      layout={layout}
       onToggleExpand={() => setExpanded(true)}
       onReroll={() => void runDraw()}
     />
@@ -535,7 +542,16 @@ function GiveawayPage() {
           </div>
         </div>
 
-        <div className="max-w-2xl">
+        <div className="max-w-2xl space-y-4">
+          <LayoutPicker
+            value={layout}
+            options={CHROME_LAYOUTS.map((id) => ({ id, label: t(`layout.chrome.${id}`) }))}
+            onChange={(id) => {
+              const next = id === "direct" || id === "bold" ? id : "glass";
+              setLayout(next);
+              if (!guest) void saveLayout({ data: { layout: next } });
+            }}
+          />
           <span className={label}>{t("giveaway.overlayTitle")}</span>
           <div className="flex items-stretch overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
             <input
@@ -572,6 +588,7 @@ function GiveawayPage() {
             keyword={form.keyword}
             lastWinner={state.data?.lastWinner}
             expanded
+            layout={layout}
             onToggleExpand={() => setExpanded(false)}
             onReroll={() => void runDraw()}
           />

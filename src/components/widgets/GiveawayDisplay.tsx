@@ -38,6 +38,7 @@ export function GiveawayDisplay({
   keyword,
   lastWinner,
   expanded,
+  layout = "glass",
   transparent = false,
   onToggleExpand,
   onReroll,
@@ -50,6 +51,7 @@ export function GiveawayDisplay({
   keyword: string;
   lastWinner?: { username: string; platform: string } | null | undefined;
   expanded: boolean;
+  layout?: "glass" | "direct" | "bold";
   /** OBS browser source: drop the frame/controls and render on transparency. */
   transparent?: boolean;
   onToggleExpand?: (() => void) | undefined;
@@ -71,8 +73,8 @@ export function GiveawayDisplay({
     <section
       className={
         transparent
-          ? "h-full w-full bg-transparent"
-          : `flex h-full min-h-[280px] w-full flex-col ${expanded ? "bg-background" : ""}`
+          ? `h-full w-full bg-transparent ${layout === "bold" ? "border-2 border-white/20" : ""}`
+          : `flex h-full min-h-[280px] w-full flex-col ${layout === "direct" ? "bg-zinc-950" : expanded ? "bg-background" : ""} ${layout === "bold" ? "rounded-2xl border-2 border-white/20" : ""}`
       }
     >
       {!transparent ? (

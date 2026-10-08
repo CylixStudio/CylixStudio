@@ -16,6 +16,7 @@ import { t as translate, useLanguage } from "@/lib/i18n";
 import { lookupChannel } from "@/lib/liveCounter.functions";
 import { readOverlayViewers } from "@/lib/toolWidgets.functions";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
+import { chromeLayoutClass, parseChromeLayout, parseEventLabelLayout, parseGoalLayout } from "@/lib/widgetLayouts";
 import { SpinWheelView } from "@/components/widgets/SpinWheel";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
@@ -84,6 +85,24 @@ export function GoalBarView({
     }, 1400);
     return () => window.clearTimeout(timer);
   }, [current, kind]);
+
+  const layout = parseGoalLayout(config);
+  if (layout !== "classic") {
+    return (
+      <GoalLayoutFrame
+        layout={layout}
+        title={goal?.title ?? style.label}
+        percent={percent}
+        current={current}
+        target={target}
+        unit={unit}
+        accent={style.accentColor}
+        ink={style.textColor}
+        fontFamily={skin.fontFamily ?? style.fontFamily}
+        showPercent={style.showPercent}
+      />
+    );
+  }
 
   return (
     <div
@@ -157,6 +176,89 @@ export function GoalBarView({
       ) : null}
 
       <GoalTrack kind={kind} percent={percent} accent={style.accentColor} ink={style.textColor} />
+    </div>
+  );
+}
+
+function GoalLayoutFrame({
+  layout,
+  title,
+  percent,
+  current,
+  target,
+  unit,
+  accent,
+  ink,
+  fontFamily,
+  showPercent,
+}: {
+  layout: "compact" | "bold" | "glass";
+  title: string;
+  percent: number;
+  current: number;
+  target: number;
+  unit: string;
+  accent: string;
+  ink: string;
+  fontFamily: string;
+  showPercent: boolean;
+}) {
+  const glass = layout === "glass";
+  const bold = layout === "bold";
+  const compact = layout === "compact";
+  const amount = (
+    <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }} dir="ltr">
+      {current.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+      <span style={{ opacity: 0.55 }}>
+        {" / "}
+        {target.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+        {unit ? ` ${unit}` : ""}
+      </span>
+    </span>
+  );
+  if (compact) {
+    return (
+      <div
+        className="flex h-72 w-36 flex-col items-center gap-3 rounded-2xl border border-white/10 px-3 py-4 text-center"
+        style={{ background: "#09090b", color: ink, fontFamily }}
+      >
+        <span className="text-xs font-semibold" style={{ color: accent }} dir="auto">
+          {title}
+        </span>
+        <div className="relative w-3 flex-1 overflow-hidden rounded-full" style={{ background: withAlpha(ink, 14) }}>
+          <div
+            className="absolute bottom-0 w-full rounded-full"
+            style={{ height: `${percent}%`, background: accent }}
+          />
+        </div>
+        {showPercent ? <span className="text-sm font-semibold tabular-nums">{percent.toFixed(0)}%</span> : amount}
+      </div>
+    );
+  }
+  return (
+    <div
+      className="flex min-w-[420px] flex-col gap-3 rounded-2xl px-8 py-6"
+      style={{
+        background: glass ? "transparent" : "#09090b",
+        border: glass ? "1px solid rgba(255,255,255,0.16)" : "1px solid transparent",
+        backdropFilter: glass ? "blur(16px)" : undefined,
+        color: ink,
+        fontFamily,
+      }}
+    >
+      <div className="flex items-baseline justify-between gap-6">
+        <span className="text-xs font-bold tracking-[0.18em]" style={{ color: accent }} dir="auto">
+          {title}
+        </span>
+        {showPercent ? <span className="text-sm font-bold tabular-nums">{percent.toFixed(0)}%</span> : null}
+      </div>
+      <span style={{ fontSize: bold ? 40 : 28 }}>{amount}</span>
+      <div
+        className={bold ? "h-8 w-full overflow-hidden rounded-full" : "h-2.5 w-full overflow-hidden rounded-full"}
+        style={{ background: withAlpha(ink, 14) }}
+      >
+        <div className="h-full rounded-full" style={{ width: `${percent}%`, background: accent }} />
+      </div>
     </div>
   );
 }
@@ -1338,6 +1440,7 @@ export function ChatSpotlightView({
   if (!display) return <div className="h-0 w-0" aria-hidden />;
 
   const roles = style.showBadges ? resolveBadgeRoles(display.badges, 6) : [];
+  const chrome = parseChromeLayout(config);
 
   return (
     <ReplyAlertFrame
@@ -1346,14 +1449,17 @@ export function ChatSpotlightView({
       quote={display.replyQuote}
     >
     <div
-      className="overlay-spotlight-swap flex w-full min-w-[360px] max-w-[560px] flex-col gap-2 rounded-2xl px-6 py-5"
+      className={`overlay-spotlight-swap flex w-full min-w-[360px] max-w-[560px] flex-col gap-2 rounded-2xl px-6 py-5 ${chromeLayoutClass(chrome)}`}
       data-motion={motion}
       style={{
         boxSizing: "border-box",
-        background: withAlpha(style.backgroundColor, Math.max(style.backgroundOpacity, 70)),
-        border: `1px solid ${withAlpha(accent, 45)}`,
-        backdropFilter: "blur(20px)",
-        boxShadow: `0 26px 60px rgba(0,0,0,0.55), 0 0 34px ${withAlpha(accent, 28)}`,
+        background:
+          chrome === "glass"
+            ? withAlpha(style.backgroundColor, Math.max(style.backgroundOpacity, 70))
+            : "#09090b",
+        border: chrome === "bold" ? "2px solid rgba(255,255,255,0.28)" : `1px solid ${withAlpha(accent, 45)}`,
+        backdropFilter: chrome === "direct" ? "none" : "blur(20px)",
+        boxShadow: chrome === "direct" ? "none" : `0 26px 60px rgba(0,0,0,0.55), 0 0 34px ${withAlpha(accent, 28)}`,
         fontFamily: skin.fontFamily ?? style.fontFamily,
         color: style.textColor,
         ...skin.surface,
@@ -1361,6 +1467,7 @@ export function ChatSpotlightView({
       }}
     >
       <div className="flex flex-wrap items-center gap-2">
+        {chrome === "bold" ? <span aria-hidden style={{ color: accent }}>◆</span> : null}
         {style.showPlatform ? <PlatformIcon platform={display.platform} size={18} /> : null}
         {display.badgeImages.map((badge, index) =>
           badge.imageUrl ? (
@@ -2059,16 +2166,18 @@ function ViewerCounterView({
 
   const comingSoon = /coming soon/i.test(error ?? "");
   const style = parsed;
+  const chrome = parseChromeLayout(config);
   return (
     <div
-      className="flex min-w-[280px] flex-col items-center gap-2 rounded-2xl px-8 py-6 text-center"
+      className={`flex min-w-[280px] flex-col items-center gap-2 rounded-2xl px-8 py-6 text-center ${chromeLayoutClass(chrome)}`}
       style={{
-        background: withAlpha(style.backgroundColor, style.backgroundOpacity),
+        background: chrome === "glass" ? withAlpha(style.backgroundColor, style.backgroundOpacity) : undefined,
         color: style.textColor,
         fontFamily: style.fontFamily,
       }}
     >
       <span style={{ letterSpacing: "0.22em", fontSize: 12, fontWeight: 700, color: style.accentColor }}>
+        {chrome === "bold" ? "◆ " : ""}
         {parsed.channel || t("widget.viewer.channel")}
       </span>
       <span style={{ fontSize: style.fontSize, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} dir="ltr">
@@ -2163,6 +2272,37 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
   }, [slot, lines.length, lineKey]);
 
   const line = lines.length > 0 ? lines[slot % lines.length] : null;
+  const layout = parseEventLabelLayout(config);
+  const lineText = (entry: (typeof lines)[number]) =>
+    "sample" in entry
+      ? entry.sample
+      : `${translate(EVENT_LABEL_I18N[entry.option], undefined, lang)}${entry.username ? ` · ${entry.username}` : ""}${entry.amount ? ` · ${entry.amount}` : ""}`;
+  if (layout === "ticker" || layout === "stack") {
+    return (
+      <div
+        className={layout === "stack" ? "flex min-w-[240px] flex-col gap-2 px-2 py-2" : "max-w-[640px] overflow-hidden px-2 py-2"}
+        dir={lang === "ar" ? "rtl" : "ltr"}
+        style={{ color: parsed.textColor, fontFamily: parsed.fontFamily, background: "transparent" }}
+      >
+        <span style={{ letterSpacing: "0.18em", fontSize: 12, fontWeight: 700, color: parsed.accentColor }}>
+          {parsed.title}
+        </span>
+        {layout === "ticker" ? (
+          <div className="overflow-hidden">
+            <div className="event-ticker-track inline-block whitespace-nowrap" style={{ fontSize: parsed.fontSize * 0.55 }}>
+              {lines.map((entry) => lineText(entry)).join("    ·    ") || " "}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1" style={{ fontSize: parsed.fontSize * 0.5 }}>
+            {lines.map((entry) => (
+              <span key={entry.key}>{lineText(entry)}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div
       className="flex min-w-[240px] flex-col gap-2 rounded-2xl px-6 py-5"
@@ -2237,6 +2377,7 @@ export function WidgetRenderer({
   publicToken = null,
   onSpin,
   spinning = false,
+  spinIdle = true,
 }: {
   type: WidgetType;
   config: unknown;
@@ -2255,6 +2396,8 @@ export function WidgetRenderer({
   publicToken?: string | null;
   onSpin?: (() => void) | undefined;
   spinning?: boolean;
+  /** Idle loop on the public overlay. Chat spins still animate from `spin`. */
+  spinIdle?: boolean;
 }) {
   switch (type) {
     case "GOAL_BAR":
@@ -2299,7 +2442,7 @@ export function WidgetRenderer({
           spin={spin}
           onSpin={onSpin}
           spinning={spinning}
-          autoSpin={!demo}
+          autoSpin={!demo && spinIdle}
         />
       );
     case "EMOTE_RAIN":

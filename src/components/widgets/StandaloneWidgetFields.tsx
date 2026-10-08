@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
+import { LayoutPicker } from "@/components/widgets/LayoutPicker";
 import { DarkSelect } from "@/components/ui/dark-select";
 import { playWheelSpinSound } from "@/components/widgets/SpinWheel";
 import { EVENT_LABEL_I18N, EVENT_LABEL_OPTIONS } from "@/lib/eventLabels";
@@ -16,7 +17,16 @@ import {
   type ViewerPlatform,
   type WidgetType,
 } from "@/lib/widgets";
-import { useState } from "react";
+import {
+  CHROME_LAYOUTS,
+  EVENT_LABEL_LAYOUTS,
+  GOAL_LAYOUTS,
+  WHEEL_LAYOUTS,
+  parseChromeLayout,
+  parseEventLabelLayout,
+  parseGoalLayout,
+  parseWheelLayout,
+} from "@/lib/widgetLayouts";
 
 const fieldClass =
   "w-full rounded-lg border border-border bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-primary";
@@ -56,6 +66,11 @@ export function StandaloneWidgetFields({
   if (type === "KICKS_GOAL") {
     return (
       <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+        <LayoutPicker
+          value={parseGoalLayout(config)}
+          options={GOAL_LAYOUTS.map((id) => ({ id, label: t(`layout.goal.${id}`) }))}
+          onChange={(id) => set("layout", id)}
+        />
         <label className="block">
           <span className={labelClass}>{t("widget.kicks.title")}</span>
           <input
@@ -102,6 +117,11 @@ export function StandaloneWidgetFields({
   if (type === "VIEWER_COUNTER") {
     return (
       <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+        <LayoutPicker
+          value={parseChromeLayout(config)}
+          options={CHROME_LAYOUTS.map((id) => ({ id, label: t(`layout.chrome.${id}`) }))}
+          onChange={(id) => set("layout", id)}
+        />
         <label className="block">
           <span className={labelClass}>{t("widget.viewer.platform")}</span>
           <DarkSelect
@@ -184,7 +204,13 @@ export function StandaloneWidgetFields({
             onChange={(event) => set("spinCost", Math.max(0, Number(event.target.value) || 0))}
           />
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t("widget.wheel.costHint")}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("widget.wheel.commands")}</p>
         </label>
+        <LayoutPicker
+          value={parseWheelLayout(config)}
+          options={WHEEL_LAYOUTS.map((id) => ({ id, label: t(`layout.wheel.${id}`) }))}
+          onChange={(id) => set("layout", id)}
+        />
         <div className="space-y-2">
           {prizes.map((prize, index) => (
             <div key={index} className="flex items-center gap-2">
@@ -239,6 +265,11 @@ export function StandaloneWidgetFields({
     const selected = new Set(parseEventLabelsConfig(config).labels);
     return (
       <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+        <LayoutPicker
+          value={parseEventLabelLayout(config)}
+          options={EVENT_LABEL_LAYOUTS.map((id) => ({ id, label: t(`layout.events.${id}`) }))}
+          onChange={(id) => set("layout", id)}
+        />
         <label className="block">
           <span className={labelClass}>{t("widget.labels.title")}</span>
           <input

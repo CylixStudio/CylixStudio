@@ -79,10 +79,14 @@ export async function handleWheelChatCommand(input: {
     await supabaseAdmin
       .from("widgets")
       .update({
-        state: { spin: { result: decision.prize, spunAt: new Date().toISOString(), nonce } },
+        state: {
+          spin: { result: decision.prize, spunAt: new Date().toISOString(), nonce, origin: "chat" },
+        },
       })
       .eq("id", widget.id)
       .eq("user_id", input.userId);
+    const { broadcastToWidgets } = await import("@/lib/realtime.server");
+    await broadcastToWidgets([widget.id], "refresh");
   }
 
   const reply = wheelChatReply(input.sender.username, decision);

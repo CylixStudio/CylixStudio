@@ -547,6 +547,8 @@ export type SpinState = {
   spunAt: string | null;
   /** Monotonic counter so the overlay can replay the wheel animation. */
   nonce: number;
+  /** Chat spins reveal the hidden OBS overlay. Dashboard preview spins do not. */
+  origin: "chat" | null;
 };
 
 export function parseSpinState(raw: unknown): SpinState {
@@ -556,6 +558,7 @@ export function parseSpinState(raw: unknown): SpinState {
     result: typeof spin["result"] === "string" ? spin["result"] : null,
     spunAt: typeof spin["spunAt"] === "string" ? spin["spunAt"] : null,
     nonce: typeof spin["nonce"] === "number" ? spin["nonce"] : 0,
+    origin: spin["origin"] === "chat" ? "chat" : null,
   };
 }
 

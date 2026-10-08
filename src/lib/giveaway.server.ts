@@ -79,6 +79,7 @@ export type StoredGiveawayDraw = {
   pending_winner: GiveawayPendingWinner | null;
   confirmed_at: string | null;
   confirm_nonce: string | null;
+  overlayLayout: "glass" | "direct" | "bold";
 };
 
 function asRecord(raw: unknown): Record<string, unknown> | null {
@@ -130,6 +131,7 @@ export function readGiveawayDraw(raw: unknown): StoredGiveawayDraw {
         : null,
     confirmed_at: typeof confirmedAt === "string" ? confirmedAt : null,
     confirm_nonce: typeof nonce === "string" ? nonce : null,
+    overlayLayout: field(value, "overlayLayout") === "direct" || field(value, "overlayLayout") === "bold" ? (field(value, "overlayLayout") as "direct" | "bold") : "glass",
   };
 }
 

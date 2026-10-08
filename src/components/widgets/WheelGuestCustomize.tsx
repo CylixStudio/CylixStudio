@@ -21,7 +21,7 @@ export function WheelGuestCustomize() {
     const result = pickWeightedPrize(prizes);
     if (!result) return;
     setSpinning(true);
-    setSpin({ result, spunAt: new Date().toISOString(), nonce: Date.now() });
+    setSpin({ result, spunAt: new Date().toISOString(), nonce: Date.now(), origin: null });
     window.setTimeout(() => setSpinning(false), wheelSpinLockMs());
   };
 

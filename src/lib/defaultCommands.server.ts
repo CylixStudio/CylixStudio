@@ -84,6 +84,7 @@ export async function handleDefaultChatCommand(input: {
   text: string;
   sender: ChatSender;
   origin?: string;
+  replyToMessageId?: string | null;
 }): Promise<{ status: string; reason?: string; command?: string }> {
   const commands = await loadDefaultCommands(input.userId);
   const matched = matchDefaultCommand(input.text, commands, input.platform);
@@ -110,13 +111,19 @@ export async function handleDefaultChatCommand(input: {
 
   if (command.id === "commands") {
     const slug = await publishedSlugForUser(input.userId);
+    const title = arabic ? "الأوامر" : "Commands";
     const reply = slug
-      ? commandsPageUrl(input.origin ?? "https://cylixstudio.com", slug)
+      ? `${title}\n\n${commandsPageUrl(input.origin ?? "https://cylixstudio.com", slug)}`
       : arabic
         ? "قائمة الأوامر غير منشورة بعد."
         : "The command list is not published yet.";
     if (input.platform === "KICK") {
-      const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply);
+      const sent = await sendKickChatMessage(
+        input.userId,
+        input.broadcasterUserId,
+        reply,
+        input.replyToMessageId,
+      );
       if (!sent) return { status: "error", reason: "send_failed", command: command.trigger };
     }
     return { status: "replied", command: command.trigger };

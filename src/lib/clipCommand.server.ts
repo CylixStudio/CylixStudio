@@ -56,6 +56,7 @@ export async function sendKickChatMessage(
   userId: string,
   broadcasterUserId: string,
   content: string,
+  replyToMessageId?: string | null,
 ): Promise<boolean> {
   const token = await kickToken(userId);
   if (!token) {
@@ -65,6 +66,7 @@ export async function sendKickChatMessage(
   const body = content.normalize("NFC").trim().slice(0, 480);
   if (!body) return false;
   const broadcasterId = Number(broadcasterUserId);
+  const replyId = replyToMessageId?.trim() ?? "";
 
   const post = async (payload: Record<string, unknown>) => {
     const response = await fetch("https://api.kick.com/public/v1/chat", {
@@ -81,10 +83,19 @@ export async function sendKickChatMessage(
   };
 
   try {
-    const bot = await post({ type: "bot", content: body });
+    const botPayload: Record<string, unknown> = { type: "bot", content: body };
+    if (replyId) botPayload["reply_to_message_id"] = replyId;
+    const bot = await post(botPayload);
     if (bot.response.ok) {
       console.log("[chat-bot] kick chat response sent", { broadcasterId, mode: "bot", chars: [...body].length });
       return true;
+    }
+    if (replyId) {
+      const plain = await post({ type: "bot", content: body });
+      if (plain.response.ok) {
+        console.log("[chat-bot] kick chat response sent", { broadcasterId, mode: "bot", chars: [...body].length });
+        return true;
+      }
     }
     console.warn("[chat-bot] kick bot send failed", bot.response.status, bot.responseText);
 

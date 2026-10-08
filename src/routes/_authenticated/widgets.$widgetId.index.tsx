@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
 import { StandaloneWidgetFields } from "@/components/widgets/StandaloneWidgetFields";
+import { LayoutPicker } from "@/components/widgets/LayoutPicker";
 import { TestSimulatePanel } from "@/components/widgets/TestSimulatePanel";
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
 import { wheelSpinLockMs } from "@/components/widgets/SpinWheel";
@@ -27,6 +28,7 @@ import { useLanguage } from "@/lib/i18n";
 import { ensureWidgetSubathon, widgetErrorText } from "@/lib/createWidget";
 import { SIGNED_OUT_ERROR, isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
+import { parseChromeLayout, CHROME_LAYOUTS } from "@/lib/widgetLayouts";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { DarkSelect } from "@/components/ui/dark-select";
@@ -971,6 +973,12 @@ function WidgetBuilder() {
 
 
             {widget.type === "CHAT_SPOTLIGHT" ? (
+              <>
+                <LayoutPicker
+                  value={parseChromeLayout(config)}
+                  options={CHROME_LAYOUTS.map((id) => ({ id, label: t(`layout.chrome.${id}`) }))}
+                  onChange={(id) => set("layout", id)}
+                />
               <SpotlightControlPanel
                 widgetId={widget.id}
                 chat={stream.chat ?? null}
@@ -980,9 +988,16 @@ function WidgetBuilder() {
                 onAutoHideChange={(next) => set("autoHideMs", next)}
                 lang={"en"}
               />
+              </>
             ) : null}
 
             {widget.type === "STREAM_EVENTS_SCHEDULE" ? (
+              <>
+                <LayoutPicker
+                  value={parseChromeLayout(config)}
+                  options={CHROME_LAYOUTS.map((id) => ({ id, label: t(`layout.chrome.${id}`) }))}
+                  onChange={(id) => set("layout", id)}
+                />
               <StreamEventsScheduleControlPanel
                 widgetId={widget.id}
                 config={config}
@@ -991,18 +1006,23 @@ function WidgetBuilder() {
                   setConfig({ ...next });
                 }}
               />
+              </>
             ) : null}
 
-            {widget.type === "STREAM_EVENTS_SCHEDULE" ? null : (
+            {widget.type === "STREAM_EVENTS_SCHEDULE" ||
+            widget.type === "SPIN_WHEEL" ||
+            widget.type === "EVENT_LABELS" ? null : (
               <TestSimulatePanel widgetId={widget.id} />
             )}
 
+            {widget.type === "SPIN_WHEEL" || widget.type === "EVENT_LABELS" ? null : (
             <div className="rounded-xl border border-border bg-background p-4">
               <p className={labelClass}>OBS browser source</p>
               <code className="mt-2 block break-all text-xs text-muted-foreground">
                 {`/overlay/${widget.public_token}`}
               </code>
             </div>
+            )}
 
             <button
               type="button"

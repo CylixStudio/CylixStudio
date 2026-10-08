@@ -13,6 +13,7 @@ import {
 } from "@/lib/widgets";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n";
+import { chromeLayoutClass, parseChromeLayout } from "@/lib/widgetLayouts";
 
 /**
  * OBS / hub glass card for the smart broadcast events schedule.
@@ -87,10 +88,14 @@ export function StreamEventsScheduleCard({
   const uptimeSeconds =
     snapshot.status === "waiting" ? 0 : snapshot.streamElapsedSeconds;
 
+  const chrome = parseChromeLayout(config);
   return (
     <div
       className={cn(
-        "w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0c0e14]/78 shadow-[0_18px_60px_rgba(0,0,0,.4)] backdrop-blur-xl",
+        "w-full overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_60px_rgba(0,0,0,.4)]",
+        chrome === "glass" ? "bg-[#0c0e14]/78 backdrop-blur-xl" : "bg-zinc-950",
+        chrome === "bold" ? "border-2 border-white/25" : "",
+        chromeLayoutClass(chrome),
         compact ? "p-3" : "p-4",
       )}
       dir={dir}
@@ -108,6 +113,7 @@ export function StreamEventsScheduleCard({
             style={{ background: style.accentColor }}
             aria-hidden
           />
+          {chrome === "bold" ? <Clock3 className="size-3.5 shrink-0" style={{ color: style.accentColor }} aria-hidden /> : null}
           <span
             className="min-w-0 flex-1 truncate font-bold"
             style={{ color: style.accentColor, fontSize: `${Math.max(12, Math.round(style.fontSize * 0.42))}px` }}

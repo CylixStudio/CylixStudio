@@ -154,6 +154,13 @@ export function matchDefaultCommand(
 ): { command: DefaultCommand; argument: string } | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
+  if (/^!?(?:commands|الأوامر)$/i.test(trimmed)) {
+    const command = commands.find((item) => item.id === "commands");
+    if (command?.enabled && command.platforms.includes(platform)) {
+      return { command, argument: "" };
+    }
+    return null;
+  }
   for (const command of commands) {
     if (!command.enabled || !command.platforms.includes(platform)) continue;
     const match = trimmed.match(new RegExp(`^${escapeRegExp(command.trigger)}(?:\\s+|$)(.*)`, "i"));

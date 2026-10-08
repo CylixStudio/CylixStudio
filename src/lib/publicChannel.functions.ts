@@ -3,9 +3,11 @@ import { createServerFn } from "@tanstack/react-start";
 import {
   listPublicCommands,
   listPublicShop,
+  listPublicTimers,
   loadPublishedChannel,
   type PublicCommand,
   type PublicShopItem,
+  type PublicTimer,
 } from "@/lib/publicChannel.server";
 
 function readSlug(input: unknown): { slug: string } {
@@ -16,7 +18,13 @@ function readSlug(input: unknown): { slug: string } {
 
 export type PublicCommandsPage =
   | { found: false }
-  | { found: true; slug: string; displayName: string; commands: PublicCommand[] };
+  | {
+      found: true;
+      slug: string;
+      displayName: string;
+      commands: PublicCommand[];
+      timers: PublicTimer[];
+    };
 
 export type PublicStorePage =
   | { found: false }
@@ -27,8 +35,17 @@ export const loadPublicCommandsPage = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<PublicCommandsPage> => {
     const channel = await loadPublishedChannel(data.slug);
     if (!channel) return { found: false };
-    const commands = await listPublicCommands(channel.userId);
-    return { found: true, slug: channel.slug, displayName: channel.displayName, commands };
+    const [commands, timers] = await Promise.all([
+      listPublicCommands(channel.userId),
+      listPublicTimers(channel.userId),
+    ]);
+    return {
+      found: true,
+      slug: channel.slug,
+      displayName: channel.displayName,
+      commands,
+      timers,
+    };
   });
 
 export const loadPublicStorePage = createServerFn({ method: "POST" })

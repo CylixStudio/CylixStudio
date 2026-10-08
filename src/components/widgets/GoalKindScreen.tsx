@@ -14,6 +14,8 @@ import { supabase } from "@/lib/supabase/client";
 import { SIGNED_OUT_ERROR } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
 import { isSplitGoalKind, parseSplitGoalConfig, type SplitGoalKind } from "@/lib/widgets";
+import { GOAL_LAYOUTS, parseGoalLayout } from "@/lib/widgetLayouts";
+import { LayoutPicker } from "@/components/widgets/LayoutPicker";
 
 const fieldClass =
   "w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-primary";
@@ -48,6 +50,7 @@ function GoalKindForm({
   const [accent, setAccent] = useState(initial.accentColor);
   const [track, setTrack] = useState(initial.backgroundColor);
   const [text, setText] = useState(initial.textColor);
+  const [layout, setLayout] = useState(parseGoalLayout(existing?.config));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hydratedId, setHydratedId] = useState<string | null>(null);
@@ -63,6 +66,7 @@ function GoalKindForm({
     setAccent(next.accentColor);
     setTrack(next.backgroundColor);
     setText(next.textColor);
+    setLayout(parseGoalLayout(existing.config));
     setHydratedId(existing.id);
   }, [existing, hydratedId, kind]);
 
@@ -75,6 +79,7 @@ function GoalKindForm({
     accentColor: accent,
     backgroundColor: track,
     textColor: text,
+    layout,
   };
 
   const save = async () => {
@@ -156,6 +161,11 @@ function GoalKindForm({
             <input className={`${fieldClass} mt-2`} value={unit} onChange={(event) => setUnit(event.target.value)} />
           </label>
         ) : null}
+        <LayoutPicker
+          value={layout}
+          options={GOAL_LAYOUTS.map((id) => ({ id, label: t(`layout.goal.${id}`) }))}
+          onChange={(id) => setLayout(parseGoalLayout({ layout: id }))}
+        />
         <div className="flex flex-wrap gap-4">
           <ColorField label={t("goal.field.accent")} value={accent} onChange={setAccent} />
           <ColorField label={t("goal.field.track")} value={track} onChange={setTrack} />

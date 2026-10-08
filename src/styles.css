@@ -438,6 +438,13 @@ body.overlay-transparent {
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(-10px); }
 }
+@keyframes event-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.event-ticker-track {
+  animation: event-ticker 18s linear infinite;
+}
 .event-line-swap[data-motion="shown"] {
   animation: event-line-in 400ms ease-out both;
 }

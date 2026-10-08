@@ -8,6 +8,11 @@ export type PublicCommand = {
   response: string;
 };
 
+export type PublicTimer = {
+  message: string;
+  intervalMinutes: number;
+};
+
 export type PublicShopItem = {
   name: string;
   description: string;
@@ -81,6 +86,22 @@ export async function listPublicCommands(userId: string): Promise<PublicCommand[
     });
   }
   return commands;
+}
+
+export async function listPublicTimers(userId: string): Promise<PublicTimer[]> {
+  const { data } = await supabaseAdmin
+    .from("message_timers")
+    .select("message, interval_minutes, enabled")
+    .eq("user_id", userId)
+    .eq("enabled", true)
+    .order("created_at", { ascending: true });
+  const timers: PublicTimer[] = [];
+  for (const row of data ?? []) {
+    const message = typeof row.message === "string" ? row.message.trim() : "";
+    if (!message) continue;
+    timers.push({ message, intervalMinutes: row.interval_minutes });
+  }
+  return timers;
 }
 
 export async function listPublicShop(userId: string): Promise<PublicShopItem[]> {

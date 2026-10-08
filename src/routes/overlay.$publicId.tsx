@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
+import { wheelSpinLockMs } from "@/components/widgets/SpinWheel";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { OVERLAY_FONT_STYLESHEET } from "@/lib/overlayTheme";
-import { wheelSpinLockMs } from "@/components/widgets/SpinWheel";
-import { spinPublicWheel } from "@/lib/toolWidgets.functions";
-import type { SpinState } from "@/lib/widgets";
 
 export const Route = createFileRoute("/overlay/$publicId")({
   head: () => ({
@@ -35,23 +33,23 @@ function OverlayPage() {
   const { publicId } = Route.useParams();
   const { widget, frame, remaining, goal, events, spin, spotlight, streamEvents, tappers, chat, testMessages, status } =
     useWidgetStream(publicId);
-  const [localSpin, setLocalSpin] = useState<SpinState | null>(null);
-  const [spinning, setSpinning] = useState(false);
-  const shownSpin = localSpin && localSpin.nonce >= (spin?.nonce ?? 0) ? localSpin : spin;
+  const [wheelVisible, setWheelVisible] = useState(false);
+  const shownSpin = spin;
+  const seenChatNonce = useRef<number | null>(null);
 
-  const spinWheel = async () => {
-    if (!widget || widget.type !== "SPIN_WHEEL" || spinning) return;
-    setSpinning(true);
-    const lockMs = wheelSpinLockMs();
-    try {
-      const result = await spinPublicWheel({ data: { publicToken: publicId } });
-      if (result.ok) {
-        setLocalSpin({ result: result.result, spunAt: result.spunAt, nonce: result.nonce });
-      }
-    } finally {
-      window.setTimeout(() => setSpinning(false), lockMs);
+  useEffect(() => {
+    if (widget?.type !== "SPIN_WHEEL") return;
+    const nonce = shownSpin?.origin === "chat" ? shownSpin.nonce : 0;
+    if (seenChatNonce.current === null) {
+      seenChatNonce.current = nonce;
+      return;
     }
-  };
+    if (!nonce || nonce === seenChatNonce.current) return;
+    seenChatNonce.current = nonce;
+    setWheelVisible(true);
+    const timer = window.setTimeout(() => setWheelVisible(false), wheelSpinLockMs() + 10_000);
+    return () => window.clearTimeout(timer);
+  }, [shownSpin?.nonce, shownSpin?.origin, widget?.type]);
 
   // OBS composites the page over the scene, so nothing may paint a background.
   useEffect(() => {
@@ -64,9 +62,11 @@ function OverlayPage() {
     };
   }, []);
 
+  const hideWheel = widget?.type === "SPIN_WHEEL" && !wheelVisible;
+
   return (
     <main className="grid min-h-screen w-full place-items-center bg-transparent p-6">
-      {widget ? (
+      {widget && !hideWheel ? (
         <WidgetRenderer
           type={widget.type}
           config={widget.config}
@@ -80,8 +80,7 @@ function OverlayPage() {
           chat={chat}
           testMessages={testMessages}
           publicToken={publicId}
-          spinning={spinning}
-          onSpin={widget.type === "SPIN_WHEEL" ? () => void spinWheel() : undefined}
+          spinIdle={false}
           spin={shownSpin}
         />
       ) : null}

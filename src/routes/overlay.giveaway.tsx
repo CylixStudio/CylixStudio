@@ -10,6 +10,7 @@ type Payload = {
     winner: { username: string; platform: string } | null;
     claimState: ClaimState;
     claimUntil: string | null;
+    overlayLayout?: "glass" | "direct" | "bold";
   } | null;
   lastWinner: { username: string; platform: string } | null;
   participants: Array<{ id: string; platform: string; username: string }>;
@@ -84,6 +85,7 @@ function GiveawayOverlay() {
         lastWinner={data?.lastWinner ?? null}
         expanded
         transparent
+        layout={data?.draw?.overlayLayout === "direct" || data?.draw?.overlayLayout === "bold" ? data.draw.overlayLayout : "glass"}
       />
     </main>
   );
