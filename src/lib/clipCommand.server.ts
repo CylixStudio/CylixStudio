@@ -1,5 +1,6 @@
 import { chatMention } from "@/lib/commandTemplate";
-import { captureKickClip, fetchKickChannel, refreshKickBuffer } from "@/lib/kickClip.server";
+import { captureKickClip, createNativeKickClip, fetchKickChannel, refreshKickBuffer } from "@/lib/kickClip.server";
+import { clipErrorAfterAttempt, shouldAttemptClip } from "@/lib/kickClipLive";
 import { publicSiteUrl } from "@/lib/siteUrl.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
@@ -120,28 +121,6 @@ function siteOrigin(): string {
 }
 
 
-/** Checks Kick's livestream endpoint; null when the state can't be determined. */
-async function isChannelLive(token: string, broadcasterId: number): Promise<boolean | null> {
-  try {
-    const url = new URL("https://api.kick.com/public/v1/users/livestreams");
-    if (Number.isSafeInteger(broadcasterId)) url.searchParams.append("user_id", String(broadcasterId));
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    });
-    if (!res.ok) {
-      console.warn("[clip-command] livestream check failed", res.status, await res.text().catch(() => ""));
-      return null;
-    }
-    const json = (await res.json().catch(() => ({}))) as { data?: unknown };
-    const list = Array.isArray(json.data) ? json.data : json.data ? [json.data] : [];
-    console.log("[clip-command] livestream check", { broadcasterId, live: list.length > 0 });
-    return list.length > 0;
-  } catch (error) {
-    console.error("[clip-command] livestream check error", error);
-    return null;
-  }
-}
-
 /** Resolves the channel slug stored with the Kick connection. */
 async function kickSlug(userId: string): Promise<string | null> {
   const { data } = await supabaseAdmin
@@ -172,8 +151,10 @@ export async function warmKickClipBuffer(userId: string): Promise<void> {
 
 
 /**
- * Kick's public developer API exposes no clip-creation endpoint, so the clip
- * is captured from the channel's public HLS live edge and stored by us.
+ * Creates a Kick clip and returns the public clip page when Kick does.
+ * A null livestream, a failed channel read, or an empty official livestream
+ * list is not treated as offline. The clip call runs first; HLS capture is
+ * only the fallback once a fresh read says the channel is live or unknown.
  */
 async function createKickClip(
   userId: string,
@@ -182,33 +163,48 @@ async function createKickClip(
 ): Promise<CreatedClip | { error: string }> {
   const token = await kickToken(userId);
   if (!token) return { error: "kick_not_connected" };
-  const broadcasterId = Number(broadcasterUserId);
-
-  const live = await isChannelLive(token, broadcasterId);
-  if (live === false) {
-    console.warn("[clip-command] skipping clip creation, channel offline", { broadcasterId });
-    return { error: "stream_offline" };
-  }
 
   const slug = await kickSlug(userId);
   if (!slug) return { error: "kick_channel_unknown" };
 
   const channel = await fetchKickChannel(slug);
-  if (!channel?.playbackUrl) return { error: "stream_offline" };
-  if (live === null && !channel.isLive) return { error: "stream_offline" };
+  const liveState = channel?.liveState ?? null;
+  // A null livestream or a local is_live false does not skip the clip call.
+  if (!shouldAttemptClip(liveState)) return { error: "stream_offline" };
 
-  console.log("[clip-command] capturing clip", { slug, duration });
-  const captured = await captureKickClip(userId, slug, duration);
+  const native = await createNativeKickClip({
+    token,
+    slug,
+    duration,
+    broadcasterUserId,
+    channelId: channel?.channelId ?? null,
+  });
+  if ("url" in native) {
+    return {
+      externalId: native.externalId,
+      url: native.url,
+      title: native.title ?? channel?.title ?? `Clip from ${slug}`,
+      thumbnail: native.thumbnail ?? channel?.thumbnail ?? null,
+      duration: native.duration || duration,
+    };
+  }
 
-  if ("error" in captured) return captured;
+  if (liveState !== false && channel?.playbackUrl) {
+    console.log("[clip-command] capturing clip", { slug, duration, liveState });
+    const captured = await captureKickClip(userId, slug, duration);
+    if (!("error" in captured)) {
+      return {
+        externalId: captured.path,
+        url: captured.url,
+        title: channel.title ?? `Clip from ${slug}`,
+        thumbnail: channel.thumbnail,
+        duration: captured.seconds || duration,
+      };
+    }
+    return { error: clipErrorAfterAttempt(liveState, captured.error) };
+  }
 
-  return {
-    externalId: captured.path,
-    url: captured.url,
-    title: channel.title ?? `Clip from ${slug}`,
-    thumbnail: channel.thumbnail,
-    duration: captured.seconds || duration,
-  };
+  return { error: clipErrorAfterAttempt(liveState, native.error) };
 }
 
 export async function loadClipSettings(userId: string): Promise<ClipCommandSettings> {
@@ -285,8 +281,10 @@ export async function handleClipCommand(input: {
     .select("id")
     .maybeSingle();
 
-  // Chat gets a playable page link, not the raw MPEG-TS storage file.
-  const shareUrl = row?.id ? `${siteOrigin()}/clip/${row.id}` : created.url;
+  // Kick's own clip page is the link viewers should get. Local captures still
+  // use the playable site page instead of the raw MPEG-TS file.
+  const kickPage = /^https:\/\/(www\.)?kick\.com\//i.test(created.url);
+  const shareUrl = kickPage ? created.url : row?.id ? `${siteOrigin()}/clip/${row.id}` : created.url;
   if (row?.id) await supabaseAdmin.from("clips").update({ share_url: shareUrl }).eq("id", row.id);
 
   const reply = (settings.response || CLIP_DEFAULTS.response)

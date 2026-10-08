@@ -1,11 +1,10 @@
+import { liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 /**
- * Kick has no clip-creation API (KickDevDocs#71 is still open) and its internal
- * `clips/init` / `clips/finalize` routes need a browser session plus Cloudflare
- * clearance, so clips are produced the way working third-party Kick bots do it:
- * a rolling DVR buffer of the channel's public HLS segments is kept warm while
- * the channel is live, and `!clip` cuts the last N seconds out of that buffer.
+ * Prefer Kick's own clip endpoints (public v1, then the channel clip routes the
+ * site uses) with the broadcaster token. Those return a kick.com clip page.
+ * The rolling HLS buffer remains the fallback when that call does not yield a URL.
  */
 
 const SIGNED_URL_TTL = 60 * 60 * 24 * 365 * 5; // 5 years
@@ -18,34 +17,80 @@ const VARIANT_TTL_MS = 10 * 60 * 1000;
 /** Upper bound for waiting on new segments when the buffer is still cold. */
 const FORWARD_FILL_MS = 60_000;
 
-const UA = { "User-Agent": "Mozilla/5.0 CylixStudio" } as const;
+/**
+ * Channel reads with a long Chrome UA plus referer get HTTP 403.
+ * `okhttp/4.12.0`, then a short `Mozilla/5.0`, get 200 from kick.com/api/v2.
+ */
+const KICK_CHANNEL_AGENTS = ["okhttp/4.12.0", "Mozilla/5.0"] as const;
+const UA = { "User-Agent": KICK_CHANNEL_AGENTS[0] } as const;
 
-type ChannelInfo = {
+type KickLivestream = KickLivestreamShape & {
+  session_title?: string;
+  thumbnail?: { url?: string } | null;
+};
+
+export type ChannelInfo = {
   slug: string;
+  channelId: number | null;
   playbackUrl: string | null;
+  /** True when Kick says live, false when the livestream object says not live, null when that object is missing. */
+  liveState: boolean | null;
   isLive: boolean;
   title: string | null;
   thumbnail: string | null;
 };
 
+async function readKickJson(
+  url: string,
+  init: RequestInit,
+  agents: readonly string[],
+): Promise<{ status: number; json: unknown; text: string }> {
+  let last = { status: 0, json: null as unknown, text: "" };
+  for (const agent of agents) {
+    const headers = new Headers(init.headers);
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
+    headers.set("User-Agent", agent);
+    const res = await fetch(url, { ...init, headers });
+    const text = await res.text().catch(() => "");
+    let json: unknown = null;
+    if (text) {
+      try {
+        json = JSON.parse(text) as unknown;
+      } catch {
+        json = null;
+      }
+    }
+    last = { status: res.status, json, text };
+    if (res.status !== 403) return last;
+  }
+  return last;
+}
+
 export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null> {
   try {
-    const res = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`, {
-      headers: { Accept: "application/json", ...UA },
-    });
-    if (!res.ok) {
+    const res = await readKickJson(
+      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+      { headers: { Accept: "application/json" } },
+      KICK_CHANNEL_AGENTS,
+    );
+    if (res.status < 200 || res.status >= 300) {
       console.warn("[clip-capture] channel lookup failed", res.status, slug);
       return null;
     }
-    const json = (await res.json()) as {
+    const json = (res.json ?? {}) as {
+      id?: number;
       slug?: string;
       playback_url?: string | null;
-      livestream?: { is_live?: boolean; session_title?: string; thumbnail?: { url?: string } | null } | null;
+      livestream?: KickLivestream | null;
     };
+    const liveState = liveStateFromLivestream(json.livestream);
+    const channelId = typeof json.id === "number" && Number.isSafeInteger(json.id) ? json.id : null;
     return {
       slug: json.slug ?? slug,
+      channelId,
       playbackUrl: json.playback_url ?? null,
-      isLive: Boolean(json.livestream?.is_live),
+      liveState,
+      isLive: liveState === true,
       title: json.livestream?.session_title ?? null,
       thumbnail: json.livestream?.thumbnail?.url ?? null,
     };
@@ -53,6 +98,181 @@ export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null
     console.error("[clip-capture] channel lookup error", error);
     return null;
   }
+}
+
+export type NativeKickClip = {
+  externalId: string;
+  url: string;
+  title: string | null;
+  thumbnail: string | null;
+  duration: number;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function textField(source: Record<string, unknown> | null, ...keys: string[]): string | null {
+  if (!source) return null;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function kickClipPage(slug: string, id: string): string {
+  return `https://kick.com/${encodeURIComponent(slug)}/clips/${encodeURIComponent(id)}`;
+}
+
+function clipRecord(payload: unknown): Record<string, unknown> | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+  const data = root["data"];
+  const fromData = Array.isArray(data) ? asRecord(data[0]) : asRecord(data);
+  return asRecord(root["clip"]) ?? asRecord(fromData?.["clip"]) ?? fromData ?? root;
+}
+
+function parseNativeClip(slug: string, payload: unknown, fallbackDuration: number): NativeKickClip | null {
+  const nested = clipRecord(payload);
+  if (!nested) return null;
+  const rawId = textField(nested, "id", "clip_id", "uuid");
+  const explicit = textField(nested, "share_url", "page_url", "url", "clip_url");
+  const fromMedia = explicit?.match(/clip_[A-Za-z0-9]+/)?.[0] ?? null;
+  const id = rawId && /^clip_/i.test(rawId) ? rawId : fromMedia ?? rawId;
+  const explicitPage =
+    explicit && /kick\.com\//i.test(explicit) && !/\.m3u8(\?|$)/i.test(explicit) ? explicit : null;
+  const page = explicitPage ?? (id && /^clip_/i.test(id) ? kickClipPage(slug, id) : null);
+  if (!page) return null;
+  const durationRaw = nested["duration"];
+  const thumbRecord = asRecord(nested["thumbnail"]);
+  return {
+    externalId: id ?? page,
+    url: page,
+    title: textField(nested, "title"),
+    thumbnail: textField(nested, "thumbnail_url") ?? textField(thumbRecord, "url"),
+    duration: typeof durationRaw === "number" && durationRaw > 0 ? durationRaw : fallbackDuration,
+  };
+}
+
+function responseSaysOffline(status: number, body: string): boolean {
+  if (status === 409) return true;
+  return /offline|not[_\s-]?live|no active (live)?stream|livestream not found|channel is not live/i.test(body);
+}
+
+/**
+ * Creates a Kick clip with the broadcaster token already stored on the
+ * platform connection. Tries the official public route, then the same
+ * channel clip routes Kick's site uses. Does not log the token.
+ */
+export async function createNativeKickClip(input: {
+  token: string;
+  slug: string;
+  duration: number;
+  broadcasterUserId: string;
+  channelId: number | null;
+}): Promise<NativeKickClip | { error: string }> {
+  const { token, slug, duration, broadcasterUserId, channelId } = input;
+  const title = "Clip";
+  const broadcasterId = Number(broadcasterUserId);
+  const authHeaders = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+
+  const attempts: { url: string; init: RequestInit; agents: readonly string[] }[] = [
+    {
+      url: "https://api.kick.com/public/v1/clips",
+      init: {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          ...(Number.isSafeInteger(broadcasterId) && broadcasterId > 0
+            ? { broadcaster_user_id: broadcasterId }
+            : {}),
+          duration,
+          title,
+        }),
+      },
+      agents: ["okhttp/4.12.0"],
+    },
+    {
+      url: `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/clips`,
+      init: {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          duration,
+          title,
+          ...(channelId ? { channel_id: channelId } : {}),
+        }),
+      },
+      agents: KICK_CHANNEL_AGENTS,
+    },
+  ];
+
+  let offline = false;
+  let lastError = "clip_api_failed";
+
+  for (const attempt of attempts) {
+    try {
+      const res = await readKickJson(attempt.url, attempt.init, attempt.agents);
+      if (res.status >= 200 && res.status < 300) {
+        const parsed = parseNativeClip(slug, res.json, duration);
+        if (parsed) {
+          console.log("[clip-capture] kick clip created", { slug, status: res.status });
+          return parsed;
+        }
+        console.warn("[clip-capture] kick clip response had no clip id", { slug, status: res.status });
+        return { error: "clip_api_unparsed" };
+      }
+      if (responseSaysOffline(res.status, res.text)) offline = true;
+      if (res.status) lastError = `clip_api_${res.status}`;
+      console.warn("[clip-capture] kick clip endpoint declined", { slug, status: res.status });
+    } catch (error) {
+      console.error("[clip-capture] kick clip request error", error);
+      lastError = "clip_api_failed";
+    }
+  }
+
+  const initUrl = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/clips/init`;
+  const finalizeUrl = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/clips/finalize`;
+  try {
+    const init = await readKickJson(initUrl, { method: "GET", headers: authHeaders }, KICK_CHANNEL_AGENTS);
+    if (responseSaysOffline(init.status, init.text)) offline = true;
+    const initRecord = asRecord(init.json) ?? asRecord(asRecord(init.json)?.["clip"]);
+    const finalizeBody: Record<string, unknown> = { duration, title };
+    const initId = textField(initRecord, "id", "clip_id", "uuid");
+    if (initId) finalizeBody["id"] = initId;
+    if (channelId) finalizeBody["channel_id"] = channelId;
+
+    if (init.status === 404 || init.status === 405 || init.status === 401 || init.status === 403) {
+      lastError = `clip_api_${init.status}`;
+    }
+
+    const finalized = await readKickJson(
+      finalizeUrl,
+      { method: "POST", headers: authHeaders, body: JSON.stringify(finalizeBody) },
+      KICK_CHANNEL_AGENTS,
+    );
+    if (finalized.status >= 200 && finalized.status < 300) {
+      const parsed = parseNativeClip(slug, finalized.json, duration);
+      if (parsed) {
+        console.log("[clip-capture] kick clip finalized", { slug, status: finalized.status });
+        return parsed;
+      }
+      return { error: "clip_api_unparsed" };
+    }
+    if (responseSaysOffline(finalized.status, finalized.text)) offline = true;
+    if (finalized.status) lastError = `clip_api_${finalized.status}`;
+    console.warn("[clip-capture] kick clip finalize failed", { slug, status: finalized.status });
+  } catch (error) {
+    console.error("[clip-capture] kick clip finalize error", error);
+    lastError = "clip_api_failed";
+  }
+
+  return { error: offline ? "stream_offline" : lastError };
 }
 
 /** Picks a reasonable quality variant (highest bandwidth under ~4 Mbps). */
@@ -261,7 +481,7 @@ export async function captureKickClip(
     }
 
     const picked = tail(buffer, duration);
-    if (!picked.length) return { error: "stream_offline" };
+    if (!picked.length) return { error: "no_segments" };
 
     const parts: Uint8Array[] = [];
     let seconds = 0;
