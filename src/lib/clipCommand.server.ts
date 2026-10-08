@@ -158,7 +158,6 @@ export async function warmKickClipBuffer(userId: string): Promise<void> {
  */
 async function createKickClip(
   userId: string,
-  broadcasterUserId: string,
   duration: number,
 ): Promise<CreatedClip | { error: string }> {
   const token = await kickToken(userId);
@@ -174,10 +173,10 @@ async function createKickClip(
 
   const native = await createNativeKickClip({
     token,
-    slug,
+    slug: channel?.slug ?? slug,
     duration,
-    broadcasterUserId,
-    channelId: channel?.channelId ?? null,
+    livestreamSlug: channel?.livestreamSlug ?? null,
+    vodId: channel?.vodId ?? null,
   });
   if ("url" in native) {
     return {
@@ -249,7 +248,7 @@ export async function handleClipCommand(input: {
     settings.maxLength,
   );
 
-  const created = await createKickClip(userId, broadcasterUserId, duration);
+  const created = await createKickClip(userId, duration);
   if ("error" in created) {
     const notice = created.error === "stream_offline"
       ? `@${sender.username} Stream is offline, no clip could be captured.`

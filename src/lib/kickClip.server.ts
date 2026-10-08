@@ -26,6 +26,8 @@ const UA = { "User-Agent": KICK_CHANNEL_AGENTS[0] } as const;
 
 type KickLivestream = KickLivestreamShape & {
   session_title?: string;
+  slug?: string;
+  vod_id?: string | number | null;
   thumbnail?: { url?: string } | null;
 };
 
@@ -38,6 +40,10 @@ export type ChannelInfo = {
   isLive: boolean;
   title: string | null;
   thumbnail: string | null;
+  /** Livestream slug Kick uses in `/api/internal/v1/livestreams/{slug}/clips`. */
+  livestreamSlug: string | null;
+  /** VOD id used by `POST https://web.kick.com/api/v1/clips`. */
+  vodId: string | null;
 };
 
 async function readKickJson(
@@ -67,14 +73,15 @@ async function readKickJson(
 }
 
 export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null> {
+  const channelSlug = slug.trim().replace(/^@+/, "").toLowerCase();
   try {
     const res = await readKickJson(
-      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+      `https://kick.com/api/v2/channels/${encodeURIComponent(channelSlug)}`,
       { headers: { Accept: "application/json" } },
       KICK_CHANNEL_AGENTS,
     );
     if (res.status < 200 || res.status >= 300) {
-      console.warn("[clip-capture] channel lookup failed", res.status, slug);
+      console.warn("[clip-capture] channel lookup failed", res.status, channelSlug);
       return null;
     }
     const json = (res.json ?? {}) as {
@@ -85,14 +92,22 @@ export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null
     };
     const liveState = liveStateFromLivestream(json.livestream);
     const channelId = typeof json.id === "number" && Number.isSafeInteger(json.id) ? json.id : null;
+    const vod = json.livestream?.vod_id;
+    const vodId = typeof vod === "string" && vod.trim() ? vod.trim() : typeof vod === "number" ? String(vod) : null;
+    const livestreamSlug =
+      typeof json.livestream?.slug === "string" && json.livestream.slug.trim()
+        ? json.livestream.slug.trim()
+        : null;
     return {
-      slug: json.slug ?? slug,
+      slug: (json.slug ?? channelSlug).toLowerCase(),
       channelId,
       playbackUrl: json.playback_url ?? null,
       liveState,
       isLive: liveState === true,
       title: json.livestream?.session_title ?? null,
       thumbnail: json.livestream?.thumbnail?.url ?? null,
+      livestreamSlug,
+      vodId,
     };
   } catch (error) {
     console.error("[clip-capture] channel lookup error", error);
@@ -160,119 +175,128 @@ function responseSaysOffline(status: number, body: string): boolean {
   return /offline|not[_\s-]?live|no active (live)?stream|livestream not found|channel is not live/i.test(body);
 }
 
+type KickHttpResult = { status: number; json: unknown; text: string };
+
+/** One POST. A 403 is not retried with another user-agent, and 404/405 are not retried at all. */
+async function postKickOnce(url: string, token: string, body: Record<string, unknown>): Promise<KickHttpResult> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "okhttp/4.12.0",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text().catch(() => "");
+  let json: unknown = null;
+  if (text) {
+    try {
+      json = JSON.parse(text) as unknown;
+    } catch {
+      json = null;
+    }
+  }
+  return { status: res.status, json, text };
+}
+
+function clipIdFrom(payload: unknown): string | null {
+  return textField(clipRecord(payload), "id", "clip_id", "uuid");
+}
+
+function publishedClip(slug: string, id: string, payload: unknown, duration: number): NativeKickClip {
+  return (
+    parseNativeClip(slug, payload, duration) ?? {
+      externalId: id,
+      url: kickClipPage(slug, id),
+      title: textField(clipRecord(payload), "title"),
+      thumbnail: null,
+      duration,
+    }
+  );
+}
+
 /**
- * Creates a Kick clip with the broadcaster token already stored on the
- * platform connection. Tries the official public route, then the same
- * channel clip routes Kick's site uses. Does not log the token.
+ * Kick's current clip create is two single POSTs, matching the website:
+ * `POST https://web.kick.com/api/v1/clips` with the livestream `vod_id`, then
+ * `POST https://web.kick.com/api/v1/clips/{id}/finalize`.
+ * If that route is missing, one internal create uses the livestream slug:
+ * `POST https://kick.com/api/internal/v1/livestreams/{livestreamSlug}/clips`,
+ * then `POST .../clips/{id}/finalize`.
+ * Does not log the token. Does not POST the channel clip list (GET/HEAD only)
+ * or the removed `/clips/init` path.
  */
 export async function createNativeKickClip(input: {
   token: string;
   slug: string;
   duration: number;
-  broadcasterUserId: string;
-  channelId: number | null;
+  livestreamSlug: string | null;
+  vodId: string | null;
 }): Promise<NativeKickClip | { error: string }> {
-  const { token, slug, duration, broadcasterUserId, channelId } = input;
+  const slug = input.slug.trim().replace(/^@+/, "").toLowerCase();
+  const { token, duration, livestreamSlug, vodId } = input;
   const title = "Clip";
-  const broadcasterId = Number(broadcasterUserId);
-  const authHeaders = {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/json",
-    "Content-Type": "application/json",
+  const finalizeBody = { duration, start_time: 0, title };
+  let lastError = "clip_api_unavailable";
+
+  const finish = async (opened: KickHttpResult, finalizeUrl: (id: string) => string): Promise<NativeKickClip | { error: string } | null> => {
+    if (opened.status === 404 || opened.status === 405) return null;
+    if (responseSaysOffline(opened.status, opened.text)) return { error: "stream_offline" };
+    if (opened.status < 200 || opened.status >= 300) return { error: `clip_api_${opened.status || "failed"}` };
+    const id = clipIdFrom(opened.json);
+    if (!id) return { error: "clip_api_unparsed" };
+    const finalized = await postKickOnce(finalizeUrl(id), token, finalizeBody);
+    if (finalized.status >= 200 && finalized.status < 300) {
+      console.log("[clip-capture] kick clip finalized", { slug, status: finalized.status });
+      return publishedClip(slug, clipIdFrom(finalized.json) ?? id, finalized.json, duration);
+    }
+    if (finalized.status === 404 || finalized.status === 405) {
+      console.warn("[clip-capture] kick clip finalize declined", { slug, status: finalized.status });
+      return publishedClip(slug, id, opened.json, duration);
+    }
+    if (responseSaysOffline(finalized.status, finalized.text)) return { error: "stream_offline" };
+    return { error: `clip_api_${finalized.status || "failed"}` };
   };
 
-  const attempts: { url: string; init: RequestInit; agents: readonly string[] }[] = [
-    {
-      url: "https://api.kick.com/public/v1/clips",
-      init: {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          ...(Number.isSafeInteger(broadcasterId) && broadcasterId > 0
-            ? { broadcaster_user_id: broadcasterId }
-            : {}),
-          duration,
-          title,
-        }),
-      },
-      agents: ["okhttp/4.12.0"],
-    },
-    {
-      url: `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/clips`,
-      init: {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          duration,
-          title,
-          ...(channelId ? { channel_id: channelId } : {}),
-        }),
-      },
-      agents: KICK_CHANNEL_AGENTS,
-    },
-  ];
+  const moveOn = (status: number) => status === 404 || status === 405 || status === 401 || status === 403;
 
-  let offline = false;
-  let lastError = "clip_api_failed";
-
-  for (const attempt of attempts) {
-    try {
-      const res = await readKickJson(attempt.url, attempt.init, attempt.agents);
-      if (res.status >= 200 && res.status < 300) {
-        const parsed = parseNativeClip(slug, res.json, duration);
-        if (parsed) {
-          console.log("[clip-capture] kick clip created", { slug, status: res.status });
-          return parsed;
-        }
-        console.warn("[clip-capture] kick clip response had no clip id", { slug, status: res.status });
-        return { error: "clip_api_unparsed" };
-      }
-      if (responseSaysOffline(res.status, res.text)) offline = true;
-      if (res.status) lastError = `clip_api_${res.status}`;
-      console.warn("[clip-capture] kick clip endpoint declined", { slug, status: res.status });
-    } catch (error) {
-      console.error("[clip-capture] kick clip request error", error);
-      lastError = "clip_api_failed";
-    }
-  }
-
-  const initUrl = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/clips/init`;
-  const finalizeUrl = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/clips/finalize`;
   try {
-    const init = await readKickJson(initUrl, { method: "GET", headers: authHeaders }, KICK_CHANNEL_AGENTS);
-    if (responseSaysOffline(init.status, init.text)) offline = true;
-    const initRecord = asRecord(init.json) ?? asRecord(asRecord(init.json)?.["clip"]);
-    const finalizeBody: Record<string, unknown> = { duration, title };
-    const initId = textField(initRecord, "id", "clip_id", "uuid");
-    if (initId) finalizeBody["id"] = initId;
-    if (channelId) finalizeBody["channel_id"] = channelId;
-
-    if (init.status === 404 || init.status === 405 || init.status === 401 || init.status === 403) {
-      lastError = `clip_api_${init.status}`;
-    }
-
-    const finalized = await readKickJson(
-      finalizeUrl,
-      { method: "POST", headers: authHeaders, body: JSON.stringify(finalizeBody) },
-      KICK_CHANNEL_AGENTS,
-    );
-    if (finalized.status >= 200 && finalized.status < 300) {
-      const parsed = parseNativeClip(slug, finalized.json, duration);
-      if (parsed) {
-        console.log("[clip-capture] kick clip finalized", { slug, status: finalized.status });
-        return parsed;
+    if (vodId) {
+      const opened = await postKickOnce("https://web.kick.com/api/v1/clips", token, { video_id: vodId });
+      if (opened.status < 200 || opened.status >= 300) {
+        console.warn("[clip-capture] kick clip create", { slug, status: opened.status, via: "web" });
       }
-      return { error: "clip_api_unparsed" };
+      const created = await finish(opened, (id) => `https://web.kick.com/api/v1/clips/${encodeURIComponent(id)}/finalize`);
+      if (created && "url" in created) return created;
+      if (created?.error === "stream_offline") return created;
+      if (created) lastError = created.error;
+      if (created && !moveOn(opened.status)) return created;
     }
-    if (responseSaysOffline(finalized.status, finalized.text)) offline = true;
-    if (finalized.status) lastError = `clip_api_${finalized.status}`;
-    console.warn("[clip-capture] kick clip finalize failed", { slug, status: finalized.status });
+
+    if (livestreamSlug) {
+      const opened = await postKickOnce(
+        `https://kick.com/api/internal/v1/livestreams/${encodeURIComponent(livestreamSlug)}/clips`,
+        token,
+        { duration },
+      );
+      if (opened.status < 200 || opened.status >= 300) {
+        console.warn("[clip-capture] kick clip create", { slug, status: opened.status, via: "internal" });
+      }
+      const created = await finish(
+        opened,
+        (id) =>
+          `https://kick.com/api/internal/v1/livestreams/${encodeURIComponent(livestreamSlug)}/clips/${encodeURIComponent(id)}/finalize`,
+      );
+      if (created) return created;
+      return { error: `clip_api_${opened.status || "failed"}` };
+    }
   } catch (error) {
-    console.error("[clip-capture] kick clip finalize error", error);
-    lastError = "clip_api_failed";
+    console.error("[clip-capture] kick clip request error", error);
+    return { error: "clip_api_failed" };
   }
 
-  return { error: offline ? "stream_offline" : lastError };
+  return { error: lastError };
 }
 
 /** Picks a reasonable quality variant (highest bandwidth under ~4 Mbps). */
