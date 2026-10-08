@@ -158,6 +158,9 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 const HUB_INITIAL_VISIBLE = 20;
 
 const GOAL_TOOL_IDS = new Set(["donation-goal", "follower-goal", "subscriber-goal"]);
+/** Visual order of the goal block, last in the hub grid. RTL reads this from the start. */
+const HUB_GOAL_ORDER = ["subscriber-goal", "follower-goal", "donation-goal", "kicks-goal"] as const;
+const HUB_GOAL_RANK = new Map<string, number>(HUB_GOAL_ORDER.map((id, index) => [id, index]));
 const HUB_LOAD_MORE = 8;
 
 /** Hub tools that require an active Pro subscription (matches PLAN_FEATURES). */
@@ -419,7 +422,15 @@ function HomePage() {
 
   const visibleTools = TOOLS.filter(
     (tool) => platformFilter === "ALL" || tool.platforms.includes(platformFilter),
-  ).sort((a, b) => Number(Boolean(a.comingSoon)) - Number(Boolean(b.comingSoon)));
+  ).sort((a, b) => {
+    const aRank = HUB_GOAL_RANK.get(a.id);
+    const bRank = HUB_GOAL_RANK.get(b.id);
+    const aGroup = aRank == null ? (a.comingSoon ? 1 : 0) : 2;
+    const bGroup = bRank == null ? (b.comingSoon ? 1 : 0) : 2;
+    if (aGroup !== bGroup) return aGroup - bGroup;
+    if (aRank != null && bRank != null) return aRank - bRank;
+    return 0;
+  });
   const shownTools = visibleTools.slice(0, visibleCount);
 
   useEffect(() => {
@@ -590,12 +601,15 @@ function HomePage() {
         <>
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
             {shownTools.map((tool) => {
+              const goalRank = HUB_GOAL_RANK.get(tool.id);
               const existing = existingFor(tool);
               const Preview = tool.preview;
               const locked = toolLocked(tool);
               return (
                 <ToolCard
                   key={tool.id}
+                  className={goalRank === 0 ? "col-start-1" : undefined}
+                  style={goalRank == null ? undefined : { order: goalRank + 1 }}
                   name={t(tool.nameKey)}
                   description={t(tool.descriptionKey)}
                   category={t(tool.categoryKey)}

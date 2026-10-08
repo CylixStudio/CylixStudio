@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Check, Copy, Lock, Trash2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { PLATFORM_META, sortHubPlatforms, type PlatformId } from "@/components/hub/platforms";
@@ -30,6 +30,9 @@ export type ToolCardProps = {
   lockLabel?: string;
   platforms?: PlatformId[];
   comingSoon?: boolean;
+  /** Grid placement only. Does not change the card chrome. */
+  className?: string;
+  style?: CSSProperties;
 };
 
 export function ToolCard({
@@ -51,6 +54,8 @@ export function ToolCard({
   lockLabel = "Subscription required",
   platforms = [],
   comingSoon = false,
+  className,
+  style,
 }: ToolCardProps) {
   const { t } = useLanguage();
   const resolvedDeleteLabel = deleteLabel === "Delete widget" ? t("home.delete") : deleteLabel;
@@ -80,7 +85,8 @@ export function ToolCard({
     <div
       className={`glass-3d glass-lift relative flex h-full min-h-[18.5rem] flex-col overflow-visible rounded-2xl p-5 text-start transition-[opacity,transform] duration-300 ease-out ${
         removing ? "pointer-events-none scale-95 opacity-0" : "scale-100 opacity-100"
-      } ${comingSoon ? "pointer-events-none opacity-60" : ""}`}
+      } ${comingSoon ? "pointer-events-none opacity-60" : ""} ${className ?? ""}`}
+      style={style}
     >
       {onDelete && !locked && !comingSoon ? (
         <button

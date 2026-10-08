@@ -42,6 +42,9 @@ const TOOL_VISUAL: Record<
   "follower-goal": { icon: Users, preview: FollowerGoalPreview },
   "subscriber-goal": { icon: Star, preview: SubscriberGoalPreview },
 };
+const WIDGET_GOAL_ORDER = ["subscriber-goal", "follower-goal", "donation-goal", "kicks-goal"] as const;
+const WIDGET_GOAL_RANK = new Map<string, number>(WIDGET_GOAL_ORDER.map((slug, index) => [slug, index]));
+
 const CREATABLE_WIDGET_TYPES = OFFERED_WIDGET_TYPES.filter(
   (entry) => !TIKTOK_COMING_SOON.includes(entry.value) && !isSplitGoalKind(entry.value),
 );
@@ -171,13 +174,25 @@ function WidgetHub() {
       <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} />
 
       <section className="mb-6 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
-        {STANDALONE_TOOLS.map((tool) => {
+        {[...STANDALONE_TOOLS]
+          .sort((a, b) => {
+            const aRank = WIDGET_GOAL_RANK.get(a.slug);
+            const bRank = WIDGET_GOAL_RANK.get(b.slug);
+            if (aRank == null && bRank == null) return 0;
+            if (aRank == null) return -1;
+            if (bRank == null) return 1;
+            return aRank - bRank;
+          })
+          .map((tool) => {
+          const goalRank = WIDGET_GOAL_RANK.get(tool.slug);
           const existing = data?.widgets.find((widget) => widget.type === tool.type) ?? null;
           const visual = TOOL_VISUAL[tool.slug];
           const Preview = visual.preview;
           return (
             <ToolCard
               key={tool.slug}
+              className={goalRank === 0 ? "col-start-1" : undefined}
+              style={goalRank == null ? undefined : { order: goalRank + 1 }}
               name={t(tool.nameKey)}
               description={t(tool.descriptionKey)}
               category={t("nav.tools")}
