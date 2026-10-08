@@ -1,6 +1,6 @@
 import { chatMention } from "@/lib/commandTemplate";
 import { captureKickClip, createNativeKickClip, fetchKickChannel, refreshKickBuffer } from "@/lib/kickClip.server";
-import { clipErrorAfterAttempt, shouldAttemptClip } from "@/lib/kickClipLive";
+import { clipErrorAfterAttempt, clipFailureNotice, shouldAttemptClip } from "@/lib/kickClipLive";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 
@@ -198,8 +198,8 @@ async function createKickClip(
     };
   }
 
-  // Rate limit is not an offline stream. HLS runs after the single backoff,
-  // and also after any other non-success clip status that is not an agreed offline.
+  // A 429 budget is already spent inside the Kick call. HLS runs next.
+  // Chat is not notified until this capture also fails.
   const agreedOffline = native.error === "stream_offline" && liveState === false;
   if (!agreedOffline && channel?.playbackUrl) {
     console.log("[clip-command] capturing clip", { slug, duration, liveState, status: native.error });
@@ -251,8 +251,10 @@ export async function handleClipCommand(input: {
   broadcasterUserId: string;
   text: string;
   sender: ChatSender;
+  isTest?: boolean;
 }): Promise<{ status: string; reason?: string; clipId?: string | undefined }> {
   const { userId, broadcasterUserId, text, sender } = input;
+  if (input.isTest) return { status: "ignored", reason: "test" };
   const trimmed = text.trim();
   if (!/^!clip\b/i.test(trimmed)) return { status: "ignored", reason: "not_clip_command" };
 
@@ -270,9 +272,7 @@ export async function handleClipCommand(input: {
 
   const created = await createKickClip(userId, duration);
   if ("error" in created) {
-    const notice = created.error === "stream_offline"
-      ? `@${sender.username} Stream is offline, no clip could be captured.`
-      : `@${sender.username} Clip creation failed (${created.error}). Please try again.`;
+    const notice = clipFailureNotice(sender.username, created.error, settings.response || CLIP_DEFAULTS.response);
     await sendKickChatMessage(
       userId,
       broadcasterUserId,

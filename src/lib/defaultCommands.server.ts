@@ -1,4 +1,3 @@
-import { commandsPageUrl } from "@/lib/commandsUrl";
 import { sendKickChatMessage } from "@/lib/clipCommand.server";
 import { resolveCommandTemplate } from "@/lib/commandTemplate.server";
 import { type ChatCommandPlatform } from "@/lib/customCommands";
@@ -110,13 +109,12 @@ export async function handleDefaultChatCommand(input: {
   };
 
   if (command.id === "commands") {
+    if (!command.enabled || !command.platforms.includes(input.platform)) {
+      return { status: "ignored", reason: "reserved", command: "!commands" };
+    }
     const slug = await publishedSlugForUser(input.userId);
-    const title = arabic ? "الأوامر" : "Commands";
-    const reply = slug
-      ? `${title}\n\n${commandsPageUrl(input.origin ?? "https://cylixstudio.com", slug)}`
-      : arabic
-        ? "قائمة الأوامر غير منشورة بعد."
-        : "The command list is not published yet.";
+    if (!slug) return { status: "ignored", reason: "unpublished", command: "!commands" };
+    const reply = `You can find a list of all Commands here :https://cylixstudio.com/commands/${slug}`;
     if (input.platform === "KICK") {
       const sent = await sendKickChatMessage(
         input.userId,
@@ -124,9 +122,9 @@ export async function handleDefaultChatCommand(input: {
         reply,
         input.replyToMessageId,
       );
-      if (!sent) return { status: "error", reason: "send_failed", command: command.trigger };
+      if (!sent) return { status: "error", reason: "send_failed", command: "!commands" };
     }
-    return { status: "replied", command: command.trigger };
+    return { status: "replied", command: "!commands" };
   }
 
   let template = command.response;

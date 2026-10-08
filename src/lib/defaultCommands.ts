@@ -156,10 +156,9 @@ export function matchDefaultCommand(
   if (!trimmed) return null;
   if (/^!?(?:commands|الأوامر)$/i.test(trimmed)) {
     const command = commands.find((item) => item.id === "commands");
-    if (command?.enabled && command.platforms.includes(platform)) {
-      return { command, argument: "" };
-    }
-    return null;
+    if (!command) return null;
+    // Reserved even when disabled, so a custom command of the same name cannot also reply.
+    return { command, argument: "" };
   }
   for (const command of commands) {
     if (!command.enabled || !command.platforms.includes(platform)) continue;

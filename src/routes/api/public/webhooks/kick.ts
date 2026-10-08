@@ -391,6 +391,9 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           const { handleClipCommand, warmKickClipBuffer } = await import("@/lib/clipCommand.server");
 
           if (/^!clip\b/i.test(text.trim())) {
+            const isTest =
+              (body as { isTest?: unknown }).isTest === true ||
+              (body as { is_test?: unknown }).is_test === true;
             const command = handleClipCommand({
               userId: connection.user_id,
               broadcasterUserId: broadcasterId,
@@ -400,6 +403,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                 platformId: senderId,
                 identityBadges,
               },
+              isTest,
             });
             deferRequestWork(
               request,

@@ -33,31 +33,58 @@ export function shouldAttemptClip(liveState: boolean | null): boolean {
   return true;
 }
 
-const RATE_LIMIT_DEFAULT_MS = 2_000;
-const RATE_LIMIT_CAP_MS = 8_000;
+/** Initial try plus retries. After the third 429, that URL is not posted again. */
+export const CLIP_RATE_LIMIT_ATTEMPTS = 3;
 
-/**
- * One wait after HTTP 429. Uses Kick's `Retry-After` when it is delay-seconds
- * or an HTTP date, otherwise 2 seconds. Never waits longer than 8 seconds.
- */
-export function rateLimitBackoffMs(retryAfter: string | null | undefined, now = Date.now()): number {
+function retryAfterDelayMs(retryAfter: string | null | undefined, now: number): number | null {
   const raw = retryAfter?.trim();
-  if (!raw) return RATE_LIMIT_DEFAULT_MS;
+  if (!raw) return null;
   const seconds = Number(raw);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(RATE_LIMIT_CAP_MS, Math.round(seconds * 1000));
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
   const when = Date.parse(raw);
-  if (Number.isFinite(when)) return Math.min(RATE_LIMIT_CAP_MS, Math.max(0, when - now));
-  return RATE_LIMIT_DEFAULT_MS;
+  if (Number.isFinite(when)) return Math.max(0, when - now);
+  return null;
 }
 
 /**
- * After a single clip POST: 401/403/404/405 may try the next Kick call once.
- * 429 waits once, then HLS, and must not POST that URL again.
- * Any other non-success status also goes to HLS instead of repeating the call.
+ * Wait before retrying the same clip URL after a 429.
+ * `attempt` is how many tries have already been made (1 or 2).
+ * Returns null after the third try so there is no fourth POST.
+ * Default waits are 1s then 2s. `Retry-After` is used when it falls between
+ * 1 and 3 seconds; longer values are capped at 3 seconds.
  */
-export function clipHttpNext(status: number): "ok" | "next" | "wait-hls" | "hls" {
+export function rateLimitRetryWaitMs(
+  attempt: number,
+  retryAfter?: string | null,
+  now = Date.now(),
+): number | null {
+  if (attempt >= CLIP_RATE_LIMIT_ATTEMPTS) return null;
+  const stepped = Math.min(3_000, Math.max(1_000, attempt * 1_000));
+  const header = retryAfterDelayMs(retryAfter, now);
+  if (header == null) return stepped;
+  return Math.min(3_000, Math.max(1_000, header));
+}
+
+/**
+ * 404/405 skip to the next Kick path and are not retried.
+ * 429 is retried on the same URL up to three times, then HLS.
+ * Other non-success statuses go to HLS without repeating the call.
+ */
+const ARABIC_LETTER = /[\u0600-\u06FF]/;
+
+/** Viewer text after Kick retries and HLS both fail. No status codes, and not an offline claim. */
+export function clipFailureNotice(username: string, error: string, responseTemplate: string): string {
+  const mention = `@${username.replace(/^@+/, "")}`;
+  if (error === "stream_offline") return `${mention} Stream is offline, no clip could be captured.`;
+  const line = ARABIC_LETTER.test(responseTemplate)
+    ? "تعذّر إنشاء الكليب الآن، حاول مرة أخرى بعد لحظات."
+    : "The clip could not be created right now, try again in a moment.";
+  return `${mention} ${line}`;
+}
+
+export function clipHttpNext(status: number): "ok" | "next" | "retry" | "hls" {
   if (status >= 200 && status < 300) return "ok";
-  if (status === 429) return "wait-hls";
+  if (status === 429) return "retry";
   if (status === 401 || status === 403 || status === 404 || status === 405) return "next";
   return "hls";
 }
