@@ -157,7 +157,9 @@ function WidgetBuilder() {
     if (!widget) return;
     setName(widget.name);
     setConfig({ ...(widget.config ?? {}) });
-  }, [widget?.id, widget?.name, widget?.config, widget]);
+    // Hydrate once per widget. A later refetch must not wipe prizes typed in the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widget?.id]);
 
   useEffect(() => {
     if (!goalRow) return;
@@ -1047,7 +1049,6 @@ function WidgetBuilder() {
               demo
               publicToken={widget.public_token}
               spinning={wheelTurning || spin.isPending}
-              onSpin={widget.type === "SPIN_WHEEL" ? requestWheelSpin : undefined}
             />
           </section>
         </div>

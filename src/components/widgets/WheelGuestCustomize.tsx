@@ -46,7 +46,6 @@ export function WheelGuestCustomize() {
           goal={null}
           events={[]}
           spin={spin}
-          onSpin={onSpin}
           spinning={spinning}
           demo
         />

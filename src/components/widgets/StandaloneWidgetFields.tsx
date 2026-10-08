@@ -6,9 +6,11 @@ import { EVENT_LABEL_I18N, EVENT_LABEL_OPTIONS } from "@/lib/eventLabels";
 import { useLanguage } from "@/lib/i18n";
 import { lookupChannel } from "@/lib/liveCounter.functions";
 import {
+  draftSpinPrizes,
   parseEventLabelsConfig,
   parseKicksGoalConfig,
   parseSpinConfig,
+  parseSpinCost,
   parseViewerCounterConfig,
   type SpinPrize,
   type ViewerPlatform,
@@ -22,23 +24,8 @@ const labelClass = "text-[0.65rem] font-semibold uppercase tracking-[0.2em] text
 
 const VIEWER_CHOICES: ViewerPlatform[] = ["KICK", "TWITCH", "YOUTUBE", "X"];
 
-function asRecord(raw: unknown): Record<string, unknown> {
-  return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-}
-
 function draftPrizes(config: Record<string, unknown>): SpinPrize[] {
-  const raw = config["prizes"];
-  if (Array.isArray(raw)) {
-    return raw.slice(0, 24).map((item) => {
-      const row = asRecord(item);
-      const weight = Number(row["weight"]);
-      return {
-        label: typeof row["label"] === "string" ? row["label"].slice(0, 40) : "",
-        weight: Number.isFinite(weight) ? Math.min(100, Math.max(1, Math.round(weight))) : 1,
-      };
-    });
-  }
-  return parseSpinConfig(config).prizes;
+  return draftSpinPrizes(config);
 }
 
 export function StandaloneWidgetFields({
@@ -175,8 +162,10 @@ export function StandaloneWidgetFields({
   }
 
   if (type === "SPIN_WHEEL") {
+    const cost = parseSpinCost(config);
+    const named = prizes.some((prize) => prize.label.trim().length > 0);
     return (
-      <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+      <div className="relative z-10 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
         <label className="block">
           <span className={labelClass}>{t("widget.wheel.title")}</span>
           <input
@@ -184,6 +173,17 @@ export function StandaloneWidgetFields({
             value={typeof config["title"] === "string" ? config["title"] : parseSpinConfig(config).title}
             onChange={(event) => set("title", event.target.value)}
           />
+        </label>
+        <label className="block">
+          <span className={labelClass}>{t("widget.wheel.cost")}</span>
+          <input
+            type="number"
+            min={0}
+            className={`${fieldClass} mt-2`}
+            value={cost}
+            onChange={(event) => set("spinCost", Math.max(0, Number(event.target.value) || 0))}
+          />
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t("widget.wheel.costHint")}</p>
         </label>
         <div className="space-y-2">
           {prizes.map((prize, index) => (
@@ -200,47 +200,32 @@ export function StandaloneWidgetFields({
                   writePrizes(next);
                 }}
               />
-              <input
-                type="number"
-                min={1}
-                max={100}
-                className={`${fieldClass} w-20 shrink-0`}
-                value={prize.weight}
-                aria-label={t("widget.wheel.weight")}
-                onChange={(event) => {
-                  const next = prizes.slice();
-                  const current = next[index];
-                  if (!current) return;
-                  next[index] = { label: current.label, weight: Number(event.target.value) };
-                  writePrizes(next);
-                }}
-              />
               <button
                 type="button"
-                className="shrink-0 rounded-lg border border-border px-2 py-2 text-xs text-muted-foreground hover:text-foreground"
+                className="shrink-0 rounded-lg border border-zinc-700 px-2 py-2 text-xs text-zinc-300 hover:text-zinc-100"
                 onClick={() => writePrizes(prizes.filter((_, item) => item !== index))}
               >
                 {t("widget.wheel.remove")}
               </button>
             </div>
           ))}
+          <button
+            type="button"
+            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100"
+            onClick={() => writePrizes([...prizes, { label: "", weight: 1 }])}
+          >
+            {t("widget.wheel.add")}
+          </button>
         </div>
-        <button
-          type="button"
-          className="rounded-lg border border-border px-3 py-1.5 text-sm"
-          onClick={() => writePrizes([...prizes, { label: "", weight: 1 }])}
-        >
-          {t("widget.wheel.add")}
-        </button>
         {onSpin ? (
           <button
             type="button"
             onClick={() => {
-              if (spinning || !prizes.some((prize) => prize.label.trim().length > 0)) return;
+              if (spinning || !named) return;
               playWheelSpinSound();
               onSpin();
             }}
-            disabled={spinning || !prizes.some((prize) => prize.label.trim().length > 0)}
+            disabled={spinning || !named}
             className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
             {spinning ? "…" : t("widget.wheel.spin")}

@@ -1239,4 +1239,6 @@ export const EN = {
   "clip.maintenance.titleEn": "Under maintenance",
   "clip.maintenance.locked": "The clip page is locked.",
   "clip.maintenance.badge": "Under maintenance",
+  "widget.wheel.cost": "Points for one chat spin",
+  "widget.wheel.costHint": "0 is free. Commands: !wheel and !spin.",
 } as const;

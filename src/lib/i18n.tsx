@@ -1308,6 +1308,8 @@ const DICT = {
   "clip.maintenance.titleEn": "Under maintenance",
   "clip.maintenance.locked": "صفحة الكليب مقفلة.",
   "clip.maintenance.badge": "تحت الصيانة",
+  "widget.wheel.cost": "تكلفة النقاط لكل تدوير",
+  "widget.wheel.costHint": "0 يعني مجاناً. الأوامر !wheel و !spin.",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

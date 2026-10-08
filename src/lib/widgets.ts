@@ -146,7 +146,13 @@ export type ChatConfig = BaseStyle & {
 };
 export type SpinPrize = { label: string; weight: number };
 
-export type SpinConfig = BaseStyle & { entries: string[]; prizes: SpinPrize[]; title: string };
+export type SpinConfig = BaseStyle & {
+  entries: string[];
+  prizes: SpinPrize[];
+  title: string;
+  /** Loyalty points for one chat spin. 0 is free. */
+  spinCost: number;
+};
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -238,25 +244,77 @@ function prizeWeight(value: unknown): number {
   return Math.min(100, Math.max(1, Math.round(parsed)));
 }
 
-/** Saved prizes win. Legacy string entries become equal slices. */
+function prizeLabel(item: Record<string, unknown>): string {
+  const raw = item["label"] ?? item["name"] ?? item["text"];
+  return typeof raw === "string" ? raw.slice(0, 40) : "";
+}
+
+/** One stored row, including a blank editor row. Strings and name/text fields count. */
+export function coerceSpinPrize(item: unknown): SpinPrize {
+  if (typeof item === "string") return { label: item.slice(0, 40), weight: 1 };
+  return { label: prizeLabel(asRecord(item)), weight: prizeWeight(asRecord(item)["weight"]) };
+}
+
+function isExplicitBlankPrize(item: unknown): boolean {
+  if (!item || typeof item !== "object") return false;
+  const label = asRecord(item)["label"];
+  return typeof label === "string" && label.trim().length === 0;
+}
+
+function entryPrizes(raw: unknown): SpinPrize[] {
+  const source = asRecord(raw);
+  const rawEntries = Array.isArray(source["entries"]) ? source["entries"] : [];
+  return rawEntries
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => ({ label: entry.trim().slice(0, 40), weight: 1 }))
+    .slice(0, 24);
+}
+
+/**
+ * Saved prizes win. A non-empty list is never replaced by placeholders.
+ * Blank editor rows are omitted. Legacy string `entries` are used only when
+ * `prizes` has no readable labels and no blank row the editor just added.
+ */
 export function parseSpinPrizes(raw: unknown): SpinPrize[] {
   const source = asRecord(raw);
   const rawPrizes = Array.isArray(source["prizes"]) ? source["prizes"] : [];
   const prizes = rawPrizes
-    .map((item) => asRecord(item))
-    .map((item) => ({
-      label: typeof item["label"] === "string" ? item["label"].trim().slice(0, 40) : "",
-      weight: prizeWeight(item["weight"]),
-    }))
-    .filter((item) => item.label.length > 0)
-    .slice(0, 24);
+    .slice(0, 24)
+    .map((item) => coerceSpinPrize(item))
+    .map((item) => ({ label: item.label.trim(), weight: item.weight }))
+    .filter((item) => item.label.length > 0);
   if (prizes.length > 0) return prizes;
-  const rawEntries = Array.isArray(source["entries"]) ? source["entries"] : [];
-  const entries = rawEntries
-    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    .map((entry) => ({ label: entry.trim().slice(0, 40), weight: 1 }))
-    .slice(0, 24);
-  return entries;
+  if (rawPrizes.some((item) => isExplicitBlankPrize(item))) return [];
+  return entryPrizes(raw);
+}
+
+/** Editor rows, including a blank row the viewer has not named yet. */
+export function draftSpinPrizes(raw: unknown): SpinPrize[] {
+  const source = asRecord(raw);
+  const rawPrizes = Array.isArray(source["prizes"]) ? source["prizes"] : null;
+  if (rawPrizes) {
+    const rows = rawPrizes.slice(0, 24).map((item) => coerceSpinPrize(item));
+    const readable = rows.some((row) => row.label.trim().length > 0);
+    const blanks = rawPrizes.some((item) => isExplicitBlankPrize(item));
+    if (readable || blanks || rawPrizes.length === 0) {
+      if (rawPrizes.length === 0) {
+        const entries = entryPrizes(raw);
+        if (entries.length > 0) return entries;
+      }
+      return rows;
+    }
+    const entries = entryPrizes(raw);
+    if (entries.length > 0) return entries;
+    return rows;
+  }
+  return parseSpinPrizes(raw);
+}
+
+export function parseSpinCost(raw: unknown): number {
+  const source = asRecord(raw);
+  const parsed = Number(source["spinCost"] ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(1_000_000, Math.max(0, Math.round(parsed)));
 }
 
 export function pickWeightedPrize(prizes: SpinPrize[]): string | null {
@@ -279,6 +337,7 @@ export function parseSpinConfig(raw: unknown): SpinConfig {
     title: typeof source["title"] === "string" ? source["title"].trim().slice(0, 40) : "",
     prizes,
     entries: prizes.map((prize) => prize.label),
+    spinCost: parseSpinCost(raw),
   };
 }
 

@@ -455,6 +455,16 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   sender: { username },
                   isTest: false,
                 });
+              } else if (/^!?(?:wheel|spin)$/i.test(text.trim())) {
+                const { handleWheelChatCommand } = await import("@/lib/wheelCommand.server");
+                commandResult = await handleWheelChatCommand({
+                  userId: connection.user_id,
+                  broadcasterUserId: broadcasterId,
+                  platform: "KICK",
+                  text,
+                  sender: { username },
+                  isTest: false,
+                });
               } else {
                 const { handleDefaultChatCommand } = await import("@/lib/defaultCommands.server");
                 const defaultResult = await handleDefaultChatCommand({
