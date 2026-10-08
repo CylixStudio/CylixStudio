@@ -1,10 +1,4 @@
-import {
-  CLIP_RATE_LIMIT_ATTEMPTS,
-  clipHttpNext,
-  liveStateFromLivestream,
-  rateLimitRetryWaitMs,
-  type KickLivestreamShape,
-} from "@/lib/kickClipLive";
+import { clipHttpNext, liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 /**
@@ -207,29 +201,6 @@ async function postKickOnce(url: string, token: string, body: Record<string, unk
   return { status: res.status, json, text, retryAfter: res.headers.get("retry-after") };
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Up to 3 POSTs of the same URL when Kick returns 429. Waits 1s then 2s
- * (Retry-After clamped to 1–3s). Does not post a fourth time. 404/405 return
- * immediately so the caller can switch paths.
- */
-async function postClipWithBudget(
-  url: string,
-  token: string,
-  body: Record<string, unknown>,
-): Promise<KickHttpResult> {
-  let last: KickHttpResult | null = null;
-  for (let attempt = 1; attempt <= CLIP_RATE_LIMIT_ATTEMPTS; attempt += 1) {
-    last = await postKickOnce(url, token, body);
-    if (last.status !== 429) return last;
-    console.warn("[clip-capture] kick clip rate limited", { status: last.status, attempt });
-    const waitMs = rateLimitRetryWaitMs(attempt, last.retryAfter);
-    if (waitMs == null) break;
-    await sleep(waitMs);
-  }
-  return last ?? { status: 429, json: null, text: "", retryAfter: null };
-}
 
 function clipIdFrom(payload: unknown): string | null {
   return textField(clipRecord(payload), "id", "clip_id", "uuid");
@@ -248,16 +219,19 @@ function publishedClip(slug: string, id: string, payload: unknown, duration: num
 }
 
 /**
- * Kick's current clip create is two single POSTs, matching the website:
+ * Kick's current clip create is one POST per URL, matching the website:
  * `POST https://web.kick.com/api/v1/clips` with the livestream `vod_id`, then
  * `POST https://web.kick.com/api/v1/clips/{id}/finalize`.
- * If that route is missing, one internal create uses the livestream slug:
+ * If that route is missing (404/405), one internal create uses the livestream slug:
  * `POST https://kick.com/api/internal/v1/livestreams/{livestreamSlug}/clips`,
  * then `POST .../clips/{id}/finalize`.
+ * A 429 is not posted again and does not continue to the other host.
  * Does not log the token. Does not POST the channel clip list (GET/HEAD only)
  * or the removed `/clips/init` path.
  */
-export type NativeKickClipResult = NativeKickClip | { error: string; rateLimited?: boolean };
+export type NativeKickClipResult =
+  | NativeKickClip
+  | { error: string; rateLimited?: boolean; retryAfter?: string | null };
 
 export async function createNativeKickClip(input: {
   token: string;
@@ -277,7 +251,10 @@ export async function createNativeKickClip(input: {
     finalizeUrl: (id: string) => string,
   ): Promise<NativeKickClipResult | null> => {
     const openedNext = clipHttpNext(opened.status);
-    if (openedNext === "retry") return { error: "clip_api_429", rateLimited: true };
+    if (openedNext === "rate_limit") {
+      console.warn("[clip-capture] kick clip rate limited", { status: opened.status });
+      return { error: "clip_api_429", rateLimited: true, retryAfter: opened.retryAfter };
+    }
     if (openedNext === "next") return null;
     if (responseSaysOffline(opened.status, opened.text)) return { error: "stream_offline" };
     if (openedNext === "hls") {
@@ -286,9 +263,12 @@ export async function createNativeKickClip(input: {
     }
     const id = clipIdFrom(opened.json);
     if (!id) return { error: "clip_api_unparsed" };
-    const finalized = await postClipWithBudget(finalizeUrl(id), token, finalizeBody);
+    const finalized = await postKickOnce(finalizeUrl(id), token, finalizeBody);
     const finalizedNext = clipHttpNext(finalized.status);
-    if (finalizedNext === "retry") return { error: "clip_api_429", rateLimited: true };
+    if (finalizedNext === "rate_limit") {
+      console.warn("[clip-capture] kick clip rate limited", { status: finalized.status });
+      return { error: "clip_api_429", rateLimited: true, retryAfter: finalized.retryAfter };
+    }
     if (finalized.status >= 200 && finalized.status < 300) {
       console.log("[clip-capture] kick clip finalized", { slug, status: finalized.status });
       return publishedClip(slug, clipIdFrom(finalized.json) ?? id, finalized.json, duration);
@@ -304,7 +284,7 @@ export async function createNativeKickClip(input: {
 
   try {
     if (vodId) {
-      const opened = await postClipWithBudget("https://web.kick.com/api/v1/clips", token, { video_id: vodId });
+      const opened = await postKickOnce("https://web.kick.com/api/v1/clips", token, { video_id: vodId });
       if (opened.status < 200 || opened.status >= 300) {
         console.warn("[clip-capture] kick clip create", { status: opened.status, via: "web" });
       }
@@ -316,7 +296,7 @@ export async function createNativeKickClip(input: {
     }
 
     if (livestreamSlug) {
-      const opened = await postClipWithBudget(
+      const opened = await postKickOnce(
         `https://kick.com/api/internal/v1/livestreams/${encodeURIComponent(livestreamSlug)}/clips`,
         token,
         { duration },

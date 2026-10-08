@@ -33,8 +33,17 @@ export function shouldAttemptClip(liveState: boolean | null): boolean {
   return true;
 }
 
-/** Initial try plus retries. After the third 429, that URL is not posted again. */
-export const CLIP_RATE_LIMIT_ATTEMPTS = 3;
+/**
+ * A successful clip URL this fresh can be handed out again while Kick is in
+ * cooldown, so a second `!clip` does not create another request.
+ */
+export const RECENT_CLIP_MS = 15_000;
+
+/**
+ * Cooldown after a 429, across later `!clip` commands. It grows and then
+ * stops. This is not a same-URL retry loop.
+ */
+export const CLIP_COOLDOWN_STEPS_MS = [5_000, 10_000, 15_000] as const;
 
 function retryAfterDelayMs(retryAfter: string | null | undefined, now: number): number | null {
   const raw = retryAfter?.trim();
@@ -47,32 +56,45 @@ function retryAfterDelayMs(retryAfter: string | null | undefined, now: number): 
 }
 
 /**
- * Wait before retrying the same clip URL after a 429.
- * `attempt` is how many tries have already been made (1 or 2).
- * Returns null after the third try so there is no fourth POST.
- * Default waits are 1s then 2s. `Retry-After` is used when it falls between
- * 1 and 3 seconds; longer values are capped at 3 seconds.
+ * How long to keep Kick clip creates closed after a 429.
+ * `strike` is how many 429s this channel has hit in a row (1, 2, 3…).
+ * Steps are 5s, 10s, then 15s. A longer `Retry-After` is honored up to 15s.
  */
-export function rateLimitRetryWaitMs(
-  attempt: number,
+export function cooldownAfterRateLimitMs(
+  strike: number,
   retryAfter?: string | null,
   now = Date.now(),
-): number | null {
-  if (attempt >= CLIP_RATE_LIMIT_ATTEMPTS) return null;
-  const stepped = Math.min(3_000, Math.max(1_000, attempt * 1_000));
+): number {
+  const cap = CLIP_COOLDOWN_STEPS_MS[CLIP_COOLDOWN_STEPS_MS.length - 1]!;
+  const index = Math.min(CLIP_COOLDOWN_STEPS_MS.length - 1, Math.max(0, strike - 1));
+  const stepped = CLIP_COOLDOWN_STEPS_MS[index]!;
   const header = retryAfterDelayMs(retryAfter, now);
   if (header == null) return stepped;
-  return Math.min(3_000, Math.max(1_000, header));
+  return Math.min(cap, Math.max(stepped, header));
+}
+
+/**
+ * During a 429 cooldown the next `!clip` must not call Kick.
+ * A clip URL from the last few seconds is reused. Otherwise capture locally.
+ */
+export function clipDuringCooldown(
+  now: number,
+  cooldownUntil: number,
+  lastSuccessAt: number | null,
+): "kick" | "reuse" | "hls" {
+  if (now >= cooldownUntil) return "kick";
+  if (lastSuccessAt != null && now - lastSuccessAt <= RECENT_CLIP_MS) return "reuse";
+  return "hls";
 }
 
 /**
  * 404/405 skip to the next Kick path and are not retried.
- * 429 is retried on the same URL up to three times, then HLS.
+ * 429 closes Kick clip creates for this command and arms a cooldown.
  * Other non-success statuses go to HLS without repeating the call.
  */
 const ARABIC_LETTER = /[\u0600-\u06FF]/;
 
-/** Viewer text after Kick retries and HLS both fail. No status codes, and not an offline claim. */
+/** Viewer text after Kick and HLS both fail. No status codes, and not an offline claim. */
 export function clipFailureNotice(username: string, error: string, responseTemplate: string): string {
   const mention = `@${username.replace(/^@+/, "")}`;
   if (error === "stream_offline") return `${mention} Stream is offline, no clip could be captured.`;
@@ -82,9 +104,9 @@ export function clipFailureNotice(username: string, error: string, responseTempl
   return `${mention} ${line}`;
 }
 
-export function clipHttpNext(status: number): "ok" | "next" | "retry" | "hls" {
+export function clipHttpNext(status: number): "ok" | "next" | "rate_limit" | "hls" {
   if (status >= 200 && status < 300) return "ok";
-  if (status === 429) return "retry";
+  if (status === 429) return "rate_limit";
   if (status === 401 || status === 403 || status === 404 || status === 405) return "next";
   return "hls";
 }
