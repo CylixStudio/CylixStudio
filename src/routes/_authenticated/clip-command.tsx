@@ -5,15 +5,19 @@ import { useEffect, useState } from "react";
 import { ChevronDown, Copy, Download, Play, Plug, Video } from "lucide-react";
 import { toast } from "sonner";
 
+import { ClipMaintenance } from "@/components/clips/ClipMaintenance";
 import { AppShell } from "@/components/layout/AppShell";
 import { HowItWorks } from "@/components/layout/HowItWorks";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { guardClipDashboardPage } from "@/lib/clipPageGuard";
 import { getClipCommandState, saveClipCommandSettings } from "@/lib/clipCommand.functions";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/clip-command")({
+  ssr: false,
+  beforeLoad: () => guardClipDashboardPage(),
   head: () => ({
     meta: [
       { title: "CylixStudio — Clip Command" },
@@ -31,8 +35,17 @@ export const Route = createFileRoute("/_authenticated/clip-command")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: ClipCommandPage,
+  component: ClipCommandRoute,
 });
+
+function ClipCommandRoute() {
+  const { user, clipAdmin } = Route.useRouteContext();
+  const { data } = useWorkspace(user.id);
+  if (clipAdmin !== true) {
+    return <ClipMaintenance user={user} profile={data?.profile} />;
+  }
+  return <ClipCommandPage />;
+}
 
 type Clip = {
   id: string;

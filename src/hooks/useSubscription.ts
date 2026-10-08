@@ -92,9 +92,10 @@ export function remainingLabel(daysLeft: number, lifetime: boolean, ar: boolean)
  * True when the signed-in user is an admin — either through the admin role row
  * or through one of the hardcoded store admin emails (checked server-side).
  */
-export function useIsAdmin(userId: string) {
+export function useIsAdmin(userId: string, enabled = true) {
   return useQuery({
     queryKey: ["is-admin", userId],
+    enabled: enabled && userId.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("is_admin", { _user_id: userId });
       if (error) throw error;

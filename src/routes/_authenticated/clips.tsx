@@ -5,13 +5,17 @@ import { useMemo, useState } from "react";
 import { Check, Search, Video } from "lucide-react";
 import { toast } from "sonner";
 
+import { ClipMaintenance } from "@/components/clips/ClipMaintenance";
 import { AppShell } from "@/components/layout/AppShell";
 import { ClipPlayer } from "@/components/clips/ClipPlayer";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { guardClipDashboardPage } from "@/lib/clipPageGuard";
 import { deleteClip, listChannelClips } from "@/lib/clipCommand.functions";
 import { useLanguage, type TranslationKey, t as translate } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authenticated/clips")({
+  ssr: false,
+  beforeLoad: () => guardClipDashboardPage(),
   head: () => ({
     meta: [
       { title: "CylixStudio — Channel Clips" },
@@ -28,8 +32,17 @@ export const Route = createFileRoute("/_authenticated/clips")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: ClipsPage,
+  component: ClipsRoute,
 });
+
+function ClipsRoute() {
+  const { user, clipAdmin } = Route.useRouteContext();
+  const { data } = useWorkspace(user.id);
+  if (clipAdmin !== true) {
+    return <ClipMaintenance user={user} profile={data?.profile} />;
+  }
+  return <ClipsPage />;
+}
 
 type Clip = {
   id: string;

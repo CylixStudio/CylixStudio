@@ -1304,6 +1304,10 @@ const DICT = {
   "giveaway.pendingConfirm": "بانتظار تأكيد الكلمة في الشات",
   "giveaway.enteredAt": "دخل {time}",
   "chat.previewSample": "معاينة",
+  "clip.maintenance.titleAr": "تحت الصيانة",
+  "clip.maintenance.titleEn": "Under maintenance",
+  "clip.maintenance.locked": "صفحة الكليب مقفلة.",
+  "clip.maintenance.badge": "تحت الصيانة",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

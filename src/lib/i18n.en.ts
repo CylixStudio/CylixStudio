@@ -1235,4 +1235,8 @@ export const EN = {
   "giveaway.pendingConfirm": "Waiting for the keyword in chat",
   "giveaway.enteredAt": "Entered {time}",
   "chat.previewSample": "Preview sample",
+  "clip.maintenance.titleAr": "تحت الصيانة",
+  "clip.maintenance.titleEn": "Under maintenance",
+  "clip.maintenance.locked": "The clip page is locked.",
+  "clip.maintenance.badge": "Under maintenance",
 } as const;
