@@ -43,7 +43,12 @@ function ClipPage() {
     void fetch(`/api/public/clip/${id}`)
       .then((res) => (res.ok ? (res.json() as Promise<ClipData>) : Promise.reject(new Error("missing"))))
       .then((data) => {
-        if (!cancelled) setClip(data);
+        if (cancelled) return;
+        if (/^https:\/\/(www\.)?kick\.com\//i.test(data.url)) {
+          window.location.replace(data.url);
+          return;
+        }
+        setClip(data);
       })
       .catch(() => {
         if (!cancelled) setMissing(true);

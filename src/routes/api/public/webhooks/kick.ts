@@ -388,7 +388,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           }
 
           const { deferRequestWork } = await import("@/lib/requestContext.server");
-          const { handleClipCommand, warmKickClipBuffer } = await import("@/lib/clipCommand.server");
+          const { handleClipCommand } = await import("@/lib/clipCommand.server");
 
           if (/^!clip\b/i.test(text.trim())) {
             const isTest =
@@ -416,8 +416,8 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                 });
               }),
             );
-            // Kick expects a fast acknowledgement. HLS capture can take several
-            // seconds, so it must not block the webhook response or Kick retries it.
+            // Kick expects a fast acknowledgement. The clip request and chat reply
+            // continue after this response so the webhook itself does not wait.
             return jsonResponse({ status: "accepted", command: "clip" });
           }
 
@@ -442,12 +442,6 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   console.log("[kick-webhook] mark command", { messageId, ...result });
                 })
                 .catch((error) => console.error("[kick-webhook] mark command failed", error)),
-            );
-            deferRequestWork(
-              request,
-              warmKickClipBuffer(connection.user_id).catch((error) =>
-                console.error("[kick-webhook] clip buffer warm failed", error),
-              ),
             );
             return jsonResponse({ status: "accepted", command: markMatch.kind });
           }
@@ -538,15 +532,6 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                 isSubscriber: identityBadges.some((badge) => /sub|founder|og|vip/i.test(badge)),
               });
             })().catch((error) => console.error("[kick-webhook] giveaway entry failed", error)),
-          );
-
-          // Every chat message tops up the rolling clip buffer (throttled),
-          // so `!clip` has real stream history to cut from.
-          deferRequestWork(
-            request,
-            warmKickClipBuffer(connection.user_id).catch((error) =>
-              console.error("[kick-webhook] clip buffer warm failed", error),
-            ),
           );
 
           const { ingestChatMediaRequest } = await import("@/lib/mediaRequests.server");

@@ -1,13 +1,7 @@
-import { clipStoragePath, publicClipPageUrl } from "@/lib/clipStorage";
+import { publicClipPageUrl } from "@/lib/clipStorage";
 import { chatMention } from "@/lib/commandTemplate";
-import { captureKickClip, createNativeKickClip, fetchKickChannel, refreshKickBuffer } from "@/lib/kickClip.server";
-import {
-  clipDuringCooldown,
-  clipErrorAfterAttempt,
-  clipFailureNotice,
-  cooldownAfterRateLimitMs,
-  shouldAttemptClip,
-} from "@/lib/kickClipLive";
+import { createNativeKickClip, fetchKickChannel } from "@/lib/kickClip.server";
+import { clipFailureNotice } from "@/lib/kickClipLive";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 
@@ -132,34 +126,8 @@ type CreatedClip = {
   duration: number;
 };
 
-type RecentClip = CreatedClip & { at: number };
-
-/** One Kick clip create at a time per channel. A second `!clip` shares it. */
-const inflightByChannel = new Map<string, Promise<CreatedClip | { error: string }>>();
-/** Kick clip creates stay closed until this time after a 429. */
-const cooldownUntilByChannel = new Map<string, number>();
-const cooldownStrikeByChannel = new Map<string, number>();
-const recentClipByChannel = new Map<string, RecentClip>();
-
 function channelKey(slug: string): string {
   return slug.trim().replace(/^@+/, "").toLowerCase();
-}
-
-function rememberClip(key: string, clip: CreatedClip): void {
-  recentClipByChannel.set(key, { ...clip, at: Date.now() });
-}
-
-function armCooldown(key: string, retryAfter?: string | null): void {
-  const strike = (cooldownStrikeByChannel.get(key) ?? 0) + 1;
-  cooldownStrikeByChannel.set(key, strike);
-  const waitMs = cooldownAfterRateLimitMs(strike, retryAfter);
-  cooldownUntilByChannel.set(key, Date.now() + waitMs);
-  console.warn("[clip-command] kick clip cooldown", { slug: key, strike, waitMs });
-}
-
-function clearCooldown(key: string): void {
-  cooldownStrikeByChannel.delete(key);
-  cooldownUntilByChannel.delete(key);
 }
 
 /** Resolves the channel slug stored with the Kick connection. */
@@ -177,27 +145,8 @@ async function kickSlug(userId: string): Promise<string | null> {
 }
 
 /**
- * Keeps the rolling HLS buffer warm while the channel has chat activity, so a
- * later `!clip 60` can actually cut 60 seconds of the past instead of the ~28s
- * that Kick's live edge exposes.
- */
-export async function warmKickClipBuffer(userId: string): Promise<void> {
-  const settings = await loadClipSettings(userId);
-  if (!settings.enabled) return;
-  const slug = await kickSlug(userId);
-  if (!slug) return;
-  await refreshKickBuffer(userId, slug);
-}
-
-
-
-/**
- * Creates a Kick clip and returns the public clip page when Kick does.
- * A null livestream, a failed channel read, or an empty official livestream
- * list is not treated as offline. The clip call runs first; HLS capture is
- * only the fallback once a fresh read says the channel is live or unknown.
- * One create runs per channel. After a 429, later commands reuse a clip from
- * the last few seconds or capture locally, and do not call Kick again.
+ * One channel read and one Kick clip create. Any failure returns at once so
+ * chat can answer without a local buffer or a cooldown wait.
  */
 async function createKickClip(
   userId: string,
@@ -210,124 +159,29 @@ async function createKickClip(
   if (!slug) return { error: "kick_channel_unknown" };
 
   const key = channelKey(slug);
-  const running = inflightByChannel.get(key);
-  if (running) return running;
-
-  const job = createKickClipOnce(userId, duration, token, key);
-  inflightByChannel.set(key, job);
-  try {
-    return await job;
-  } finally {
-    if (inflightByChannel.get(key) === job) inflightByChannel.delete(key);
-  }
-}
-
-async function captureLocalClip(
-  userId: string,
-  key: string,
-  duration: number,
-  title: string,
-  thumbnail: string | null,
-): Promise<CreatedClip | { error: string }> {
-  const captured = await captureKickClip(userId, key, duration);
-  if ("error" in captured) return { error: captured.error };
-  const clip: CreatedClip = {
-    externalId: clipStoragePath(captured.path) ?? captured.path,
-    url: captured.url,
-    title,
-    thumbnail,
-    duration: captured.seconds || duration,
-  };
-  rememberClip(key, clip);
-  return clip;
-}
-
-async function createKickClipOnce(
-  userId: string,
-  duration: number,
-  token: string,
-  key: string,
-): Promise<CreatedClip | { error: string }> {
-  const recent = recentClipByChannel.get(key);
-  const gate = clipDuringCooldown(Date.now(), cooldownUntilByChannel.get(key) ?? 0, recent?.at ?? null);
-  if (gate === "reuse" && recent) {
-    console.log("[clip-command] reusing recent clip", { slug: key });
-    return {
-      externalId: recent.externalId,
-      url: recent.url,
-      title: recent.title,
-      thumbnail: recent.thumbnail,
-      duration: recent.duration,
-    };
-  }
-  if (gate === "hls") {
-    console.log("[clip-command] clip cooldown, capturing locally", { slug: key });
-    try {
-      const captured = await captureLocalClip(userId, key, duration, `Clip from ${key}`, null);
-      if (!("error" in captured)) return captured;
-      return { error: "clip_api_429" };
-    } catch (error) {
-      console.error("[clip-command] capture threw", error);
-      return { error: "clip_api_429" };
-    }
-  }
-
   const channel = await fetchKickChannel(key);
-  const liveState = channel?.liveState ?? null;
-  // A null livestream or a local is_live false does not skip the clip call.
-  if (!shouldAttemptClip(liveState)) return { error: "stream_offline" };
-
-  let native: Awaited<ReturnType<typeof createNativeKickClip>>;
   try {
-    native = await createNativeKickClip({
+    const native = await createNativeKickClip({
       token,
       slug: channel?.slug ?? key,
       duration,
       livestreamSlug: channel?.livestreamSlug ?? null,
       vodId: channel?.vodId ?? null,
     });
+    if ("url" in native) {
+      return {
+        externalId: native.externalId,
+        url: native.url,
+        title: native.title ?? channel?.title ?? `Clip from ${key}`,
+        thumbnail: native.thumbnail ?? channel?.thumbnail ?? null,
+        duration: native.duration || duration,
+      };
+    }
+    return { error: native.error };
   } catch (error) {
     console.error("[clip-command] kick clip create threw", error);
-    native = { error: "clip_api_failed" };
+    return { error: "clip_api_failed" };
   }
-  if ("url" in native) {
-    clearCooldown(key);
-    const clip: CreatedClip = {
-      externalId: native.externalId,
-      url: native.url,
-      title: native.title ?? channel?.title ?? `Clip from ${key}`,
-      thumbnail: native.thumbnail ?? channel?.thumbnail ?? null,
-      duration: native.duration || duration,
-    };
-    rememberClip(key, clip);
-    return clip;
-  }
-
-  if (native.rateLimited) armCooldown(key, native.retryAfter);
-
-  // Chat is not notified until this capture also fails.
-  const agreedOffline = native.error === "stream_offline" && liveState === false;
-  if (!agreedOffline && (native.rateLimited || channel?.playbackUrl)) {
-    console.log("[clip-command] capturing clip", { slug: key, duration, liveState, status: native.error });
-    try {
-      const captured = await captureLocalClip(
-        userId,
-        key,
-        duration,
-        channel?.title ?? `Clip from ${key}`,
-        channel?.thumbnail ?? null,
-      );
-      if (!("error" in captured)) return captured;
-      if (native.rateLimited) return { error: "clip_api_429" };
-      return { error: clipErrorAfterAttempt(liveState, captured.error) };
-    } catch (error) {
-      console.error("[clip-command] capture threw", error);
-      return { error: native.rateLimited ? "clip_api_429" : "capture_failed" };
-    }
-  }
-
-  if (native.rateLimited) return { error: "clip_api_429" };
-  return { error: clipErrorAfterAttempt(liveState, native.error) };
 }
 
 export async function loadClipSettings(userId: string): Promise<ClipCommandSettings> {
@@ -385,16 +239,15 @@ export async function handleClipCommand(input: {
     return { status: "error", reason: created.error };
   }
 
-  const storedPath = clipStoragePath(created.externalId);
   const { data: row } = await supabaseAdmin
     .from("clips")
     .upsert(
       {
         user_id: userId,
         platform: "KICK" as const,
-        external_id: storedPath ?? created.externalId,
+        external_id: created.externalId,
         title: created.title,
-        url: created.url || "https://cylixstudio.com",
+        url: created.url,
         thumbnail_url: created.thumbnail,
         duration_seconds: created.duration,
         clipped_by: sender.username,
@@ -405,14 +258,9 @@ export async function handleClipCommand(input: {
     .select("id")
     .maybeSingle();
 
-  // Kick page when Kick returned an id. HLS chat uses the short public page so the
-  // storage JWT is never truncated in chat (that truncation fails signature checks).
-  const shareUrl = row?.id && storedPath ? publicClipPageUrl(row.id) : storedPath ? "" : created.url;
+  const shareUrl = row?.id ? publicClipPageUrl(row.id) : "";
   if (row?.id && shareUrl) {
-    await supabaseAdmin
-      .from("clips")
-      .update({ url: shareUrl, share_url: shareUrl })
-      .eq("id", row.id);
+    await supabaseAdmin.from("clips").update({ share_url: shareUrl }).eq("id", row.id);
   }
   if (!shareUrl) {
     await sendKickChatMessage(
