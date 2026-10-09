@@ -113,8 +113,8 @@ export function WizardProvider({
 
   const goNext = () => {
     if (!canProceed) return;
-    const nextLinks = step === 3 ? linksFromHandles(handles, links) : links;
-    if (step === 3) setLinks(nextLinks);
+    const nextLinks = step === 2 ? linksFromHandles(handles, links) : links;
+    if (step === 2) setLinks(nextLinks);
     if (step < WIZARD_STEPS) jump(step + 1);
     void persist(profile, theme, nextLinks).catch((error: Error) => {
       toast.error(error.message || "Could not save this step.");

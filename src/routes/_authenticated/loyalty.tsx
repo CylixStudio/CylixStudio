@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 
@@ -576,6 +577,17 @@ function ShopTab({
               <p className="mt-2 text-xs text-muted-foreground">
                 {t("loyalty.shop.cost")}: {item.cost}
               </p>
+              <button
+                type="button"
+                className="mt-1 font-mono text-xs text-primary"
+                dir="ltr"
+                onClick={() => {
+                  void navigator.clipboard.writeText(`!buy ${item.name}`);
+                  toast.success(t("loyalty.shop.copied"));
+                }}
+              >
+                !buy {item.name}
+              </button>
               <p className="text-xs text-muted-foreground">
                 {t("loyalty.shop.stock")}: {item.stock == null ? t("loyalty.shop.unlimited") : item.stock}
               </p>

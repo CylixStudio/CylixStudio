@@ -70,17 +70,6 @@ type FeedEvent = {
 };
 
 
-const PLATFORM_COLOR: Record<string, string> = {
-  TWITCH: "#9F77F7",
-  KICK: "#53FC18",
-  TIKTOK: "#2DCCD3",
-  YOUTUBE: "#FF4444",
-  X: "#E7E9EA",
-  STREAMLABS: "#80F5D2",
-  STREAMELEMENTS: "#4FC3F7",
-  MANUAL: "#A1A1AA",
-};
-
 function activityLabelKey(platform: string, eventType: string): TranslationKey {
   return `activity.type.${triggerPhrase(platform, eventType)}` as TranslationKey;
 }
@@ -217,31 +206,22 @@ function ActivityFeedRow({
 }) {
   const event = group.events[0]!;
   const count = group.events.length;
-  const color = PLATFORM_COLOR[event.platform] ?? "#A1A1AA";
   const label = t(activityLabelKey(event.platform, event.event_type));
   const amount = formatFeedAmount(event, t);
 
   return (
     <li className={fresh ? "soft-rise" : ""}>
       <ReplyAlertFrame active={event.isReply === true} quote={event.replyQuote}>
-      <div className="flex items-start gap-3 py-3.5">
-        <span
-          className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
-          style={{
-            background: `color-mix(in oklab, ${color} 18%, transparent)`,
-            border: `1px solid color-mix(in oklab, ${color} 35%, transparent)`,
-            color,
-          }}
-        >
-          <PlatformIcon platform={event.platform} size={13} />
-          <span>{label}</span>
-          {event.isTest ? <span className="opacity-80">{t("activity.testEvent")}</span> : null}
-          {amount ? <span className="opacity-80">{amount}</span> : null}
-          {count > 1 ? <span className="opacity-80">×{count}</span> : null}
-        </span>
-
-        <div className="min-w-0 flex-1 text-start">
-          <p className="truncate text-sm font-semibold" style={{ color }} dir="auto">
+      <div className="flex items-start gap-3 py-3.5" dir="ltr">
+        <PlatformIcon platform={event.platform} size={22} />
+        <div className="min-w-0 flex-1 text-left">
+          <p className="text-[0.72rem] text-muted-foreground">
+            {label}
+            {event.isTest ? ` · ${t("activity.testEvent")}` : ""}
+            {amount ? ` · ${amount}` : ""}
+            {count > 1 ? ` · ×${count}` : ""}
+          </p>
+          <p className="truncate text-sm font-semibold text-foreground" dir="auto">
             {event.actor_name ?? t("activity.anonymous")}
           </p>
           {event.message ? (

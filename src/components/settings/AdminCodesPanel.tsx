@@ -12,6 +12,7 @@ import {
   type ActivationCode,
 } from "@/hooks/useSubscription";
 import { DarkSelect } from "@/components/ui/dark-select";
+import { useLanguage } from "@/lib/i18n";
 
 const DURATIONS = [
   { days: 30, label: "30 Days" },
@@ -29,6 +30,7 @@ function csvEscape(value: string) {
 }
 
 export function AdminCodesPanel() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const codes = useActivationCodes(true);
 
@@ -43,6 +45,9 @@ export function AdminCodesPanel() {
     null,
   );
   const [working, setWorking] = useState(false);
+  const [editing, setEditing] = useState<ActivationCode | null>(null);
+  const [editCode, setEditCode] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   const isCustom = duration === 0;
   const effectiveDays = isCustom ? Number(customDays) : duration;
@@ -58,6 +63,37 @@ export function AdminCodesPanel() {
   }, [codes.data, filter]);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["activation-codes"] });
+
+  const openEdit = (row: ActivationCode) => {
+    setEditing(row);
+    setEditCode(row.code);
+    setEditNotes(row.notes ?? "");
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const nextCode = editCode.trim();
+    if (!nextCode) {
+      toast.error("Enter a code.");
+      return;
+    }
+    setWorking(true);
+    const { error } = await supabase
+      .from("activation_codes")
+      .update({
+        ...(editing.is_used ? {} : { code: nextCode }),
+        notes: editNotes.trim() ? editNotes.trim() : null,
+      })
+      .eq("id", editing.id);
+    setWorking(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setEditing(null);
+    toast.success("Code updated");
+    void refresh();
+  };
 
   const copy = async (code: string) => {
     await navigator.clipboard.writeText(formatCode(code));
@@ -356,6 +392,13 @@ export function AdminCodesPanel() {
                     <div className="flex items-center justify-end gap-1.5">
                       <button
                         type="button"
+                        onClick={() => openEdit(row)}
+                        className="rounded-lg border border-[oklch(1_0_0/0.08)] px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {t("admin.codes.edit")}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => void copy(row.code)}
                         aria-label={`Copy ${row.code}`}
                         className="rounded-lg border border-[oklch(1_0_0/0.08)] p-1.5 text-muted-foreground hover:text-foreground"
@@ -452,6 +495,44 @@ export function AdminCodesPanel() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+      {editing ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <form
+            className="w-full max-w-md space-y-3 rounded-2xl border border-white/10 bg-[#0a0a0a] p-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveEdit();
+            }}
+          >
+            <h3 className="text-lg font-semibold">{t("admin.codes.edit")}</h3>
+            <label className="block text-xs text-muted-foreground">
+              {t("admin.codes.code")}
+              <input
+                className="mt-1 w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-foreground"
+                value={editCode}
+                disabled={editing.is_used}
+                onChange={(event) => setEditCode(event.target.value)}
+              />
+            </label>
+            <label className="block text-xs text-muted-foreground">
+              {t("admin.codes.notes")}
+              <textarea
+                className="mt-1 min-h-20 w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-foreground"
+                value={editNotes}
+                onChange={(event) => setEditNotes(event.target.value)}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="rounded-lg border border-white/10 px-3 py-1.5 text-sm" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+              <button type="submit" disabled={working} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
+                {t("admin.codes.save")}
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
     </div>

@@ -22,6 +22,7 @@ export type PublicCommandsPage =
       found: true;
       slug: string;
       displayName: string;
+      avatarUrl: string;
       commands: PublicCommand[];
       timers: PublicTimer[];
     };
@@ -43,6 +44,7 @@ export const loadPublicCommandsPage = createServerFn({ method: "POST" })
       found: true,
       slug: channel.slug,
       displayName: channel.displayName,
+      avatarUrl: channel.avatarUrl,
       commands,
       timers,
     };

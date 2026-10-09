@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { MediaSourceBadge } from "@/components/media/MediaSourceBadge";
 import { extractMediaUrl, mediaArtworkUrl, mediaOpenUrl, mediaPlaybackHint, mediaPlaybackMode, mediaPlatformLabel } from "@/lib/mediaRequests";
 import { isPlayerLayout, PLAYER_LAYOUT_OPTIONS, type PlayerLayout } from "@/lib/playerPalette";
 import { toast } from "sonner";
+import { useLanguage } from "@/lib/i18n";
 import { addManualMediaRequest, createKickMediaRewardFn, getMediaChatSources, getMediaRequestDashboard, ingestChatMediaRequestFn, listKickRewardsFn, mediaRequestAction, saveMediaRequestSettings } from "@/lib/mediaRequests.functions";
 
 /** Watches Kick chat for channel-point redemption messages carrying a media link. */
@@ -48,9 +49,9 @@ export const Route=createFileRoute("/_authenticated/media-requests")({
   component:MediaRequestsRoute,
 });
 function MediaRequestsRoute(){const{user}=Route.useRouteContext();return <ProFeatureGate userId={user.id}><Page/></ProFeatureGate>}
-function Page(){const{user}=Route.useRouteContext();const qc=useQueryClient();const query=useQuery({queryKey:["media-requests"],queryFn:()=>getMediaRequestDashboard()});const d=query.data;const settings=d?.settings as (NonNullable<typeof query.data>["settings"]&{player_layout?:string})|null|undefined;
+function Page(){const{t}=useLanguage();const{user}=Route.useRouteContext();const qc=useQueryClient();const query=useQuery({queryKey:["media-requests"],queryFn:()=>getMediaRequestDashboard()});const d=query.data;const settings=d?.settings as (NonNullable<typeof query.data>["settings"]&{player_layout?:string})|null|undefined;
   const[form,setForm]=useState({kickRewardId:"",requestMode:"MANUAL" as "AUTO"|"MANUAL"|"PAUSED",keywordBlacklist:"",userBlacklist:"",displayMode:"VIDEO" as "VIDEO"|"AUDIO_ONLY",playerLayout:"VERTICAL_CARD" as PlayerLayout,volume:80});
-  const[setupTab,setSetupTab]=useState<"setup"|"links"|"safety">("setup");
+  const[setupTab,setSetupTab]=useState<"setup"|"style"|"links"|"safety">("setup");
   useEffect(()=>{if(settings)setForm({kickRewardId:settings.kick_reward_id??"",requestMode:(["AUTO","MANUAL","PAUSED"].includes(settings.request_mode)?settings.request_mode:settings.require_approval?"MANUAL":"AUTO") as "AUTO"|"MANUAL"|"PAUSED",keywordBlacklist:settings.keyword_blacklist.join(", "),userBlacklist:settings.user_blacklist.join(", "),displayMode:settings.display_mode==="AUDIO_ONLY"?"AUDIO_ONLY":"VIDEO",playerLayout:isPlayerLayout(settings.player_layout)?settings.player_layout:"VERTICAL_CARD",volume:settings.volume})},[settings]);
  useEffect(()=>{const refresh=()=>void qc.invalidateQueries({queryKey:["media-requests"]});const channel=supabase.channel(`media:${user.id}`).on("postgres_changes",{event:"*",schema:"public",table:"media_requests",filter:`user_id=eq.${user.id}`},refresh).on("postgres_changes",{event:"*",schema:"public",table:"media_playback_state",filter:`user_id=eq.${user.id}`},refresh).subscribe(status=>{console.log("Media Requests Realtime Status:",status);if(status==="SUBSCRIBED")refresh()});const fallback=window.setInterval(refresh,5000);return()=>{window.clearInterval(fallback);void supabase.removeChannel(channel)}},[qc,user.id]);
  const save=useMutation({mutationFn:()=>saveMediaRequestSettings({data:form}),onSuccess:()=>{toast.success("Setup saved");void qc.invalidateQueries({queryKey:["media-requests"]})},onError:(err:Error)=>toast.error(err.message||"Could not save setup")});const act=useMutation({mutationFn:(v:Parameters<typeof mediaRequestAction>[0]["data"])=>mediaRequestAction({data:v}),onSuccess:()=>void qc.invalidateQueries({queryKey:["media-requests"]}),onError:(err:Error)=>toast.error(err.message||"Queue action failed")});
@@ -66,7 +67,6 @@ function Page(){const{user}=Route.useRouteContext();const qc=useQueryClient();co
  useMediaEmbedBridge(player,current?{id:current.id,platform:current.platform}:null,onEnded,d?.playback?.playback_status,vol);
  const currentMode=mediaPlaybackMode(current?.platform);
  const startEngine=useCallback(()=>{setEngineOn(true);if(currentMode==="youtube")player.current?.contentWindow?.postMessage(JSON.stringify({event:"command",func:"playVideo",args:[]}),"https://www.youtube.com");if(currentMode==="soundcloud")player.current?.contentWindow?.postMessage(JSON.stringify({method:"play"}),"https://w.soundcloud.com")},[currentMode]);
- const handleSelectLayout=useCallback((v:PlayerLayout)=>setForm(f=>({...f,playerLayout:v})),[]);
  const previewTrack=useMemo(()=>({title:current?.title??"Spiritbox - Halycon",artist:current?.artist??null,platform:current?.platform??"YOUTUBE",requester:current?.requester_username??"chat",thumbnailUrl:current?mediaArtworkUrl(current):null,progress:.45,paused:d?.playback?.playback_status==="PAUSED"}),[current,d?.playback?.playback_status]);
  return <AppShell user={user} title="طلبات الأغاني" subtitle="طلبات أغاني عبر نقاط القناة مع طابور مُدار ومشغّل OBS."><div className="space-y-5">
  {!hasScopes&&<div className="rounded-xl border border-[#53fc18]/25 bg-[#53fc18]/10 p-4 text-sm text-[#b9ff9d]">Reconnect Kick in Settings once to grant reward read/write permissions.</div>}
@@ -79,6 +79,10 @@ function Page(){const{user}=Route.useRouteContext();const qc=useQueryClient();co
        {setupTab==="setup"&&<span className="absolute inset-0 rounded-lg border border-[#53fc18]/40 bg-[#53fc18]/10 shadow-[0_0_12px_rgba(83,252,24,.15)]"/>}
        <span className="relative">Setup</span>
      </button>
+     <button onClick={()=>setSetupTab("style")} className={`relative flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${setupTab==="style"?"text-white":"text-white/50 hover:text-white/80"}`}>
+       {setupTab==="style"&&<span className="absolute inset-0 rounded-lg border border-primary/40 bg-primary/10"/>}
+       <span className="relative">{t("media.tab.style")}</span>
+     </button>
      <button onClick={()=>setSetupTab("links")} className={`relative flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${setupTab==="links"?"text-white":"text-white/50 hover:text-white/80"}`}>
        {setupTab==="links"&&<span className="absolute inset-0 rounded-lg border border-[#53fc18]/40 bg-[#53fc18]/10 shadow-[0_0_12px_rgba(83,252,24,.15)]"/>}
        <span className="relative">Links</span>
@@ -89,19 +93,18 @@ function Page(){const{user}=Route.useRouteContext();const qc=useQueryClient();co
      </button>
    </div>
    {setupTab==="setup"&&<div key="setup" className="space-y-4">
-     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${d?.youtubeMode==="api"?"border-emerald-400/35 bg-emerald-400/10 text-emerald-200":"border-amber-400/35 bg-amber-400/10 text-amber-200"}`}><span className={`size-1.5 rounded-full ${d?.youtubeMode==="api"?"bg-emerald-400":"bg-amber-400"}`}/>{d?.youtubeMode==="api"?"YouTube API Active":"YouTube Basic oEmbed Mode (Active)"}</span>
-     <p className="rounded-xl border border-white/8 bg-black/20 p-3 text-[11px] leading-relaxed text-muted-foreground">Chat and channel points accept YouTube, Spotify, Anghami, and SoundCloud links. OBS plays YouTube and SoundCloud through official embeds. Spotify and Anghami queue title/artist and show their official widget or an open-in-app link — no unofficial streams.</p>
      <RewardPicker value={form.kickRewardId} onChange={v=>setForm({...form,kickRewardId:v})}/>
      <Field label="Request mode"><DarkSelect value={form.requestMode} onValueChange={v=>setForm({...form,requestMode:v as "AUTO"|"MANUAL"|"PAUSED"})} options={[{value:"AUTO",label:"Auto approve"},{value:"MANUAL",label:"Manual review"},{value:"PAUSED",label:"Pause requests"}]}/></Field>
-     <p className="-mt-2 text-[11px] text-muted-foreground">{form.requestMode==="AUTO"?"Requests are approved automatically and play when idle.":form.requestMode==="MANUAL"?"Requests wait in Up Next until you approve them.":"New chat requests are blocked until you resume."}</p>
+     <Button className="w-full" onClick={()=>save.mutate()} disabled={save.isPending}><Save/>Save setup</Button>
+   </div>}
+   {setupTab==="style"&&<div key="style" className="space-y-4">
      <Field label="OBS mode"><DarkSelect value={form.displayMode} onValueChange={v=>setForm({...form,displayMode:v as "VIDEO"|"AUDIO_ONLY"})} options={[{value:"VIDEO",label:"Video Box"},{value:"AUDIO_ONLY",label:"Audio Only"}]}/></Field>
      {form.displayMode==="AUDIO_ONLY"
-       ?<div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/25 p-3"><span className="grid size-9 place-items-center rounded-full bg-[#53fc18]/15 text-[#53fc18]"><Volume2 className="size-4"/></span><div className="min-w-0"><p className="truncate text-xs font-semibold">Audio only mode</p><p className="truncate text-[11px] text-muted-foreground">A lightweight audio bar plays in OBS — no video layouts needed.</p></div></div>
+       ?<div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/25 p-3"><Volume2 className="size-4 text-primary"/><p className="text-xs font-semibold">Audio only</p></div>
        :<>
          <Field label="Player layout"><DarkSelect value={form.playerLayout} onValueChange={v=>setForm(f=>({...f,playerLayout:v as PlayerLayout}))} options={PLAYER_LAYOUT_OPTIONS}/></Field>
-         <LayoutPreviews layout={form.playerLayout} onSelect={handleSelectLayout} track={previewTrack}/>
+         <div className="overflow-hidden rounded-xl border border-white/10 bg-black/25 p-3"><MediaPlayerCard layout={form.playerLayout} track={previewTrack}/></div>
        </>}
-
      <Button className="w-full" onClick={()=>save.mutate()} disabled={save.isPending}><Save/>Save setup</Button>
    </div>}
    {setupTab==="links"&&<div key="links" className="space-y-4">
@@ -152,14 +155,3 @@ function ManualTestBox(){
     {result&&<p className={`text-xs ${result.ok?"text-[#53fc18]":"text-amber-300"}`}>{result.ok?`Queued: ${result.title}`:`Failed: ${result.error}`}</p>}
   </div>;
 }
-
-
-const LayoutPreviews=memo(function LayoutPreviews({layout,onSelect,track}:{layout:PlayerLayout;onSelect:(v:PlayerLayout)=>void;track:React.ComponentProps<typeof MediaPlayerCard>["track"]}){
-  return <div className="space-y-3">
-    <p className="text-xs text-muted-foreground">Live preview — colors follow the current track artwork.</p>
-    {PLAYER_LAYOUT_OPTIONS.map(o=><button key={o.value} type="button" onClick={()=>onSelect(o.value as PlayerLayout)} className={`block w-full rounded-2xl border p-3 text-start transition ${layout===o.value?"border-[#53fc18]/60 bg-[#53fc18]/5":"border-white/10 bg-black/25 hover:border-white/25"}`}>
-      <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{o.label}</span>
-      <span className="block overflow-hidden rounded-xl bg-[url('https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg')] bg-cover bg-center p-3"><span className="block backdrop-blur-md"><MediaPlayerCard layout={o.value as PlayerLayout} track={track}/></span></span>
-    </button>)}
-  </div>;
-});

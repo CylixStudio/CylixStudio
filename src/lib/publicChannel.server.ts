@@ -25,6 +25,7 @@ export type PublicChannel = {
   userId: string;
   slug: string;
   displayName: string;
+  avatarUrl: string;
 };
 
 export function normalizePublicSlug(raw: string): string | null {
@@ -48,13 +49,14 @@ export async function loadPublishedChannel(slug: string): Promise<PublicChannel 
   if (!normalized) return null;
   const { data } = await supabaseAdmin
     .from("link_in_bio_profiles")
-    .select("user_id, slug, display_name")
+    .select("user_id, slug, display_name, avatar_url")
     .eq("slug", normalized)
     .eq("published", true)
     .maybeSingle();
   if (!data?.user_id) return null;
   const displayName = data.display_name?.trim() || data.slug;
-  return { userId: data.user_id, slug: data.slug, displayName };
+  const avatarUrl = typeof data.avatar_url === "string" ? data.avatar_url : "";
+  return { userId: data.user_id, slug: data.slug, displayName, avatarUrl };
 }
 
 export async function listPublicCommands(userId: string): Promise<PublicCommand[]> {

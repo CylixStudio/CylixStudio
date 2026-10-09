@@ -106,16 +106,15 @@ function GiveawayPreview() {
       <span className="hub-giveaway-mark relative grid size-10 place-items-center rounded-full border border-[#bee1fc]/35 bg-zinc-950 text-[#bee1fc]">
         <Gift className="size-4" aria-hidden />
       </span>
-      <div className="relative flex max-w-full items-center gap-1 overflow-hidden rounded-full border border-[oklch(1_0_0/0.08)] bg-[oklch(1_0_0/0.03)] px-1.5 py-1">
+      <div className="relative flex max-w-full items-center justify-center gap-1.5">
         {visible.map((name, index) => (
           <span
             key={`${name}-${index}`}
-            className={`truncate rounded-full px-2 py-0.5 text-[0.58rem] font-medium transition-colors duration-300 ${
-              index === 0 ? "bg-[#bee1fc]/18 text-[#bee1fc]" : "text-zinc-400"
-            }`}
+            className="grid size-9 place-items-center rounded-full border border-primary/40 bg-zinc-950 px-1 text-center text-[0.5rem] font-semibold leading-tight text-primary"
             dir="ltr"
+            title={name}
           >
-            {name}
+            {name.replace(/^@/, "").slice(0, 6)}
           </span>
         ))}
       </div>

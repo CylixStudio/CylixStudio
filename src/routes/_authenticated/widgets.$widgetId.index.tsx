@@ -1011,11 +1011,19 @@ function WidgetBuilder() {
 
             {widget.type === "STREAM_EVENTS_SCHEDULE" ||
             widget.type === "SPIN_WHEEL" ||
-            widget.type === "EVENT_LABELS" ? null : (
+            widget.type === "EVENT_LABELS" ||
+            widget.type === "CHAT_BOX" ||
+            widget.type === "CHAT_SPOTLIGHT" ||
+            widget.type === "VIEWER_COUNTER" ? null : (
               <TestSimulatePanel widgetId={widget.id} />
             )}
 
-            {widget.type === "SPIN_WHEEL" || widget.type === "EVENT_LABELS" ? null : (
+            {widget.type === "SPIN_WHEEL" ||
+            widget.type === "EVENT_LABELS" ||
+            widget.type === "CHAT_BOX" ||
+            widget.type === "CHAT_SPOTLIGHT" ||
+            widget.type === "STREAM_EVENTS_SCHEDULE" ||
+            widget.type === "VIEWER_COUNTER" ? null : (
             <div className="rounded-xl border border-border bg-background p-4">
               <p className={labelClass}>OBS browser source</p>
               <code className="mt-2 block break-all text-xs text-muted-foreground">

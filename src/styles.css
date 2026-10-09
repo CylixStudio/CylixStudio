@@ -767,24 +767,30 @@ footer.saudi-identity-footer * {
 }
 
 .giveaway-entry {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 0.45rem;
-  border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
-  border-radius: 1rem;
-  background: color-mix(in oklab, var(--background) 38%, transparent);
-  padding: 0.48rem 0.78rem;
-  color: color-mix(in oklab, var(--foreground) 90%, transparent);
-  font-size: 0.78rem;
-  line-height: 1.15;
+  display: grid;
+  width: 4.6rem;
+  height: 4.6rem;
+  place-items: center;
+  gap: 0.15rem;
+  border-radius: 999px;
+  border: 2px solid color-mix(in oklab, var(--primary) 55%, #c9a227);
+  background:
+    radial-gradient(circle at 32% 28%, color-mix(in oklab, white 28%, transparent), transparent 36%),
+    radial-gradient(circle at 50% 58%, color-mix(in oklab, var(--primary) 22%, #3a2a08), #1a1408 72%);
+  color: #f8f1d8;
+  font-size: 0.62rem;
+  line-height: 1.1;
+  text-align: center;
   box-shadow:
-    0 12px 28px color-mix(in oklab, #000 28%, transparent),
-    inset 0 1px 0 color-mix(in oklab, #fff 12%, transparent);
-  backdrop-filter: blur(16px);
+    inset 0 -8px 12px color-mix(in oklab, #000 35%, transparent),
+    0 10px 18px color-mix(in oklab, #000 32%, transparent);
   animation: giveaway-entry-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: calc(var(--entry-i, 0) * 42ms);
   transition: opacity 700ms ease, filter 700ms ease, transform 700ms ease;
+}
+.is-shuffling .giveaway-entry { animation: giveaway-coin-spin 0.7s linear infinite; }
+@keyframes giveaway-coin-spin {
+  to { transform: rotateY(360deg); }
 }
 
 .giveaway-entry span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

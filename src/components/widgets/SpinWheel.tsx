@@ -195,6 +195,17 @@ export function SpinWheelView({
   const uid = useId().replace(/:/g, "");
   const style = parseSpinConfig(config);
   const layout = parseWheelLayout(config);
+  const logoSource =
+    config && typeof config === "object" && (config as { logoSource?: unknown }).logoSource === "custom"
+      ? "custom"
+      : "channel";
+  const logoUrl = (() => {
+    if (!config || typeof config !== "object") return "";
+    const record = config as { customLogoUrl?: unknown; channelLogoUrl?: unknown };
+    const custom = typeof record.customLogoUrl === "string" ? record.customLogoUrl : "";
+    const channel = typeof record.channelLogoUrl === "string" ? record.channelLogoUrl : "";
+    return logoSource === "custom" ? custom : channel;
+  })();
   const slices = drawSlices(style.prizes);
   const placeholder = slices[0]?.placeholder ?? true;
   const winnerIndex =
@@ -336,12 +347,14 @@ export function SpinWheelView({
 
   return (
     <div
-      className={`flex flex-col items-center gap-4 rounded-3xl border border-zinc-800 bg-zinc-950 px-5 py-5 text-zinc-100 ${
+      className={`flex flex-col items-center gap-4 px-5 py-5 text-zinc-100 ${
         layout === "compact" ? "w-[min(100%,16rem)]" : "w-[min(100%,22.5rem)]"
       } ${
-        layout === "glow"
-          ? "shadow-[0_0_48px_rgba(167,139,250,0.45)]"
-          : "shadow-[0_24px_60px_-32px_rgba(0,0,0,0.9)]"
+        layout === "bare"
+          ? "border-0 bg-transparent shadow-none"
+          : layout === "compact"
+            ? "rounded-2xl border border-zinc-700 bg-zinc-900 shadow-none"
+            : "rounded-3xl border border-zinc-800 bg-zinc-950 shadow-[0_24px_60px_-32px_rgba(0,0,0,0.9)]"
       }`}
       data-wheel-layout={layout}
       style={{ fontFamily: style.fontFamily }}
@@ -418,9 +431,24 @@ export function SpinWheelView({
         </div>
 
         <svg viewBox="0 0 320 320" className="pointer-events-none absolute inset-0 size-full" aria-hidden>
-          <circle cx={CX} cy={CY} r="148" fill="none" stroke="#3F3F46" strokeWidth="10" />
-          <circle cx={CX} cy={CY} r="142" fill="none" stroke="#E4E4E7" strokeWidth="5" />
-          <circle cx={CX} cy={CY} r="18" fill="#18181B" stroke="#A1A1AA" strokeWidth="4" />
+          {layout === "bare" ? null : (
+            <>
+              <circle cx={CX} cy={CY} r={layout === "compact" ? 150 : 148} fill="none" stroke={layout === "compact" ? "#52525B" : "#3F3F46"} strokeWidth={layout === "compact" ? 6 : 10} />
+              <circle cx={CX} cy={CY} r="142" fill="none" stroke="#E4E4E7" strokeWidth={layout === "compact" ? 2 : 5} />
+            </>
+          )}
+          {logoUrl ? (
+            <>
+              <defs>
+                <clipPath id={`${uid}-logo`}>
+                  <circle cx={CX} cy={CY} r="22" />
+                </clipPath>
+              </defs>
+              <image href={logoUrl} x={CX - 22} y={CY - 22} width="44" height="44" clipPath={`url(#${uid}-logo)`} />
+            </>
+          ) : (
+            <circle cx={CX} cy={CY} r={layout === "bare" ? 14 : 18} fill={style.backgroundColor} stroke={style.accentColor} strokeWidth="4" />
+          )}
         </svg>
 
         <svg

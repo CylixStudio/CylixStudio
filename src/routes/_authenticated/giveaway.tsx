@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Gift, Loader2, Lock, Sparkles, Unlock } from "lucide-react";
+import { Loader2, Lock, Sparkles, Unlock } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -25,13 +25,10 @@ import {
   joinGiveaway,
   pickGiveawayWinner,
   saveGiveawaySettings,
-  saveGiveawayLayout,
   type GiveawayDrawState,
   type GiveawaySettings,
 } from "@/lib/giveaway.functions";
 import { useLanguage } from "@/lib/i18n";
-import { LayoutPicker } from "@/components/widgets/LayoutPicker";
-import { CHROME_LAYOUTS, type ChromeLayout } from "@/lib/widgetLayouts";
 import { isTestMode } from "@/lib/testMode";
 
 export const Route = createFileRoute("/_authenticated/giveaway")({
@@ -101,7 +98,6 @@ function GiveawayPage() {
   const join = useServerFn(joinGiveaway);
   const announce = useServerFn(announceGiveawayWinner);
   const publishDraw = useServerFn(publishGiveawayDraw);
-  const saveLayout = useServerFn(saveGiveawayLayout);
   const confirmChat = useServerFn(confirmGiveawayFromChat);
   const fetchOverlayToken = useServerFn(getGiveawayOverlayToken);
 
@@ -126,13 +122,11 @@ function GiveawayPage() {
   });
   const overlayUrl = overlay.data?.overlayUrl || "";
 
-  const [layout, setLayout] = useState<ChromeLayout>("glass");
   const [form, setForm] = useState<GiveawaySettings>(DEFAULT_GIVEAWAY);
   const loaded = useRef(false);
   useEffect(() => {
     if (state.data?.settings && !loaded.current) {
       setForm(state.data.settings);
-      setLayout(state.data.overlayLayout ?? "glass");
       loaded.current = true;
     }
   }, [state.data]);
@@ -145,7 +139,6 @@ function GiveawayPage() {
 
   const [spinning, setSpinning] = useState(false);
   const [winner, setWinner] = useState<{ username: string; platform: string } | null>(null);
-  const [rollName, setRollName] = useState<string | null>(null);
   const [drawPhase, setDrawPhase] = useState<DrawPhase>("idle");
   const [claimState, setClaimState] = useState<"pending" | "confirmed" | "expired">("pending");
   const [claimLeft, setClaimLeft] = useState(0);
@@ -262,7 +255,6 @@ function GiveawayPage() {
     onSuccess: () => {
       seen.current.clear();
       setWinner(null);
-      setRollName(null);
       setDrawPhase("idle");
       winnerRef.current = null;
       hydrated.current = "";
@@ -281,19 +273,9 @@ function GiveawayPage() {
     setDrawPhase("shuffling");
     await push({ phase: "shuffling" });
 
-    const names = participants.map((person) => person.username);
-    let cursor = 0;
-    setRollName(names[0] ?? "");
-    const rollTimer = window.setInterval(() => {
-      cursor = (cursor + 1) % names.length;
-      setRollName(names[cursor] ?? "");
-    }, 70);
-
     const result = await pick();
     const wait = Math.max(0, 1200 - (Date.now() - started));
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    window.clearInterval(rollTimer);
-    setRollName(null);
 
     if (!result.ok) {
       setSpinning(false);
@@ -325,22 +307,6 @@ function GiveawayPage() {
 
   const minutes = (n: number) =>
     n === 1 ? t("giveaway.minutes1") : t("giveaway.minutesN", { n });
-
-  const display = (
-    <GiveawayDisplay
-      participants={participants}
-      winner={winner}
-      phase={drawPhase}
-      claimState={claimState}
-      claimLeft={claimLeft}
-      keyword={form.keyword}
-      lastWinner={state.data?.lastWinner}
-      expanded={false}
-      layout={layout}
-      onToggleExpand={() => setExpanded(true)}
-      onReroll={() => void runDraw()}
-    />
-  );
 
   return (
     <AppShell
@@ -451,39 +417,19 @@ function GiveawayPage() {
                 className="pointer-events-none absolute start-1/2 top-10 size-36 -translate-x-1/2 rounded-full blur-3xl"
                 style={{ background: "#bee1fc", opacity: 0.12 }}
               />
-              <div className="relative grid min-h-[9.5rem] place-items-center">
-                {drawPhase === "shuffling" && rollName ? (
-                  <p className="max-w-full truncate text-4xl font-semibold text-zinc-100" dir="auto">
-                    {rollName}
-                  </p>
-                ) : winner && drawPhase === "settled" ? (
-                  <div className="w-full max-w-md rounded-xl border border-[#bee1fc]/40 bg-[#bee1fc]/10 px-6 py-5 text-center">
-                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#bee1fc]">
-                      {t("giveaway.winnerSelected")}
-                    </p>
-                    <p className="mt-2 truncate text-3xl font-bold text-zinc-50" dir="auto">
-                      {winner.username}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{winner.platform}</p>
-                    <p className="mt-3 text-sm text-zinc-100">
-                      {claimState === "confirmed" ? t("giveaway.confirmed") : t("giveaway.pendingConfirm")}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3 text-center">
-                    <span className="hub-giveaway-mark grid size-12 place-items-center rounded-full border border-[#bee1fc]/35 bg-zinc-950 text-[#bee1fc]">
-                      <Gift className="size-5" aria-hidden />
-                    </span>
-                    <p className="text-xs tabular-nums tracking-wide text-[#bee1fc]" dir="ltr">
-                      {participants.length}
-                    </p>
-                    <p className="max-w-sm text-sm text-muted-foreground">
-                      {participants.length === 0
-                        ? t("giveaway.peopleEmpty", { keyword: form.keyword || "+1" })
-                        : t("giveaway.drawHint")}
-                    </p>
-                  </div>
-                )}
+              <div className="relative min-h-[16rem]">
+                <GiveawayDisplay
+                  participants={participants}
+                  winner={winner}
+                  phase={drawPhase}
+                  claimState={claimState}
+                  claimLeft={claimLeft}
+                  keyword={form.keyword}
+                  lastWinner={state.data?.lastWinner}
+                  expanded={false}
+                  onToggleExpand={() => setExpanded(true)}
+                  onReroll={() => void runDraw()}
+                />
               </div>
               <div className="mt-5 flex justify-center">
                 <button
@@ -543,15 +489,6 @@ function GiveawayPage() {
         </div>
 
         <div className="max-w-2xl space-y-4">
-          <LayoutPicker
-            value={layout}
-            options={CHROME_LAYOUTS.map((id) => ({ id, label: t(`layout.chrome.${id}`) }))}
-            onChange={(id) => {
-              const next = id === "direct" || id === "bold" ? id : "glass";
-              setLayout(next);
-              if (!guest) void saveLayout({ data: { layout: next } });
-            }}
-          />
           <span className={label}>{t("giveaway.overlayTitle")}</span>
           <div className="flex items-stretch overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
             <input
@@ -588,7 +525,6 @@ function GiveawayPage() {
             keyword={form.keyword}
             lastWinner={state.data?.lastWinner}
             expanded
-            layout={layout}
             onToggleExpand={() => setExpanded(false)}
             onReroll={() => void runDraw()}
           />

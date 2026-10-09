@@ -136,8 +136,8 @@ export function GiveawayDisplay({
                   className={`giveaway-entry-slot ${isWinner ? "is-winner" : "is-other"}`}
                   style={style}
                 >
-                  <div className="giveaway-entry">
-                    <PlatformIcon platform={participant.platform} size={14} />
+                  <div className="giveaway-entry" title={participant.username}>
+                    <PlatformIcon platform={participant.platform} size={12} />
                     <span dir="auto">{participant.username}</span>
                   </div>
                 </div>

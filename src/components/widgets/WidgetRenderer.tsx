@@ -16,7 +16,7 @@ import { t as translate, useLanguage } from "@/lib/i18n";
 import { lookupChannel } from "@/lib/liveCounter.functions";
 import { readOverlayViewers } from "@/lib/toolWidgets.functions";
 import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
-import { chromeLayoutClass, parseChromeLayout, parseEventLabelLayout, parseGoalLayout } from "@/lib/widgetLayouts";
+import { chromeLayoutClass, parseChromeLayout, parseEventLabelLayout, parseGoalLayout, parseViewerLayout } from "@/lib/widgetLayouts";
 import { SpinWheelView } from "@/components/widgets/SpinWheel";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
@@ -590,7 +590,8 @@ const SAMPLE_CHAT: ChatMessage[] = [
   {
     id: "sample-mod",
     platform: "KICK",
-    author: "مشرف",
+    author: "Mod",
+    altAuthor: "مشرف",
     color: "#86EFAC",
     badges: ["moderator"],
     text: "chat looks good today",
@@ -601,6 +602,7 @@ const SAMPLE_CHAT: ChatMessage[] = [
     id: "sample-vip",
     platform: "TWITCH",
     author: "Nova",
+    altAuthor: "نوفا",
     color: "#F0ABFC",
     badges: ["vip"],
     text: "that clutch was clean",
@@ -610,7 +612,8 @@ const SAMPLE_CHAT: ChatMessage[] = [
   {
     id: "sample-viewer",
     platform: "YOUTUBE" as ChatMessage["platform"],
-    author: "ليان",
+    author: "Lian",
+    altAuthor: "ليان",
     color: "#FCA5A5",
     badges: [],
     text: "hello from the stream",
@@ -623,7 +626,8 @@ const PREVIEW_ROTATION: Array<Omit<ChatMessage, "id" | "at">> = [
   ...SAMPLE_CHAT.map(({ id: _id, at: _at, ...line }) => ({ ...line, previewSample: true as const })),
   {
     platform: "KICK",
-    author: "فهد",
+    author: "Fahad",
+    altAuthor: "فهد",
     color: "#67E8F9",
     badges: ["vip"],
     text: "a preview line sliding in",
@@ -633,6 +637,7 @@ const PREVIEW_ROTATION: Array<Omit<ChatMessage, "id" | "at">> = [
   {
     platform: "TWITCH",
     author: "mira",
+    altAuthor: "ميرا",
     color: "#FDE68A",
     badges: [],
     text: "preview line, not a live event",
@@ -666,6 +671,7 @@ function readableChatMessage(message: ChatMessage | null | undefined, index: num
   };
   if (Array.isArray(message.badgeList)) readable.badgeList = message.badgeList;
   if (typeof message.altText === "string" && message.altText.trim().length > 0) readable.altText = message.altText;
+  if (typeof message.altAuthor === "string" && message.altAuthor.trim().length > 0) readable.altAuthor = message.altAuthor;
   if (message.previewSample) readable.previewSample = true;
   return readable;
 }
@@ -999,7 +1005,12 @@ export function ChatBoxView({
 
     const nameBlock = (
       <span dir="auto" style={{ color: message?.color ?? accent, fontWeight: 700, whiteSpace: "nowrap", ...skin.text }}>
-        {author}
+        <ChatLineText
+          text={author}
+          {...(message?.altAuthor ? { altText: message.altAuthor } : {})}
+          reduced={reducedMotion}
+          render={(value) => value}
+        />
       </span>
     );
 
@@ -2166,32 +2177,52 @@ function ViewerCounterView({
 
   const comingSoon = /coming soon/i.test(error ?? "");
   const style = parsed;
-  const chrome = parseChromeLayout(config);
+  const layout = parseViewerLayout(config);
+  const label = comingSoon
+    ? t("widget.viewer.comingSoon")
+    : error && error !== "overlay_not_found"
+      ? error
+      : parsed.metric === "followers"
+        ? t("widget.viewer.followers")
+        : t("widget.viewer.viewers");
+  const digits = shown === null ? "—" : shown.toLocaleString("en-US");
+  if (layout === "digits") {
+    return (
+      <div className="bg-transparent text-center" style={{ color: style.textColor, fontFamily: style.fontFamily }}>
+        <span style={{ fontSize: style.fontSize, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} dir="ltr">
+          {digits}
+        </span>
+      </div>
+    );
+  }
+  if (layout === "bar") {
+    const width = shown === null ? 8 : Math.min(100, 12 + Math.log10(shown + 1) * 28);
+    return (
+      <div
+        className="flex min-w-[280px] items-center gap-3 rounded-full border border-white/10 bg-zinc-950/80 px-4 py-3 transition-transform hover:scale-[1.02]"
+        style={{ color: style.textColor, fontFamily: style.fontFamily }}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block h-2 overflow-hidden rounded-full bg-white/10">
+            <span className="block h-full rounded-full" style={{ width: `${width}%`, background: style.accentColor }} />
+          </span>
+          <span className="mt-1 block text-[0.7rem] opacity-70">{label}</span>
+        </span>
+        <span style={{ fontSize: Math.max(22, style.fontSize * 0.45), fontWeight: 700 }} dir="ltr">
+          {digits}
+        </span>
+      </div>
+    );
+  }
   return (
     <div
-      className={`flex min-w-[280px] flex-col items-center gap-2 rounded-2xl px-8 py-6 text-center ${chromeLayoutClass(chrome)}`}
-      style={{
-        background: chrome === "glass" ? withAlpha(style.backgroundColor, style.backgroundOpacity) : undefined,
-        color: style.textColor,
-        fontFamily: style.fontFamily,
-      }}
+      className="flex min-w-[220px] flex-col items-center gap-1 rounded-full border border-white/15 bg-zinc-950/85 px-8 py-3 text-center shadow-[0_16px_40px_rgba(0,0,0,0.35)]"
+      style={{ color: style.textColor, fontFamily: style.fontFamily }}
     >
-      <span style={{ letterSpacing: "0.22em", fontSize: 12, fontWeight: 700, color: style.accentColor }}>
-        {chrome === "bold" ? "◆ " : ""}
-        {parsed.channel || t("widget.viewer.channel")}
+      <span style={{ fontSize: style.fontSize * 0.72, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} dir="ltr">
+        {digits}
       </span>
-      <span style={{ fontSize: style.fontSize, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} dir="ltr">
-        {shown === null ? "—" : shown.toLocaleString("en-US")}
-      </span>
-      <span style={{ fontSize: 13, opacity: 0.7 }}>
-        {comingSoon
-          ? t("widget.viewer.comingSoon")
-          : error && error !== "overlay_not_found"
-            ? error
-            : parsed.metric === "followers"
-              ? t("widget.viewer.followers")
-              : t("widget.viewer.viewers")}
-      </span>
+      <span style={{ fontSize: 11, letterSpacing: "0.16em", color: style.accentColor }}>{label}</span>
     </div>
   );
 }
@@ -2277,6 +2308,21 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
     "sample" in entry
       ? entry.sample
       : `${translate(EVENT_LABEL_I18N[entry.option], undefined, lang)}${entry.username ? ` · ${entry.username}` : ""}${entry.amount ? ` · ${entry.amount}` : ""}`;
+  if (layout === "cycle") {
+    return (
+      <div
+        className="min-w-[180px] bg-transparent px-2 py-2"
+        dir={lang === "ar" ? "rtl" : "ltr"}
+        style={{ color: parsed.textColor, fontFamily: parsed.fontFamily }}
+      >
+        {line ? (
+          <span className="event-line-swap" data-motion={motion} style={{ fontSize: parsed.fontSize * 0.6 }}>
+            {lineText(line)}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
   if (layout === "ticker" || layout === "stack") {
     return (
       <div
@@ -2305,13 +2351,9 @@ function EventLabelsView({ config, events }: { config: unknown; events: OverlayE
   }
   return (
     <div
-      className="flex min-w-[240px] flex-col gap-2 rounded-2xl px-6 py-5"
+      className="flex min-w-[220px] max-w-[28rem] flex-col gap-1 rounded-full border border-white/15 bg-zinc-950/85 px-6 py-3"
       dir={lang === "ar" ? "rtl" : "ltr"}
-      style={{
-        background: withAlpha(parsed.backgroundColor, parsed.backgroundOpacity),
-        color: parsed.textColor,
-        fontFamily: parsed.fontFamily,
-      }}
+      style={{ color: parsed.textColor, fontFamily: parsed.fontFamily }}
     >
       <span style={{ letterSpacing: "0.18em", fontSize: 12, fontWeight: 700, color: parsed.accentColor }}>
         {parsed.title}

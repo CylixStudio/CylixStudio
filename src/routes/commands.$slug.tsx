@@ -59,7 +59,18 @@ function PublicCommandsRoute() {
       loadingLabel={t("commands.public.loading")}
     >
       {found ? (
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 flex flex-col gap-6 md:flex-row" dir="ltr">
+          <aside className="flex w-full shrink-0 flex-col items-center text-center md:w-40">
+            <span className="grid size-20 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900">
+              {data.avatarUrl ? (
+                <img src={data.avatarUrl} alt="" className="size-full object-cover" />
+              ) : (
+                <span className="text-lg font-semibold">{data.displayName.slice(0, 1)}</span>
+              )}
+            </span>
+            <p className="mt-3 text-sm font-semibold" dir="auto">{data.displayName}</p>
+          </aside>
+          <div className="min-w-0 flex-1 space-y-4">
           <div className="flex flex-wrap gap-2" role="tablist">
             {tabs.map((item) => (
               <button
@@ -82,7 +93,7 @@ function PublicCommandsRoute() {
             data.commands.length === 0 ? (
               <p className="text-sm text-zinc-400">{t("commands.public.empty")}</p>
             ) : (
-              <ul className="grid gap-3">
+              <ul className="grid gap-3 sm:grid-cols-2">
                 {data.commands.map((command) => (
                   <li key={command.trigger}>
                     <CommandCard trigger={command.trigger} body={command.response} />
@@ -97,7 +108,7 @@ function PublicCommandsRoute() {
                 {t("commands.public.timersEmpty")}
               </p>
             ) : (
-              <ul className="grid gap-3">
+              <ul className="grid gap-3 sm:grid-cols-2">
                 {data.timers.map((timer) => (
                   <li key={`${timer.intervalMinutes}:${timer.message}`}>
                     <CommandCard
@@ -110,7 +121,7 @@ function PublicCommandsRoute() {
             )
           ) : null}
           {tab === "defaults" ? (
-            <ul className="grid gap-3">
+            <ul className="grid gap-3 sm:grid-cols-2">
               {PUBLIC_BUILTIN_COMMANDS.map((command) => (
                 <li key={command.trigger}>
                   <CommandCard trigger={command.trigger} body={command.description[lang]} />
@@ -118,6 +129,7 @@ function PublicCommandsRoute() {
               ))}
             </ul>
           ) : null}
+          </div>
         </div>
       ) : null}
     </PublicChannelShell>
@@ -126,7 +138,7 @@ function PublicCommandsRoute() {
 
 function CommandCard({ trigger, body }: { trigger: string; body: string }) {
   return (
-    <article className="glass-3d rounded-2xl border border-white/10 p-5">
+    <article className="glass-3d aspect-square rounded-2xl border border-white/10 p-4">
       <p className="font-mono text-sm font-semibold text-zinc-50" dir="ltr">
         {trigger}
       </p>

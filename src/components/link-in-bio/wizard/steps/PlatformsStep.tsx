@@ -84,7 +84,16 @@ export function PlatformsStep() {
                   onChange={(event) => void onFile(event.target.files?.[0], "banner")}
                 />
                 {theme.widgetBannerUrl ? (
-                  <p className={cn(wizardUi.hint, "mt-2")}>{t("linkInBio.widget.bannerAdded")}</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <p className={wizardUi.hint}>{t("linkInBio.widget.bannerAdded")}</p>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-white/10 px-3 py-1.5 text-xs text-red-300"
+                      onClick={() => onTheme({ widgetBannerUrl: "" })}
+                    >
+                      {t("linkInBio.remove")}
+                    </button>
+                  </div>
                 ) : null}
               </div>
             </div>

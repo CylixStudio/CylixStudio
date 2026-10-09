@@ -1,14 +1,17 @@
 export const GOAL_LAYOUTS = ["classic", "compact", "bold", "glass"] as const;
 export type GoalLayout = (typeof GOAL_LAYOUTS)[number];
 
-export const WHEEL_LAYOUTS = ["classic", "glow", "compact"] as const;
+export const WHEEL_LAYOUTS = ["classic", "compact", "bare"] as const;
 export type WheelLayout = (typeof WHEEL_LAYOUTS)[number];
 
-export const EVENT_LABEL_LAYOUTS = ["glass", "ticker", "stack"] as const;
+export const EVENT_LABEL_LAYOUTS = ["island", "ticker", "stack", "cycle"] as const;
 export type EventLabelLayout = (typeof EVENT_LABEL_LAYOUTS)[number];
 
 export const CHROME_LAYOUTS = ["glass", "direct", "bold"] as const;
 export type ChromeLayout = (typeof CHROME_LAYOUTS)[number];
+
+export const VIEWER_LAYOUTS = ["island", "bar", "digits"] as const;
+export type ViewerLayout = (typeof VIEWER_LAYOUTS)[number];
 
 function asRecord(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
@@ -25,16 +28,28 @@ export function parseGoalLayout(raw: unknown): GoalLayout {
 }
 
 export function parseWheelLayout(raw: unknown): WheelLayout {
+  const value = asRecord(raw)["layout"];
+  if (value === "glow") return "classic";
   return pick(raw, WHEEL_LAYOUTS, "classic");
 }
 
-/** The current single-line fade is the glass default. */
+/** Glass single-line overlays become the Dynamic Island. */
 export function parseEventLabelLayout(raw: unknown): EventLabelLayout {
-  return pick(raw, EVENT_LABEL_LAYOUTS, "glass");
+  const value = asRecord(raw)["layout"];
+  if (value === "glass") return "island";
+  return pick(raw, EVENT_LABEL_LAYOUTS, "island");
 }
 
 export function parseChromeLayout(raw: unknown): ChromeLayout {
   return pick(raw, CHROME_LAYOUTS, "glass");
+}
+
+export function parseViewerLayout(raw: unknown): ViewerLayout {
+  const value = asRecord(raw)["layout"];
+  if (value === "glass") return "island";
+  if (value === "bold") return "bar";
+  if (value === "direct") return "digits";
+  return pick(raw, VIEWER_LAYOUTS, "island");
 }
 
 export function chromeLayoutClass(layout: ChromeLayout): string {

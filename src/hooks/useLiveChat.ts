@@ -14,6 +14,7 @@ export type ChatMessage = {
   text: string;
   /** Second language already on the message. Never fetched from a translation API. */
   altText?: string;
+  altAuthor?: string;
   at: number;
   isReply?: boolean;
   replyQuote?: string | null;

@@ -25,10 +25,7 @@ import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { useLanguage } from "@/lib/i18n";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
-import { isSplitGoalKind, OFFERED_WIDGET_TYPES, WIDGET_LABEL, type WidgetType } from "@/lib/widgets";
-import { DarkSelect } from "@/components/ui/dark-select";
-
-const TIKTOK_COMING_SOON: WidgetType[] = ["TIKTOK_TAPPERS", "TIKTOK_TAP_GOAL"];
+import { WIDGET_LABEL } from "@/lib/widgets";
 
 const TOOL_VISUAL: Record<
   (typeof STANDALONE_TOOLS)[number]["slug"],
@@ -44,10 +41,6 @@ const TOOL_VISUAL: Record<
 };
 const WIDGET_GOAL_ORDER = ["subscriber-goal", "follower-goal", "donation-goal", "kicks-goal"] as const;
 const WIDGET_GOAL_RANK = new Map<string, number>(WIDGET_GOAL_ORDER.map((slug, index) => [slug, index]));
-
-const CREATABLE_WIDGET_TYPES = OFFERED_WIDGET_TYPES.filter(
-  (entry) => !TIKTOK_COMING_SOON.includes(entry.value) && !isSplitGoalKind(entry.value),
-);
 
 export const Route = createFileRoute("/_authenticated/widgets/")({
   head: () => ({
@@ -77,8 +70,6 @@ function WidgetHub() {
   const queryClient = useQueryClient();
   const { data: workspace } = useWorkspace(user.id);
   const { data, isLoading } = useWidgets();
-  const [type, setType] = useState<WidgetType>("SUBATHON_TIMER");
-  const [name, setName] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
@@ -86,31 +77,6 @@ function WidgetHub() {
 
   const subathonId = workspace?.subathons[0]?.id ?? null;
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["widgets"] });
-
-  const create = useMutation({
-    mutationFn: () => {
-      if (TIKTOK_COMING_SOON.includes(type)) {
-        throw new Error("TikTok overlays are Coming Soon until OAuth is ready.");
-      }
-      return createWidget({
-        userId: user.id,
-        subathonId,
-        type,
-        ...(name.trim() ? { name: name.trim() } : {}),
-      });
-    },
-    onError: (err: unknown) => {
-      const message = widgetErrorText(err, "Could not create this widget.");
-      setError(message);
-      if (!isMissingViewerSession(message)) toast.error(message);
-    },
-    onSuccess: async (widget) => {
-      setError(null);
-      setName("");
-      await invalidate();
-      navigate({ to: "/widgets/$widgetId", params: { widgetId: widget.id } });
-    },
-  });
 
   const toggle = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
@@ -153,8 +119,6 @@ function WidgetHub() {
     setTimeout(() => setCopied(null), 1500);
   };
 
-  const fieldClass =
-    "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary";
   const featuredIds = new Set(
     STANDALONE_TOOLS.flatMap((tool) => {
       const match = data?.widgets.find((widget) => widget.type === tool.type);
@@ -254,55 +218,7 @@ function WidgetHub() {
         })}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Quick create
-        </h2>
-        <form
-          className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto]"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate();
-          }}
-        >
-          <label>
-            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Widget type
-            </span>
-            <DarkSelect
-              className="mt-2"
-              value={type}
-              onValueChange={(next) => setType(next as WidgetType)}
-              options={CREATABLE_WIDGET_TYPES.map((entry) => ({
-                value: entry.value,
-                label: `${entry.label} — ${entry.hint}`,
-              }))}
-            />
-          </label>
-          <label>
-            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Name
-            </span>
-            <input
-              className={`${fieldClass} mt-2`}
-              placeholder={WIDGET_LABEL[type]}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <div className="flex items-end">
-            <button
-              type="submit"
-              disabled={create.isPending}
-              className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
-            >
-              {create.isPending ? "Creating…" : "Create widget"}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading widgets…</p>
         ) : otherWidgets.length > 0 ? (
@@ -376,7 +292,7 @@ function WidgetHub() {
           })
         ) : (
           <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-            No widgets yet — create your first one above.
+            No extra widgets yet.
           </p>
         )}
       </section>

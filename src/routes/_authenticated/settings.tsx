@@ -1,17 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { AdminCodesPanel } from "@/components/settings/AdminCodesPanel";
 import { AdminVersionPanel } from "@/components/settings/AdminVersionPanel";
 import { ConnectionsPanel } from "@/components/settings/ConnectionsPanel";
-import { EventTestPanel } from "@/components/settings/EventTestPanel";
 import { SettingsBackupPanel } from "@/components/settings/SettingsBackupPanel";
 import { SubscriptionPanel } from "@/components/settings/SubscriptionPanel";
 import { useIsAdmin } from "@/hooks/useSubscription";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import {
+  importBotRixCommands,
+  importBotRixLeaderboard,
+  importBotRixShop,
+  lookupBotRixPublic,
+} from "@/lib/botrix.functions";
+import { supabase } from "@/lib/supabase/client";
+
+const BOTRIX_PROMPT_KEY = "cylix.botrix-import-prompt";
 
 type SettingsSearch = {
   connected?: string | undefined;
@@ -49,7 +58,6 @@ const BASE_TABS = [
 
 const ADMIN_TABS = [
   { id: "Admin", label: "settings.tab.admin" },
-  { id: "Test", label: "settings.tab.test" },
 ] as const satisfies ReadonlyArray<{ id: string; label: TranslationKey }>;
 
 type Tab = (typeof BASE_TABS)[number]["id"] | (typeof ADMIN_TABS)[number]["id"];
@@ -68,6 +76,110 @@ function SettingsPage() {
   const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>(() => initialTab(search));
   const [emailVisible, setEmailVisible] = useState(false);
+  const [botrixOpen, setBotrixOpen] = useState(false);
+  const [botrixBusy, setBotrixBusy] = useState(false);
+  const profileFilled = useRef(false);
+
+  useEffect(() => {
+    if (profileFilled.current) return;
+    const profile = data?.profile;
+    const connections = data?.connections;
+    if (!profile || !connections) return;
+    profileFilled.current = true;
+    const linked = connections.find((row) => row.is_active && row.username);
+    if (!linked?.username) return;
+    const nameMissing = !profile.name || profile.name === "CylixStudio";
+    const meta = linked.metadata;
+    const avatar =
+      meta && typeof meta === "object" && typeof (meta as { avatar_url?: unknown }).avatar_url === "string"
+        ? (meta as { avatar_url: string }).avatar_url
+        : "";
+    const patch: { name?: string; image?: string } = {};
+    if (nameMissing) patch.name = linked.username;
+    if (!profile.image && avatar.startsWith("http")) patch.image = avatar;
+    if (!patch.name && !patch.image) return;
+    void supabase.from("users").update(patch).eq("id", user.id);
+  }, [data?.connections, data?.profile, user.id]);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(BOTRIX_PROMPT_KEY)) return;
+    } catch {
+      return;
+    }
+    const kick = data?.connections?.find((row) => row.platform === "KICK" && row.username);
+    if (kick) setBotrixOpen(true);
+  }, [data?.connections]);
+
+  const dismissBotrix = () => {
+    try {
+      window.localStorage.setItem(BOTRIX_PROMPT_KEY, "dismissed");
+    } catch {
+      /* ignore */
+    }
+    setBotrixOpen(false);
+  };
+
+  const importBotrix = async () => {
+    const kick = data?.connections?.find((row) => row.platform === "KICK" && row.username);
+    if (!kick?.username) return;
+    setBotrixBusy(true);
+    try {
+      const looked = await lookupBotRixPublic({ data: { streamerName: kick.username, platform: "kick" } });
+      if (!looked.ok) {
+        toast.error(t("botrix.importFailed"));
+        return;
+      }
+      if (looked.commands.ok) {
+        await importBotRixCommands({
+          data: {
+            platform: "kick",
+            commands: looked.commands.items.map((item) => ({
+              cmd: item.cmd,
+              message: item.message,
+              mods: item.mods,
+            })),
+          },
+        });
+      }
+      if (looked.shop.ok) {
+        await importBotRixShop({
+          data: {
+            items: looked.shop.items.map((item) => ({
+              name: item.name,
+              description: item.description,
+              price: item.price,
+              image: null,
+            })),
+          },
+        });
+      }
+      if (looked.leaderboard.ok) {
+        await importBotRixLeaderboard({
+          data: {
+            rows: looked.leaderboard.items.map((item) => ({
+              name: item.name,
+              points: item.points,
+              level: null,
+              xp: null,
+              watchtime: null,
+            })),
+          },
+        });
+      }
+      try {
+        window.localStorage.setItem(BOTRIX_PROMPT_KEY, "imported");
+      } catch {
+        /* ignore */
+      }
+      setBotrixOpen(false);
+      toast.success(t("botrix.imported"));
+    } catch {
+      toast.error(t("botrix.importFailed"));
+    } finally {
+      setBotrixBusy(false);
+    }
+  };
 
   const tabs = isAdmin.data ? [...BASE_TABS, ...ADMIN_TABS] : [...BASE_TABS];
 
@@ -102,7 +214,29 @@ function SettingsPage() {
         </>
       ) : null}
 
-      {tab === "Test" && isAdmin.data ? <EventTestPanel /> : null}
+      {botrixOpen ? (
+        <div className="mb-6 max-w-2xl rounded-2xl border border-white/10 bg-card p-4">
+          <p className="text-sm font-semibold">{t("settings.botrixPrompt.title")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("settings.botrixPrompt.body")}</p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={botrixBusy}
+              onClick={() => void importBotrix()}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+            >
+              {t("settings.botrixPrompt.import")}
+            </button>
+            <button
+              type="button"
+              onClick={dismissBotrix}
+              className="rounded-lg border border-white/10 px-3 py-1.5 text-sm"
+            >
+              {t("settings.botrixPrompt.later")}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {tab === "Connections" ? <ConnectionsPanel userId={user.id} /> : null}
 

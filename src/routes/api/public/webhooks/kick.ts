@@ -386,6 +386,10 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             console.warn("[kick-webhook] chat ignored — no Kick connection", { messageId, broadcasterId });
             return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
           }
+          if (username) {
+            const { noteRecentChatter } = await import("@/lib/recentChatters");
+            noteRecentChatter(connection.user_id, username);
+          }
 
           const { deferRequestWork } = await import("@/lib/requestContext.server");
 
@@ -422,7 +426,22 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             try {
               const { requestPublicOrigin } = await import("@/lib/commandsUrl");
               const origin = requestPublicOrigin(request);
-              if (/^!buy\b/i.test(text.trim())) {
+              if (/^!points\b/i.test(text.trim())) {
+                const { handlePointsCommand } = await import("@/lib/pointsCommand.server");
+                commandResult = await handlePointsCommand({
+                  userId: connection.user_id,
+                  broadcasterUserId: broadcasterId,
+                  text,
+                  sender: username,
+                });
+              } else if (/^!?(?:shop|store|متجر)$/i.test(text.trim())) {
+                const { handleShopDirectoryCommand } = await import("@/lib/shopDirectory.server");
+                commandResult = await handleShopDirectoryCommand({
+                  userId: connection.user_id,
+                  broadcasterUserId: broadcasterId,
+                  text,
+                });
+              } else if (/^!buy\b/i.test(text.trim())) {
                 const { handleShopBuyCommand } = await import("@/lib/shopBuy.server");
                 commandResult = await handleShopBuyCommand({
                   userId: connection.user_id,

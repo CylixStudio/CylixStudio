@@ -50,9 +50,7 @@ import {
   questionSuffixForText,
   deleteTestCommand,
   emptyCommandDraft,
-  formatCommandReply,
   loadTestCommandState,
-  matchCustomCommand,
   saveTestCommandSettings,
   setTestCommandEnabled,
   upsertTestCommand,
@@ -357,7 +355,6 @@ function CustomCommandsPage() {
 
   const [editor, setEditor] = useState<CustomChatCommandInput | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [sample, setSample] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
@@ -471,12 +468,6 @@ function CustomCommandsPage() {
     },
     onError: (error: Error) => toast.error(error.message || c.errSave),
   });
-
-  const sampleHit = useMemo(() => {
-    if (!sample.trim()) return null;
-    return matchCustomCommand(sample, commands, prefixValue, "KICK")
-      ?? matchCustomCommand(sample, commands, prefixValue, "TWITCH");
-  }, [sample, commands, prefixValue]);
 
   const visibleCommands = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -775,35 +766,6 @@ function CustomCommandsPage() {
             <p className="mt-2 text-[0.72rem] text-muted-foreground">{c.suffixAuto}</p>
           ) : null}
 
-          <div className="mt-5 grid gap-3 border-t border-white/5 pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
-            <label className="block min-w-0">
-              <span className="mb-1.5 block text-[0.72rem] font-medium text-muted-foreground">{c.testerTitle}</span>
-              <span className="mb-1.5 block text-[0.68rem] text-muted-foreground">{c.testerHint}</span>
-              <input
-                value={sample}
-                onChange={(event) => setSample(event.target.value)}
-                placeholder={c.testerPlaceholder}
-                className={`${field} font-mono`}
-                dir="auto"
-              />
-            </label>
-            <div className="rounded-lg border border-white/5 px-3 py-2.5 font-mono text-[0.78rem] sm:min-w-56">
-              {sampleHit ? (
-                <p className="truncate text-emerald-400">
-                  {c.testerHit}:{" "}
-                  <span className="text-muted-foreground" dir="auto">
-                    {formatCommandReply(sampleHit.response, {
-                      user: "viewer",
-                      command: commandTrigger(sampleHit, prefixValue),
-                      message: sample,
-                    })}
-                  </span>
-                </p>
-              ) : (
-                <p className="text-muted-foreground">{c.testerMiss}</p>
-              )}
-            </div>
-          </div>
         </section>
       </div>
       )}

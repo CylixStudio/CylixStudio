@@ -29,26 +29,26 @@ const METRIC_META: Record<
     label: "dash.followers",
     empty: "dash.followersEmpty",
     hint: "dash.followersHint",
-    accent: "#B4A3D8",
+    accent: "var(--primary)",
   },
   subs: {
     label: "dash.subs",
     empty: "dash.subsEmpty",
     hint: "dash.subsHint",
-    accent: "#87B395",
+    accent: "var(--primary)",
   },
   tips: {
     label: "dash.tips",
     empty: "dash.tipsEmpty",
     hint: "dash.tipsHint",
-    accent: "#6FB8A8",
+    accent: "var(--primary)",
     money: true,
   },
   bits: {
     label: "dash.bits",
     empty: "dash.bitsEmpty",
     hint: "dash.bitsHint",
-    accent: "#7BA8C8",
+    accent: "var(--primary)",
   },
 };
 

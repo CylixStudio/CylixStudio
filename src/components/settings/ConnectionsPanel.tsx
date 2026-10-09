@@ -191,7 +191,7 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["workspace", userId] });
   const savedPlatform = parseStudioPlatform(data?.profile?.default_platform);
 
-  const saveDefaultPlatform = async (platform: StudioPlatform) => {
+  const saveDefaultPlatform = async (platform: StudioPlatform | null) => {
     if (platform === savedPlatform) return;
     setBusy("default-platform");
     setError(null);
@@ -421,6 +421,20 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
           aria-label={t("settings.defaultPlatform.aria")}
           className="mt-3 flex flex-wrap gap-2"
         >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={savedPlatform === null}
+            disabled={busy === "default-platform"}
+            onClick={() => void saveDefaultPlatform(null)}
+            className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[0.78rem] font-medium transition-colors disabled:opacity-50 ${
+              savedPlatform === null
+                ? "border-primary/60 bg-primary/15 text-foreground"
+                : "border-white/10 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t("settings.defaultPlatform.none")}
+          </button>
           {STUDIO_PLATFORMS.map((platform) => {
             const active = savedPlatform === platform;
             return (

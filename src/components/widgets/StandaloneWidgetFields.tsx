@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { LayoutPicker } from "@/components/widgets/LayoutPicker";
 import { DarkSelect } from "@/components/ui/dark-select";
 import { playWheelSpinSound } from "@/components/widgets/SpinWheel";
 import { EVENT_LABEL_I18N, EVENT_LABEL_OPTIONS } from "@/lib/eventLabels";
 import { useLanguage } from "@/lib/i18n";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { lookupChannel } from "@/lib/liveCounter.functions";
+import { supabase } from "@/lib/supabase/client";
 import {
   draftSpinPrizes,
   parseEventLabelsConfig,
@@ -18,13 +21,13 @@ import {
   type WidgetType,
 } from "@/lib/widgets";
 import {
-  CHROME_LAYOUTS,
   EVENT_LABEL_LAYOUTS,
   GOAL_LAYOUTS,
+  VIEWER_LAYOUTS,
   WHEEL_LAYOUTS,
-  parseChromeLayout,
   parseEventLabelLayout,
   parseGoalLayout,
+  parseViewerLayout,
   parseWheelLayout,
 } from "@/lib/widgetLayouts";
 
@@ -33,6 +36,13 @@ const fieldClass =
 const labelClass = "text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground";
 
 const VIEWER_CHOICES: ViewerPlatform[] = ["KICK", "TWITCH", "YOUTUBE", "X"];
+
+function connectionAvatar(metadata: unknown): string {
+  if (!metadata || typeof metadata !== "object") return "";
+  const record = metadata as Record<string, unknown>;
+  const url = record["avatar_url"] ?? record["image"] ?? record["profile_image_url"];
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : "";
+}
 
 function draftPrizes(config: Record<string, unknown>): SpinPrize[] {
   return draftSpinPrizes(config);
@@ -52,6 +62,12 @@ export function StandaloneWidgetFields({
   spinning?: boolean;
 }) {
   const { t } = useLanguage();
+  const sessionUser = useQuery({
+    queryKey: ["auth-user-id"],
+    staleTime: 60_000,
+    queryFn: async () => (await supabase.auth.getUser()).data.user?.id ?? "",
+  });
+  const workspace = useWorkspace(sessionUser.data ?? "");
   const kicks = parseKicksGoalConfig(config);
   const viewer = parseViewerCounterConfig(config);
   const prizes = useMemo(() => draftPrizes(config), [config]);
@@ -62,6 +78,38 @@ export function StandaloneWidgetFields({
     set("prizes", next);
     set("entries", next.map((prize) => prize.label.trim()).filter((label) => label.length > 0));
   };
+
+  const linked = useMemo(() => {
+    const rows = workspace.data?.connections ?? [];
+    const preferred = workspace.data?.profile?.default_platform;
+    const active = rows.filter((row) => row.is_active && row.username);
+    const match =
+      active.find((row) => row.platform === preferred) ??
+      active.find((row) => VIEWER_CHOICES.includes(row.platform as ViewerPlatform)) ??
+      null;
+    if (!match?.username || !VIEWER_CHOICES.includes(match.platform as ViewerPlatform)) return null;
+    return {
+      platform: match.platform as ViewerPlatform,
+      channel: match.username,
+      avatar: connectionAvatar(match.metadata),
+    };
+  }, [workspace.data?.connections, workspace.data?.profile?.default_platform]);
+
+  useEffect(() => {
+    if (type !== "VIEWER_COUNTER" || !linked) return;
+    if (viewer.platform === linked.platform && viewer.channel === linked.channel) return;
+    set("platform", linked.platform);
+    set("channel", linked.channel);
+  }, [linked, set, type, viewer.channel, viewer.platform]);
+
+  useEffect(() => {
+    if (type !== "SPIN_WHEEL" || !linked?.avatar) return;
+    const source = config["logoSource"] === "custom" ? "custom" : "channel";
+    if (source !== "channel") return;
+    if (config["channelLogoUrl"] === linked.avatar) return;
+    set("channelLogoUrl", linked.avatar);
+    set("logoSource", "channel");
+  }, [config, linked, set, type]);
 
   if (type === "KICKS_GOAL") {
     return (
@@ -118,28 +166,15 @@ export function StandaloneWidgetFields({
     return (
       <div className="space-y-3 rounded-xl border border-border bg-background p-4">
         <LayoutPicker
-          value={parseChromeLayout(config)}
-          options={CHROME_LAYOUTS.map((id) => ({ id, label: t(`layout.chrome.${id}`) }))}
+          value={parseViewerLayout(config)}
+          options={VIEWER_LAYOUTS.map((id) => ({ id, label: t(`layout.viewer.${id}`) }))}
           onChange={(id) => set("layout", id)}
         />
-        <label className="block">
-          <span className={labelClass}>{t("widget.viewer.platform")}</span>
-          <DarkSelect
-            className="mt-2"
-            value={VIEWER_CHOICES.includes(viewer.platform) ? viewer.platform : "KICK"}
-            onValueChange={(next) => set("platform", next)}
-            options={VIEWER_CHOICES.map((platform) => ({ value: platform, label: platform }))}
-          />
-        </label>
-        <label className="block">
-          <span className={labelClass}>{t("widget.viewer.channel")}</span>
-          <input
-            className={`${fieldClass} mt-2`}
-            value={viewer.channel}
-            placeholder="channel"
-            onChange={(event) => set("channel", event.target.value)}
-          />
-        </label>
+        <p className="text-sm text-foreground">
+          {linked
+            ? `${linked.platform} · ${linked.channel}`
+            : t("widget.viewer.accountMissing")}
+        </p>
         <label className="block">
           <span className={labelClass}>{t("widget.viewer.metric")}</span>
           <DarkSelect
@@ -211,6 +246,55 @@ export function StandaloneWidgetFields({
           options={WHEEL_LAYOUTS.map((id) => ({ id, label: t(`layout.wheel.${id}`) }))}
           onChange={(id) => set("layout", id)}
         />
+        <label className="block">
+          <span className={labelClass}>{t("widget.wheel.logo")}</span>
+          <DarkSelect
+            className="mt-2"
+            value={config["logoSource"] === "custom" ? "custom" : "channel"}
+            onValueChange={(next) => set("logoSource", next)}
+            options={[
+              { value: "channel", label: t("widget.wheel.logoChannel") },
+              { value: "custom", label: t("widget.wheel.logoCustom") },
+            ]}
+          />
+        </label>
+        {config["logoSource"] === "custom" ? (
+          <div className="space-y-3">
+            <label className="block">
+              <span className={labelClass}>{t("widget.wheel.logoUpload")}</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className={`${fieldClass} mt-2`}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file || file.size > 180_000) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    if (typeof reader.result === "string") set("customLogoUrl", reader.result);
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+            <div className="flex flex-wrap gap-4">
+              <ColorField
+                label={t("widget.kicks.accent")}
+                value={typeof config["accentColor"] === "string" ? config["accentColor"] : "#7C3AED"}
+                onChange={(value) => set("accentColor", value)}
+              />
+              <ColorField
+                label={t("widget.kicks.track")}
+                value={typeof config["backgroundColor"] === "string" ? config["backgroundColor"] : "#1A1B23"}
+                onChange={(value) => set("backgroundColor", value)}
+              />
+            </div>
+          </div>
+        ) : linked?.avatar ? (
+          <img src={linked.avatar} alt="" className="size-12 rounded-full object-cover" />
+        ) : (
+          <p className="text-xs text-muted-foreground">{t("widget.viewer.accountMissing")}</p>
+        )}
         <div className="space-y-2">
           {prizes.map((prize, index) => (
             <div key={index} className="flex items-center gap-2">
@@ -278,29 +362,41 @@ export function StandaloneWidgetFields({
             onChange={(event) => set("title", event.target.value)}
           />
         </label>
-        <fieldset className="space-y-2">
-          <legend className={labelClass}>{t("widget.labels.options")}</legend>
-          {EVENT_LABEL_OPTIONS.map((option) => (
-            <label key={option} className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                className="size-3.5 accent-primary"
-                checked={selected.has(option)}
-                onChange={(event) => {
-                  const next = new Set(selected);
-                  if (event.target.checked) next.add(option);
-                  else next.delete(option);
-                  set(
-                    "labels",
-                    EVENT_LABEL_OPTIONS.filter((id) => next.has(id)),
-                  );
-                }}
-              />
-              <span>{t(EVENT_LABEL_I18N[option])}</span>
-            </label>
+        <label className="block">
+          <span className={labelClass}>{t("widget.labels.options")}</span>
+          <DarkSelect
+            className="mt-2"
+            value="__add"
+            onValueChange={(next) => {
+              if (next === "__add" || selected.has(next as (typeof EVENT_LABEL_OPTIONS)[number])) return;
+              set("labels", [...parseEventLabelsConfig(config).labels, next]);
+            }}
+            options={[
+              { value: "__add", label: t("widget.labels.add") },
+              ...EVENT_LABEL_OPTIONS.filter((option) => !selected.has(option)).map((option) => ({
+                value: option,
+                label: t(EVENT_LABEL_I18N[option]),
+              })),
+            ]}
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {[...selected].map((option) => (
+            <button
+              key={option}
+              type="button"
+              className="rounded-full border border-white/10 px-2.5 py-1 text-xs"
+              onClick={() =>
+                set(
+                  "labels",
+                  parseEventLabelsConfig(config).labels.filter((id) => id !== option),
+                )
+              }
+            >
+              {t(EVENT_LABEL_I18N[option])} ×
+            </button>
           ))}
-        </fieldset>
-        <p className="text-xs leading-relaxed text-muted-foreground">{t("widget.labels.liveHint")}</p>
+        </div>
       </div>
     );
   }

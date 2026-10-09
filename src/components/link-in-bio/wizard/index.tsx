@@ -28,7 +28,7 @@ export function LinkInBioWizard({
 function ActiveStep() {
   const { step } = useWizard();
   if (step === 1) return <ProfileStep />;
-  if (step === 2) return <AtmosphereStep />;
-  if (step === 3) return <PlatformsStep />;
+  if (step === 2) return <PlatformsStep />;
+  if (step === 3) return <AtmosphereStep />;
   return <ArrangeStep />;
 }

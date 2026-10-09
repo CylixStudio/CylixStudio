@@ -302,10 +302,10 @@ export function WidgetRulesPanel({
         </div>
       </section>
 
-      <section className={sectionClass}>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      <details className={sectionClass} open={rulesQuery.data?.length ? false : true}>
+        <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           {existingMatch ? "Update rule" : "New rule"}
-        </h2>
+        </summary>
         <form
           className={cn(
             "mt-3 grid gap-3",
@@ -424,9 +424,9 @@ export function WidgetRulesPanel({
         <p className="mt-3 text-xs text-muted-foreground">
           One rule per platform + event. Saving an existing combination updates it.
         </p>
-      </section>
+      </details>
 
-      <section className={cn("grid gap-3", !compact && "md:grid-cols-2")}>
+      <section className={cn("grid gap-3", !compact && "sm:grid-cols-2 xl:grid-cols-3")}>
         {rulesQuery.data?.length ? (
           rulesQuery.data.map((rule) => (
             <article
