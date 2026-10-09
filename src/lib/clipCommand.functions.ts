@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { clipPlaybackUrl, publicClipPageUrl } from "@/lib/clipStorage";
 import { requireSupabaseAuth } from "@/lib/supabase/auth-middleware";
 
 export type ClipCommandSettingsInput = {
@@ -31,7 +32,7 @@ export const getClipCommandState = createServerFn({ method: "GET" })
         .maybeSingle(),
       supabase
         .from("clips")
-        .select("id, title, url, thumbnail_url, duration_seconds, view_count, clipped_by, created_at")
+        .select("id, title, url, external_id, thumbnail_url, duration_seconds, view_count, clipped_by, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(50),
@@ -50,7 +51,7 @@ export const getClipCommandState = createServerFn({ method: "GET" })
       clips: (clips ?? []).map((clip) => ({
         id: clip.id,
         title: clip.title,
-        url: clip.url,
+        url: clipPlaybackUrl({ id: clip.id, url: clip.url, externalId: clip.external_id }),
         thumbnail: clip.thumbnail_url,
         duration: clip.duration_seconds,
         views: clip.view_count,
@@ -99,7 +100,9 @@ export const listChannelClips = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("clips")
-      .select("id, title, url, share_url, thumbnail_url, duration_seconds, view_count, clipped_by, created_at, platform")
+      .select(
+        "id, title, url, share_url, external_id, thumbnail_url, duration_seconds, view_count, clipped_by, created_at, platform",
+      )
       .eq("user_id", context.userId)
       .order("created_at", { ascending: false })
       .limit(200);
@@ -122,16 +125,20 @@ export const listChannelClips = createServerFn({ method: "GET" })
 
     return (data ?? [])
       .filter((clip) => typeof clip.url === "string" && clip.url.length > 0)
-      .map((clip) => ({
-        id: clip.id,
-        title: clip.title?.trim() || "Clip",
-        url: clip.url,
-        shareUrl: clip.share_url ?? null,
-        thumbnail: clip.thumbnail_url ?? null,
-        duration: Number.isFinite(clip.duration_seconds) ? clip.duration_seconds : 0,
-        views: Number.isFinite(clip.view_count) ? clip.view_count : 0,
-        clippedBy: clip.clipped_by?.trim() || "viewer",
-        createdAt: clip.created_at || new Date(0).toISOString(),
-        platform: clip.platform || "KICK",
-      }));
+      .map((clip) => {
+        const playback = clipPlaybackUrl({ id: clip.id, url: clip.url, externalId: clip.external_id });
+        const storedPage = playback !== clip.url;
+        return {
+          id: clip.id,
+          title: clip.title?.trim() || "Clip",
+          url: playback,
+          shareUrl: storedPage ? publicClipPageUrl(clip.id) : (clip.share_url ?? null),
+          thumbnail: clip.thumbnail_url ?? null,
+          duration: Number.isFinite(clip.duration_seconds) ? clip.duration_seconds : 0,
+          views: Number.isFinite(clip.view_count) ? clip.view_count : 0,
+          clippedBy: clip.clipped_by?.trim() || "viewer",
+          createdAt: clip.created_at || new Date(0).toISOString(),
+          platform: clip.platform || "KICK",
+        };
+      });
   });

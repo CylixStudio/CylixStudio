@@ -1,13 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { clipStoragePath, publicClipMediaUrl } from "@/lib/clipStorage";
+
 /**
  * Public playback data for a captured clip. Only the clip's own random id is
  * needed — no creator data is exposed beyond the clip's public metadata.
+ *
+ * Stored HLS objects are streamed with the service-role client (`?media=1`)
+ * so the browser never opens a storage JWT. Kick clip ids are not signed.
  */
 export const Route = createFileRoute("/api/public/clip/$id")({
   server: {
     handlers: {
-      GET: async ({ params }) => {
+      GET: async ({ params, request }) => {
         const { supabaseAdmin } = await import("@/lib/supabase/client.server");
         const { data } = await supabaseAdmin
           .from("clips")
@@ -22,19 +27,37 @@ export const Route = createFileRoute("/api/public/clip/$id")({
           });
         }
 
-        let playbackUrl = data.url;
-        if (data.external_id) {
-          const signed = await supabaseAdmin.storage
-            .from("clips")
-            .createSignedUrl(data.external_id, 60 * 60 * 6);
-          if (signed.data?.signedUrl) playbackUrl = signed.data.signedUrl;
+        const objectPath = clipStoragePath(data.external_id);
+        const wantsMedia = new URL(request.url).searchParams.get("media") === "1";
+        if (wantsMedia) {
+          if (!objectPath) {
+            return new Response(JSON.stringify({ error: "not_found" }), {
+              status: 404,
+              headers: { "content-type": "application/json", "cache-control": "no-store" },
+            });
+          }
+          const { downloadClipObject } = await import("@/lib/clipStorage.server");
+          const file = await downloadClipObject(objectPath);
+          if (!file) {
+            return new Response(JSON.stringify({ error: "not_found" }), {
+              status: 404,
+              headers: { "content-type": "application/json", "cache-control": "no-store" },
+            });
+          }
+          return new Response(file, {
+            status: 200,
+            headers: {
+              "content-type": "video/mp2t",
+              "cache-control": "private, max-age=3600",
+            },
+          });
         }
 
         return new Response(
           JSON.stringify({
             id: data.id,
             title: data.title,
-            url: playbackUrl,
+            url: objectPath ? publicClipMediaUrl(data.id) : data.url,
             thumbnail: data.thumbnail_url,
             duration: data.duration_seconds,
             clippedBy: data.clipped_by,

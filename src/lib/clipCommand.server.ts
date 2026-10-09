@@ -1,3 +1,4 @@
+import { clipStoragePath, publicClipPageUrl } from "@/lib/clipStorage";
 import { chatMention } from "@/lib/commandTemplate";
 import { captureKickClip, createNativeKickClip, fetchKickChannel, refreshKickBuffer } from "@/lib/kickClip.server";
 import {
@@ -231,7 +232,7 @@ async function captureLocalClip(
   const captured = await captureKickClip(userId, key, duration);
   if ("error" in captured) return { error: captured.error };
   const clip: CreatedClip = {
-    externalId: captured.path,
+    externalId: clipStoragePath(captured.path) ?? captured.path,
     url: captured.url,
     title,
     thumbnail,
@@ -384,15 +385,16 @@ export async function handleClipCommand(input: {
     return { status: "error", reason: created.error };
   }
 
+  const storedPath = clipStoragePath(created.externalId);
   const { data: row } = await supabaseAdmin
     .from("clips")
     .upsert(
       {
         user_id: userId,
         platform: "KICK" as const,
-        external_id: created.externalId,
+        external_id: storedPath ?? created.externalId,
         title: created.title,
-        url: created.url,
+        url: created.url || "https://cylixstudio.com",
         thumbnail_url: created.thumbnail,
         duration_seconds: created.duration,
         clipped_by: sender.username,
@@ -403,9 +405,23 @@ export async function handleClipCommand(input: {
     .select("id")
     .maybeSingle();
 
-  // Kick page when Kick returned an id. HLS uses the signed capture URL.
-  const shareUrl = created.url;
-  if (row?.id) await supabaseAdmin.from("clips").update({ share_url: shareUrl }).eq("id", row.id);
+  // Kick page when Kick returned an id. HLS chat uses the short public page so the
+  // storage JWT is never truncated in chat (that truncation fails signature checks).
+  const shareUrl = row?.id && storedPath ? publicClipPageUrl(row.id) : storedPath ? "" : created.url;
+  if (row?.id && shareUrl) {
+    await supabaseAdmin
+      .from("clips")
+      .update({ url: shareUrl, share_url: shareUrl })
+      .eq("id", row.id);
+  }
+  if (!shareUrl) {
+    await sendKickChatMessage(
+      userId,
+      broadcasterUserId,
+      clipFailureNotice(sender.username, "persist_failed", settings.response || CLIP_DEFAULTS.response),
+    );
+    return { status: "error", reason: "persist_failed" };
+  }
 
   const reply = (settings.response || CLIP_DEFAULTS.response)
     .replace(/@?\{user\}/gi, () => chatMention(sender.username))

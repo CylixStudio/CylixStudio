@@ -1,3 +1,4 @@
+import { signClipStoragePath } from "@/lib/clipStorage.server";
 import { clipHttpNext, liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
@@ -7,7 +8,6 @@ import { supabaseAdmin } from "@/lib/supabase/client.server";
  * The rolling HLS buffer remains the fallback when that call does not yield a URL.
  */
 
-const SIGNED_URL_TTL = 60 * 60 * 24 * 365 * 5; // 5 years
 /** Keep a few minutes of the live feed so `!clip 120` has material to cut. */
 const BUFFER_WINDOW_SECONDS = 240;
 /** Don't hammer the CDN: at most one playlist refresh per this many ms. */
@@ -554,11 +554,8 @@ export async function captureKickClip(
       return { error: "upload_failed" };
     }
 
-    const signed = await supabaseAdmin.storage.from("clips").createSignedUrl(path, SIGNED_URL_TTL);
-    if (signed.error || !signed.data?.signedUrl) {
-      console.error("[clip-capture] signing failed", signed.error?.message);
-      return { error: "sign_failed" };
-    }
+    const signedUrl = await signClipStoragePath(path);
+    if (!signedUrl) console.error("[clip-capture] signing failed; playback will use the stored path");
 
     console.log("[clip-capture] captured clip", {
       requested: duration,
@@ -566,7 +563,7 @@ export async function captureKickClip(
       bytes: total,
       path,
     });
-    return { url: signed.data.signedUrl, path, seconds: Math.round(seconds), bytes: total };
+    return { url: signedUrl ?? "", path, seconds: Math.round(seconds), bytes: total };
   } catch (error) {
     console.error("[clip-capture] capture error", error);
     return { error: "capture_failed" };

@@ -7,7 +7,9 @@ import { useEffect, useRef, useState } from "react";
 export function ClipPlayer({ src, poster }: { src: string; poster?: string | undefined }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const safeSrc = typeof src === "string" ? src.trim() : "";
-  const isTs = safeSrc.length > 0 && /\.ts(\?|$)/i.test(safeSrc);
+  const isTs =
+    safeSrc.length > 0 &&
+    (/\.ts(\?|$)/i.test(safeSrc) || /[?&]media=1(?:&|$)/.test(safeSrc));
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
