@@ -1,4 +1,4 @@
-import { clipHttpNext, liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
+import { liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
 
 /**
  * One channel read, then one Kick clip create. No local buffer and no retry loop.
@@ -206,15 +206,14 @@ function publishedClip(slug: string, id: string, payload: unknown, duration: num
 }
 
 /**
- * Kick's current clip create is one POST per URL, matching the website:
- * `POST https://web.kick.com/api/v1/clips` with the livestream `vod_id`, then
- * `POST https://web.kick.com/api/v1/clips/{id}/finalize`.
- * If that route is missing (404/405), one internal create uses the livestream slug:
+ * One clip create. When `vodId` exists that attempt is
+ * `POST https://web.kick.com/api/v1/clips` then finalize on the same host.
+ * A failure, including 429, returns immediately and does not continue to the
+ * internal livestream route. When `vodId` is missing, one internal create is
+ * the attempt itself:
  * `POST https://kick.com/api/internal/v1/livestreams/{livestreamSlug}/clips`,
- * then `POST .../clips/{id}/finalize`.
- * A 429 is not posted again and does not continue to the other host.
- * Does not log the token. Does not POST the channel clip list (GET/HEAD only)
- * or the removed `/clips/init` path.
+ * then finalize on that same URL. A 429 is not retried.
+ * Does not log the token. Does not POST the channel clip list or `/clips/init`.
  */
 export type NativeKickClipResult =
   | NativeKickClip
@@ -231,28 +230,24 @@ export async function createNativeKickClip(input: {
   const { token, duration, livestreamSlug, vodId } = input;
   const title = "Clip";
   const finalizeBody = { duration, start_time: 0, title };
-  let lastError = "clip_api_unavailable";
 
   const finish = async (
     opened: KickHttpResult,
     finalizeUrl: (id: string) => string,
-  ): Promise<NativeKickClipResult | null> => {
-    const openedNext = clipHttpNext(opened.status);
-    if (openedNext === "rate_limit") {
+  ): Promise<NativeKickClipResult> => {
+    if (opened.status === 429) {
       console.warn("[clip-capture] kick clip rate limited", { status: opened.status });
       return { error: "clip_api_429", rateLimited: true, retryAfter: opened.retryAfter };
     }
-    if (openedNext === "next") return null;
-    if (responseSaysOffline(opened.status, opened.text)) return { error: "stream_offline" };
-    if (openedNext === "hls") {
+    if (opened.status < 200 || opened.status >= 300) {
+      if (responseSaysOffline(opened.status, opened.text)) return { error: "stream_offline" };
       console.warn("[clip-capture] kick clip create declined", { status: opened.status });
       return { error: `clip_api_${opened.status || "failed"}` };
     }
     const id = clipIdFrom(opened.json);
     if (!id) return { error: "clip_api_unparsed" };
     const finalized = await postKickOnce(finalizeUrl(id), token, finalizeBody);
-    const finalizedNext = clipHttpNext(finalized.status);
-    if (finalizedNext === "rate_limit") {
+    if (finalized.status === 429) {
       console.warn("[clip-capture] kick clip rate limited", { status: finalized.status });
       return { error: "clip_api_429", rateLimited: true, retryAfter: finalized.retryAfter };
     }
@@ -260,7 +255,7 @@ export async function createNativeKickClip(input: {
       console.log("[clip-capture] kick clip finalized", { slug, status: finalized.status });
       return publishedClip(slug, clipIdFrom(finalized.json) ?? id, finalized.json, duration);
     }
-    if (finalizedNext === "next") {
+    if (finalized.status === 404 || finalized.status === 405) {
       console.warn("[clip-capture] kick clip finalize declined", { status: finalized.status });
       return publishedClip(slug, id, opened.json, duration);
     }
@@ -275,11 +270,7 @@ export async function createNativeKickClip(input: {
       if (opened.status < 200 || opened.status >= 300) {
         console.warn("[clip-capture] kick clip create", { status: opened.status, via: "web" });
       }
-      const created = await finish(opened, (id) => `https://web.kick.com/api/v1/clips/${encodeURIComponent(id)}/finalize`);
-      if (created && "url" in created) return created;
-      if (created?.rateLimited || created?.error === "stream_offline") return created;
-      if (created && clipHttpNext(opened.status) === "hls") return created;
-      if (created) lastError = created.error;
+      return finish(opened, (id) => `https://web.kick.com/api/v1/clips/${encodeURIComponent(id)}/finalize`);
     }
 
     if (livestreamSlug) {
@@ -291,18 +282,16 @@ export async function createNativeKickClip(input: {
       if (opened.status < 200 || opened.status >= 300) {
         console.warn("[clip-capture] kick clip create", { status: opened.status, via: "internal" });
       }
-      const created = await finish(
+      return finish(
         opened,
         (id) =>
           `https://kick.com/api/internal/v1/livestreams/${encodeURIComponent(livestreamSlug)}/clips/${encodeURIComponent(id)}/finalize`,
       );
-      if (created) return created;
-      return { error: `clip_api_${opened.status || "failed"}` };
     }
   } catch (error) {
     console.error("[clip-capture] kick clip request error", error);
     return { error: "clip_api_failed" };
   }
 
-  return { error: lastError };
+  return { error: "clip_api_unavailable" };
 }

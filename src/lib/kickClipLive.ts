@@ -88,14 +88,9 @@ export function clipDuringCooldown(
   return "local";
 }
 
-/**
- * 404/405 skip to the next Kick path and are not retried.
- * 429 closes Kick clip creates for this command and arms a cooldown.
- * Other non-success statuses go to HLS without repeating the call.
- */
 const ARABIC_LETTER = /[\u0600-\u06FF]/;
 
-/** Viewer text after Kick and HLS both fail. No status codes, and not an offline claim. */
+/** Viewer text after a clip create fails. No status codes, and not an offline claim unless Kick said the stream is offline. */
 export function clipFailureNotice(username: string, error: string, responseTemplate: string): string {
   const mention = `@${username.replace(/^@+/, "")}`;
   if (error === "stream_offline") return `${mention} Stream is offline, no clip could be captured.`;
@@ -105,6 +100,7 @@ export function clipFailureNotice(username: string, error: string, responseTempl
   return `${mention} ${line}`;
 }
 
+/** Leftover status classes. The `!clip` path does not use this to start another URL. */
 export function clipHttpNext(status: number): "ok" | "next" | "rate_limit" | "hls" {
   if (status >= 200 && status < 300) return "ok";
   if (status === 429) return "rate_limit";
