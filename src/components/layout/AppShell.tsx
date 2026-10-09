@@ -14,7 +14,6 @@ import {
   LogOut,
   MessageSquareCode,
   Link2,
-  Scissors,
   Settings,
 } from "lucide-react";
 
@@ -22,7 +21,6 @@ import { StreamlabsBridge } from "@/components/layout/StreamlabsBridge";
 import { StreamElementsBridge } from "@/components/layout/StreamElementsBridge";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useIsAdmin } from "@/hooks/useSubscription";
 import { supabase } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { disableTestMode, isTestMode } from "@/lib/testMode";
@@ -55,7 +53,6 @@ const NAV = [
   { to: "/custom-commands" as const, icon: MessageSquareCode, labelKey: "nav.chatCommands" },
   { to: "/link-in-bio" as const, icon: Link2, labelKey: "nav.linkInBio" },
   { to: "/live-counter" as const, icon: Hash, labelKey: "nav.counter" },
-  { to: "/clip-command" as const, icon: Scissors, labelKey: "nav.clipCommand" },
   { to: "/schedule" as const, icon: CalendarDays, labelKey: "nav.schedule" },
   { to: "/mark-points" as const, icon: Bookmark, labelKey: "nav.markPoints" },
   { to: "/loyalty" as const, icon: Crown, labelKey: "nav.tools.loyalty" },
@@ -127,9 +124,6 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
   const versionLabel = studioVersion.data?.trim() || FALLBACK_STUDIO_VERSION;
   const { t, dir } = useLanguage();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const guest = isTestMode();
-  const admin = useIsAdmin(user?.id ?? "", !guest && Boolean(user?.id));
-  const clipLocked = guest || !user?.id || admin.data !== true;
 
   const [collapsed, setCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -257,29 +251,11 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
               const Icon = item.icon;
               const active = pathname === item.to;
               const label = t(item.labelKey);
-              const clipItem = item.to === "/clip-command";
-              const showClipLock = clipItem && clipLocked;
-              const tip = showClipLock
-                ? `${label} — ${t("clip.maintenance.titleAr")} · ${t("clip.maintenance.titleEn")}`
-                : label;
               return (
-                <IconTip key={item.to} label={tip} collapsed={collapsed}>
+                <IconTip key={item.to} label={label} collapsed={collapsed}>
                   <Link to={item.to} className={navBtn(active)} aria-current={active ? "page" : undefined}>
                     <Icon className="size-4 shrink-0" aria-hidden />
-                    {collapsed ? null : (
-                      <span className="flex min-w-0 flex-1 flex-col items-start">
-                        <span className="truncate">{label}</span>
-                        {showClipLock ? (
-                          <span className="mt-0.5 inline-flex max-w-full truncate rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[0.62rem] font-medium leading-none text-zinc-300">
-                            <span>{t("clip.maintenance.titleAr")}</span>
-                            <span className="px-1 text-zinc-500" aria-hidden>
-                              ·
-                            </span>
-                            <span dir="ltr">{t("clip.maintenance.titleEn")}</span>
-                          </span>
-                        ) : null}
-                      </span>
-                    )}
+                    {collapsed ? null : <span className="truncate">{label}</span>}
                   </Link>
                 </IconTip>
               );

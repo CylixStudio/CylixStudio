@@ -8,7 +8,6 @@ import {
   SETTINGS_BACKUP_PRODUCT,
   SETTINGS_BACKUP_VERSION,
   type CommandImportMode,
-  type SettingsBackupClipCommand,
   type SettingsBackupCommand,
   type SettingsBackupConnection,
   type SettingsBackupFile,
@@ -48,7 +47,7 @@ export const exportSettingsBackup = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Omit<SettingsBackupFile, "prefs">> => {
     const { supabase, userId } = context;
-    const [commandSettings, commands, clip, connections] = await Promise.all([
+    const [commandSettings, commands, connections] = await Promise.all([
       supabase
         .from("custom_chat_command_settings")
         .select("default_prefix")
@@ -60,25 +59,10 @@ export const exportSettingsBackup = createServerFn({ method: "GET" })
         .eq("user_id", userId)
         .order("created_at", { ascending: false }),
       supabase
-        .from("clip_command_settings")
-        .select("enabled, roles, default_length, max_length, response")
-        .eq("user_id", userId)
-        .maybeSingle(),
-      supabase
         .from("platform_connections")
         .select("platform, username, is_active, platform_user_id")
         .eq("user_id", userId),
     ]);
-
-    const clipCommand: SettingsBackupClipCommand | null = clip.data
-      ? {
-          enabled: clip.data.enabled,
-          roles: clip.data.roles?.length ? clip.data.roles : ["Everyone"],
-          defaultLength: clip.data.default_length,
-          maxLength: clip.data.max_length,
-          response: clip.data.response,
-        }
-      : null;
 
     const connectionRows: SettingsBackupConnection[] = (connections.data ?? []).map((row) => ({
       platform: row.platform,
@@ -98,7 +82,6 @@ export const exportSettingsBackup = createServerFn({ method: "GET" })
         ),
         commands: (commands.data ?? []).map(mapCommand),
       },
-      clipCommand,
       connections: connectionRows,
     };
   });
@@ -107,7 +90,6 @@ type ImportPayload = {
   mode: CommandImportMode;
   defaultPrefix: string;
   commands: SettingsBackupCommand[];
-  clipCommand: SettingsBackupClipCommand | null;
 };
 
 export const importSettingsBackup = createServerFn({ method: "POST" })
@@ -185,24 +167,6 @@ export const importSettingsBackup = createServerFn({ method: "POST" })
           .in("id", remove);
         if (error) return { ok: false as const, error: error.message };
       }
-    }
-
-    if (data.clipCommand) {
-      const clip = data.clipCommand;
-      const maxLength = Math.min(Math.max(Math.round(clip.maxLength) || 120, 5), 240);
-      const defaultLength = Math.min(Math.max(Math.round(clip.defaultLength) || 30, 5), maxLength);
-      const { error } = await supabase.from("clip_command_settings").upsert(
-        {
-          user_id: userId,
-          enabled: Boolean(clip.enabled),
-          roles: clip.roles.length ? clip.roles : ["Everyone"],
-          default_length: defaultLength,
-          max_length: maxLength,
-          response: clip.response.trim() || "@{user} {clip_url}",
-        },
-        { onConflict: "user_id" },
-      );
-      if (error) return { ok: false as const, error: error.message };
     }
 
     return { ok: true as const };

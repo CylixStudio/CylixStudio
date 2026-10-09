@@ -4,6 +4,7 @@ import {
   DEFAULT_COMMAND_SETTINGS,
   normalizeTriggerMarker,
   resolveStoredMarker,
+  isReservedCustomCommandName,
   sanitizeCommandName,
   type ChatCommandPlatform,
   type CustomChatCommand,
@@ -48,7 +49,7 @@ function mapCommand(row: {
 function normalizeInput(input: CustomChatCommandInput): CustomChatCommandInput | { error: string } {
   const name = sanitizeCommandName(input.name);
   if (!name) return { error: "name_required" };
-  if (["clip", "commands", "followage", "lurk", "so", "welcome"].includes(name.toLowerCase())) {
+  if (isReservedCustomCommandName(name)) {
     return { error: "reserved_name" };
   }
   const response = input.response.normalize("NFC").trim().slice(0, 480);

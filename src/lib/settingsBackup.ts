@@ -46,14 +46,6 @@ export type SettingsBackupPrefs = {
   sidebarCollapsed?: boolean;
 };
 
-export type SettingsBackupClipCommand = {
-  enabled: boolean;
-  roles: string[];
-  defaultLength: number;
-  maxLength: number;
-  response: string;
-};
-
 export type SettingsBackupFile = {
   version: typeof SETTINGS_BACKUP_VERSION;
   product: typeof SETTINGS_BACKUP_PRODUCT;
@@ -63,7 +55,6 @@ export type SettingsBackupFile = {
     defaultPrefix: string;
     commands: SettingsBackupCommand[];
   };
-  clipCommand: SettingsBackupClipCommand | null;
   connections: SettingsBackupConnection[];
 };
 
@@ -75,7 +66,6 @@ export type SettingsBackupSummary = {
   commandCount: number;
   defaultPrefix: string;
   language: Lang | null;
-  hasClipCommand: boolean;
   connectionCount: number;
 };
 
@@ -116,34 +106,6 @@ export function sanitizeBackupCommand(raw: unknown): SettingsBackupCommand | nul
     platforms: platforms.length ? platforms : ["KICK"],
     roles: roles.length ? roles : ["Everyone"],
     cooldownSeconds: Math.min(Math.max(Math.round(cooldown) || 0, 0), 3600),
-  };
-}
-
-function parseClipCommand(raw: unknown): SettingsBackupClipCommand | null {
-  if (raw == null) return null;
-  if (!isRecord(raw)) return null;
-  const roles = asStringArray(field(raw, "roles"));
-  const maxRaw = field(raw, "maxLength");
-  const defaultRaw = field(raw, "defaultLength");
-  const maxLength = Math.min(
-    Math.max(Math.round(typeof maxRaw === "number" ? maxRaw : 120) || 120, 5),
-    240,
-  );
-  const defaultLength = Math.min(
-    Math.max(Math.round(typeof defaultRaw === "number" ? defaultRaw : 30) || 30, 5),
-    maxLength,
-  );
-  const responseRaw = field(raw, "response");
-  const response =
-    typeof responseRaw === "string" && responseRaw.trim()
-      ? responseRaw.trim().slice(0, 240)
-      : "@{user} {clip_url}";
-  return {
-    enabled: Boolean(field(raw, "enabled")),
-    roles: roles.length ? roles : ["Everyone"],
-    defaultLength,
-    maxLength,
-    response,
   };
 }
 
@@ -222,7 +184,6 @@ export function parseSettingsBackup(
       exportedAt: typeof exportedAt === "string" ? exportedAt : new Date().toISOString(),
       prefs: parsePrefs(field(raw, "prefs")),
       customCommands: { defaultPrefix, commands },
-      clipCommand: parseClipCommand(field(raw, "clipCommand")),
       connections,
     },
   };
@@ -233,7 +194,6 @@ export function summarizeBackup(file: SettingsBackupFile): SettingsBackupSummary
     commandCount: file.customCommands.commands.length,
     defaultPrefix: file.customCommands.defaultPrefix,
     language: file.prefs.language ?? null,
-    hasClipCommand: Boolean(file.clipCommand),
     connectionCount: file.connections.length,
   };
 }
@@ -275,7 +235,6 @@ export function downloadSettingsBackup(file: SettingsBackupFile) {
 
 export function buildLocalSettingsBackup(partial: {
   customCommands?: SettingsBackupFile["customCommands"];
-  clipCommand?: SettingsBackupClipCommand | null;
   connections?: SettingsBackupConnection[];
 }): SettingsBackupFile {
   const testState = loadTestCommandState();
@@ -296,7 +255,6 @@ export function buildLocalSettingsBackup(partial: {
         cooldownSeconds: command.cooldownSeconds,
       })),
     },
-    clipCommand: partial.clipCommand ?? null,
     connections: partial.connections ?? [],
   };
 }

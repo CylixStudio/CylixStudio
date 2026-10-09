@@ -280,90 +280,6 @@ export type Database = {
           },
         ]
       }
-      clip_command_settings: {
-        Row: {
-          created_at: string
-          default_length: number
-          enabled: boolean
-          max_length: number
-          response: string
-          roles: string[]
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          default_length?: number
-          enabled?: boolean
-          max_length?: number
-          response?: string
-          roles?: string[]
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          default_length?: number
-          enabled?: boolean
-          max_length?: number
-          response?: string
-          roles?: string[]
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      clips: {
-        Row: {
-          clipped_by: string
-          clipped_by_platform_id: string | null
-          created_at: string
-          duration_seconds: number
-          external_id: string | null
-          id: string
-          platform: Database["public"]["Enums"]["platform_type"]
-          share_url: string | null
-          thumbnail_url: string | null
-          title: string
-          updated_at: string
-          url: string
-          user_id: string
-          view_count: number
-        }
-        Insert: {
-          clipped_by?: string
-          clipped_by_platform_id?: string | null
-          created_at?: string
-          duration_seconds?: number
-          external_id?: string | null
-          id?: string
-          platform?: Database["public"]["Enums"]["platform_type"]
-          share_url?: string | null
-          thumbnail_url?: string | null
-          title?: string
-          updated_at?: string
-          url: string
-          user_id: string
-          view_count?: number
-        }
-        Update: {
-          clipped_by?: string
-          clipped_by_platform_id?: string | null
-          created_at?: string
-          duration_seconds?: number
-          external_id?: string | null
-          id?: string
-          platform?: Database["public"]["Enums"]["platform_type"]
-          share_url?: string | null
-          thumbnail_url?: string | null
-          title?: string
-          updated_at?: string
-          url?: string
-          user_id?: string
-          view_count?: number
-        }
-        Relationships: []
-      }
       custom_chat_command_settings: {
         Row: {
           created_at: string
@@ -641,33 +557,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      kick_stream_buffers: {
-        Row: {
-          segments: Json
-          slug: string
-          updated_at: string
-          user_id: string
-          variant_refreshed_at: string | null
-          variant_url: string | null
-        }
-        Insert: {
-          segments?: Json
-          slug: string
-          updated_at?: string
-          user_id: string
-          variant_refreshed_at?: string | null
-          variant_url?: string | null
-        }
-        Update: {
-          segments?: Json
-          slug?: string
-          updated_at?: string
-          user_id?: string
-          variant_refreshed_at?: string | null
-          variant_url?: string | null
-        }
-        Relationships: []
       }
       link_in_bio_links: {
         Row: {

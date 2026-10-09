@@ -423,8 +423,6 @@ const RESERVED_SLUGS = new Set([
   "api",
   "auth",
   "bio",
-  "clip",
-  "clips",
   "dashboard",
   "login",
   "logout",

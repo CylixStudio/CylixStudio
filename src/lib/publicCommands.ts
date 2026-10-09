@@ -13,13 +13,6 @@ export const PUBLIC_BUILTIN_COMMANDS: PublicBuiltinCommand[] = [
     },
   },
   {
-    trigger: "!clip",
-    description: {
-      ar: "ينشئ مقطعاً من البث عندما يكون الأمر مفعّلاً.",
-      en: "Creates a clip of the live stream when the command is enabled.",
-    },
-  },
-  {
     trigger: "!followage",
     description: {
       ar: "يعرض منذ متى يتابع المشاهد القناة، إن وفرته المنصة.",

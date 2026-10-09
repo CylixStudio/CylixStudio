@@ -17,8 +17,6 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedActivityFeedRouteImport } from './routes/_authenticated/activity-feed'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
-import { Route as AuthenticatedClipCommandRouteImport } from './routes/_authenticated/clip-command'
-import { Route as AuthenticatedClipsRouteImport } from './routes/_authenticated/clips'
 import { Route as AuthenticatedCustomCommandsRouteImport } from './routes/_authenticated/custom-commands'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedGiveawayRouteImport } from './routes/_authenticated/giveaway'
@@ -33,7 +31,6 @@ import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authent
 import { Route as AuthenticatedWelcomeRouteImport } from './routes/_authenticated/welcome'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as BioSlugRouteImport } from './routes/bio.$slug'
-import { Route as ClipIdRouteImport } from './routes/clip.$id'
 import { Route as CommandsSlugRouteImport } from './routes/commands.$slug'
 import { Route as MarksTokenRouteImport } from './routes/marks.$token'
 import { Route as OverlayPublicIdRouteImport } from './routes/overlay.$publicId'
@@ -61,7 +58,6 @@ import { Route as ApiAuthProviderCallbackRouteImport } from './routes/api/auth/$
 import { Route as ApiAuthProviderStartRouteImport } from './routes/api/auth/$provider/start'
 import { Route as ApiAuthCallbackTiktokRouteImport } from './routes/api/auth/callback/tiktok'
 import { Route as ApiAuthSessionFinishRouteImport } from './routes/api/auth/session/finish'
-import { Route as ApiPublicClipIdRouteImport } from './routes/api/public/clip/$id'
 import { Route as ApiPublicTargetsPublicIdRouteImport } from './routes/api/public/targets/$publicId'
 import { Route as ApiPublicWebhooksKickRouteImport } from './routes/api/public/webhooks/kick'
 import { Route as ApiPublicWebhooksProCheckoutRouteImport } from './routes/api/public/webhooks/pro-checkout'
@@ -126,17 +122,6 @@ const AuthenticatedActivityFeedRoute =
 const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedClipCommandRoute =
-  AuthenticatedClipCommandRouteImport.update({
-    id: '/clip-command',
-    path: '/clip-command',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedClipsRoute = AuthenticatedClipsRouteImport.update({
-  id: '/clips',
-  path: '/clips',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedCustomCommandsRoute =
@@ -211,11 +196,6 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
 const BioSlugRoute = BioSlugRouteImport.update({
   id: '/bio/$slug',
   path: '/bio/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ClipIdRoute = ClipIdRouteImport.update({
-  id: '/clip/$id',
-  path: '/clip/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CommandsSlugRoute = CommandsSlugRouteImport.update({
@@ -360,11 +340,6 @@ const ApiAuthCallbackTiktokRoute = ApiAuthCallbackTiktokRouteImport.update({
 const ApiAuthSessionFinishRoute = ApiAuthSessionFinishRouteImport.update({
   id: '/api/auth/session/finish',
   path: '/api/auth/session/finish',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicClipIdRoute = ApiPublicClipIdRouteImport.update({
-  id: '/api/public/clip/$id',
-  path: '/api/public/clip/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicTargetsPublicIdRoute =
@@ -522,8 +497,6 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/activity-feed': typeof AuthenticatedActivityFeedRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
-  '/clip-command': typeof AuthenticatedClipCommandRoute
-  '/clips': typeof AuthenticatedClipsRoute
   '/custom-commands': typeof AuthenticatedCustomCommandsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/giveaway': typeof AuthenticatedGiveawayRoute
@@ -538,7 +511,6 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof AuthenticatedWelcomeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/bio/$slug': typeof BioSlugRoute
-  '/clip/$id': typeof ClipIdRoute
   '/commands/$slug': typeof CommandsSlugRoute
   '/marks/$token': typeof MarksTokenRouteWithChildren
   '/overlay/$publicId': typeof OverlayPublicIdRoute
@@ -565,7 +537,6 @@ export interface FileRoutesByFullPath {
   '/api/auth/$provider/start': typeof ApiAuthProviderStartRoute
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
   '/api/auth/session/finish': typeof ApiAuthSessionFinishRoute
-  '/api/public/clip/$id': typeof ApiPublicClipIdRoute
   '/api/public/targets/$publicId': typeof ApiPublicTargetsPublicIdRoute
   '/api/public/webhooks/kick': typeof ApiPublicWebhooksKickRoute
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
@@ -601,8 +572,6 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/activity-feed': typeof AuthenticatedActivityFeedRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
-  '/clip-command': typeof AuthenticatedClipCommandRoute
-  '/clips': typeof AuthenticatedClipsRoute
   '/custom-commands': typeof AuthenticatedCustomCommandsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/giveaway': typeof AuthenticatedGiveawayRoute
@@ -617,7 +586,6 @@ export interface FileRoutesByTo {
   '/welcome': typeof AuthenticatedWelcomeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/bio/$slug': typeof BioSlugRoute
-  '/clip/$id': typeof ClipIdRoute
   '/commands/$slug': typeof CommandsSlugRoute
   '/marks/$token': typeof MarksTokenRouteWithChildren
   '/overlay/$publicId': typeof OverlayPublicIdRoute
@@ -643,7 +611,6 @@ export interface FileRoutesByTo {
   '/api/auth/$provider/start': typeof ApiAuthProviderStartRoute
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
   '/api/auth/session/finish': typeof ApiAuthSessionFinishRoute
-  '/api/public/clip/$id': typeof ApiPublicClipIdRoute
   '/api/public/targets/$publicId': typeof ApiPublicTargetsPublicIdRoute
   '/api/public/webhooks/kick': typeof ApiPublicWebhooksKickRoute
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
@@ -681,8 +648,6 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/_authenticated/activity-feed': typeof AuthenticatedActivityFeedRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
-  '/_authenticated/clip-command': typeof AuthenticatedClipCommandRoute
-  '/_authenticated/clips': typeof AuthenticatedClipsRoute
   '/_authenticated/custom-commands': typeof AuthenticatedCustomCommandsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/giveaway': typeof AuthenticatedGiveawayRoute
@@ -697,7 +662,6 @@ export interface FileRoutesById {
   '/_authenticated/welcome': typeof AuthenticatedWelcomeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/bio/$slug': typeof BioSlugRoute
-  '/clip/$id': typeof ClipIdRoute
   '/commands/$slug': typeof CommandsSlugRoute
   '/marks/$token': typeof MarksTokenRouteWithChildren
   '/overlay/$publicId': typeof OverlayPublicIdRoute
@@ -724,7 +688,6 @@ export interface FileRoutesById {
   '/api/auth/$provider/start': typeof ApiAuthProviderStartRoute
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
   '/api/auth/session/finish': typeof ApiAuthSessionFinishRoute
-  '/api/public/clip/$id': typeof ApiPublicClipIdRoute
   '/api/public/targets/$publicId': typeof ApiPublicTargetsPublicIdRoute
   '/api/public/webhooks/kick': typeof ApiPublicWebhooksKickRoute
   '/api/public/webhooks/pro-checkout': typeof ApiPublicWebhooksProCheckoutRoute
@@ -762,8 +725,6 @@ export interface FileRouteTypes {
     | '/terms'
     | '/activity-feed'
     | '/analytics'
-    | '/clip-command'
-    | '/clips'
     | '/custom-commands'
     | '/dashboard'
     | '/giveaway'
@@ -778,7 +739,6 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/auth/callback'
     | '/bio/$slug'
-    | '/clip/$id'
     | '/commands/$slug'
     | '/marks/$token'
     | '/overlay/$publicId'
@@ -805,7 +765,6 @@ export interface FileRouteTypes {
     | '/api/auth/$provider/start'
     | '/api/auth/callback/tiktok'
     | '/api/auth/session/finish'
-    | '/api/public/clip/$id'
     | '/api/public/targets/$publicId'
     | '/api/public/webhooks/kick'
     | '/api/public/webhooks/pro-checkout'
@@ -841,8 +800,6 @@ export interface FileRouteTypes {
     | '/terms'
     | '/activity-feed'
     | '/analytics'
-    | '/clip-command'
-    | '/clips'
     | '/custom-commands'
     | '/dashboard'
     | '/giveaway'
@@ -857,7 +814,6 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/auth/callback'
     | '/bio/$slug'
-    | '/clip/$id'
     | '/commands/$slug'
     | '/marks/$token'
     | '/overlay/$publicId'
@@ -883,7 +839,6 @@ export interface FileRouteTypes {
     | '/api/auth/$provider/start'
     | '/api/auth/callback/tiktok'
     | '/api/auth/session/finish'
-    | '/api/public/clip/$id'
     | '/api/public/targets/$publicId'
     | '/api/public/webhooks/kick'
     | '/api/public/webhooks/pro-checkout'
@@ -920,8 +875,6 @@ export interface FileRouteTypes {
     | '/terms'
     | '/_authenticated/activity-feed'
     | '/_authenticated/analytics'
-    | '/_authenticated/clip-command'
-    | '/_authenticated/clips'
     | '/_authenticated/custom-commands'
     | '/_authenticated/dashboard'
     | '/_authenticated/giveaway'
@@ -936,7 +889,6 @@ export interface FileRouteTypes {
     | '/_authenticated/welcome'
     | '/auth/callback'
     | '/bio/$slug'
-    | '/clip/$id'
     | '/commands/$slug'
     | '/marks/$token'
     | '/overlay/$publicId'
@@ -963,7 +915,6 @@ export interface FileRouteTypes {
     | '/api/auth/$provider/start'
     | '/api/auth/callback/tiktok'
     | '/api/auth/session/finish'
-    | '/api/public/clip/$id'
     | '/api/public/targets/$publicId'
     | '/api/public/webhooks/kick'
     | '/api/public/webhooks/pro-checkout'
@@ -1001,7 +952,6 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BioSlugRoute: typeof BioSlugRoute
-  ClipIdRoute: typeof ClipIdRoute
   CommandsSlugRoute: typeof CommandsSlugRoute
   MarksTokenRoute: typeof MarksTokenRouteWithChildren
   OverlayPublicIdRoute: typeof OverlayPublicIdRoute
@@ -1018,7 +968,6 @@ export interface RootRouteChildren {
   ApiAuthProviderStartRoute: typeof ApiAuthProviderStartRoute
   ApiAuthCallbackTiktokRoute: typeof ApiAuthCallbackTiktokRoute
   ApiAuthSessionFinishRoute: typeof ApiAuthSessionFinishRoute
-  ApiPublicClipIdRoute: typeof ApiPublicClipIdRoute
   ApiPublicTargetsPublicIdRoute: typeof ApiPublicTargetsPublicIdRoute
   ApiPublicWebhooksKickRoute: typeof ApiPublicWebhooksKickRoute
   ApiPublicWebhooksProCheckoutRoute: typeof ApiPublicWebhooksProCheckoutRoute
@@ -1102,20 +1051,6 @@ declare module '@tanstack/react-router' {
       path: '/analytics'
       fullPath: '/analytics'
       preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/clip-command': {
-      id: '/_authenticated/clip-command'
-      path: '/clip-command'
-      fullPath: '/clip-command'
-      preLoaderRoute: typeof AuthenticatedClipCommandRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/clips': {
-      id: '/_authenticated/clips'
-      path: '/clips'
-      fullPath: '/clips'
-      preLoaderRoute: typeof AuthenticatedClipsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/custom-commands': {
@@ -1214,13 +1149,6 @@ declare module '@tanstack/react-router' {
       path: '/bio/$slug'
       fullPath: '/bio/$slug'
       preLoaderRoute: typeof BioSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/clip/$id': {
-      id: '/clip/$id'
-      path: '/clip/$id'
-      fullPath: '/clip/$id'
-      preLoaderRoute: typeof ClipIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/commands/$slug': {
@@ -1410,13 +1338,6 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/session/finish'
       fullPath: '/api/auth/session/finish'
       preLoaderRoute: typeof ApiAuthSessionFinishRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/clip/$id': {
-      id: '/api/public/clip/$id'
-      path: '/api/public/clip/$id'
-      fullPath: '/api/public/clip/$id'
-      preLoaderRoute: typeof ApiPublicClipIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/targets/$publicId': {
@@ -1624,8 +1545,6 @@ const AuthenticatedWidgetsWidgetIdRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedActivityFeedRoute: typeof AuthenticatedActivityFeedRoute
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
-  AuthenticatedClipCommandRoute: typeof AuthenticatedClipCommandRoute
-  AuthenticatedClipsRoute: typeof AuthenticatedClipsRoute
   AuthenticatedCustomCommandsRoute: typeof AuthenticatedCustomCommandsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGiveawayRoute: typeof AuthenticatedGiveawayRoute
@@ -1649,8 +1568,6 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedActivityFeedRoute: AuthenticatedActivityFeedRoute,
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
-  AuthenticatedClipCommandRoute: AuthenticatedClipCommandRoute,
-  AuthenticatedClipsRoute: AuthenticatedClipsRoute,
   AuthenticatedCustomCommandsRoute: AuthenticatedCustomCommandsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGiveawayRoute: AuthenticatedGiveawayRoute,
@@ -1696,7 +1613,6 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BioSlugRoute: BioSlugRoute,
-  ClipIdRoute: ClipIdRoute,
   CommandsSlugRoute: CommandsSlugRoute,
   MarksTokenRoute: MarksTokenRouteWithChildren,
   OverlayPublicIdRoute: OverlayPublicIdRoute,
@@ -1713,7 +1629,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthProviderStartRoute: ApiAuthProviderStartRoute,
   ApiAuthCallbackTiktokRoute: ApiAuthCallbackTiktokRoute,
   ApiAuthSessionFinishRoute: ApiAuthSessionFinishRoute,
-  ApiPublicClipIdRoute: ApiPublicClipIdRoute,
   ApiPublicTargetsPublicIdRoute: ApiPublicTargetsPublicIdRoute,
   ApiPublicWebhooksKickRoute: ApiPublicWebhooksKickRoute,
   ApiPublicWebhooksProCheckoutRoute: ApiPublicWebhooksProCheckoutRoute,

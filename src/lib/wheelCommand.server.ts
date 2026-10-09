@@ -1,4 +1,4 @@
-import { sendKickChatMessage } from "@/lib/clipCommand.server";
+import { sendKickChatMessage } from "@/lib/kickChat.server";
 import { matchLoyaltyMember } from "@/lib/shopBuy";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 import type { ChatCommandPlatform } from "@/lib/customCommands";

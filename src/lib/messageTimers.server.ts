@@ -1,4 +1,4 @@
-import { sendKickChatMessage } from "@/lib/clipCommand.server";
+import { sendKickChatMessage } from "@/lib/kickChat.server";
 import { timerIsDue, type MessageTimer } from "@/lib/messageTimers";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 

@@ -91,7 +91,7 @@ function TermsPage() {
           <li>Subathon timer with configurable rules and a dedicated overlay.</li>
           <li>Goal bars for followers, subscribers, donations or custom targets.</li>
           <li>Media requests (YouTube, Spotify, Anghami, SoundCloud) with a moderated queue.</li>
-          <li>Giveaways, custom commands, message timers and clip command.</li>
+          <li>Giveaways, custom commands and message timers.</li>
           <li>Schedule, mark points, live counter and analytics.</li>
         </ul>
         <p>
@@ -184,8 +184,8 @@ function TermsPage() {
 
       <LegalSection id="ugc" title="8. User-generated content">
         <p>
-          Chat messages, media URLs, custom command text, mark notes, giveaway entries, clip
-          titles and similar material are user-generated content. You (and, where relevant, your
+          Chat messages, media URLs, custom command text, mark notes, giveaway entries
+          and similar material are user-generated content. You (and, where relevant, your
           viewers) are responsible for it. You grant {LEGAL_OPERATOR} a limited licence to host,
           display and transmit that content as needed to run the features you enable.
         </p>

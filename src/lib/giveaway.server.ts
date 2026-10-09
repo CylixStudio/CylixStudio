@@ -216,7 +216,7 @@ export async function confirmGiveawayPresence(
   }
 
   try {
-    const { sendKickChatMessage } = await import("@/lib/clipCommand.server");
+    const { sendKickChatMessage } = await import("@/lib/kickChat.server");
     await sendKickChatMessage(
       userId,
       "",

@@ -1,4 +1,4 @@
-import { sendKickChatMessage } from "@/lib/clipCommand.server";
+import { sendKickChatMessage } from "@/lib/kickChat.server";
 import {
   decideShopPurchase,
   matchLoyaltyMember,

@@ -36,7 +36,6 @@ const CRITICAL_TABLES = [
   "media_requests",
   "accounts",
   "stream_marks",
-  "clip_command_settings",
   "giveaway_settings",
   "stream_schedule_settings",
   "link_in_bio_profiles",

@@ -280,7 +280,7 @@ export const announceGiveawayWinner = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { username: string; keyword: string; claimSeconds: number }) => input)
   .handler(async ({ data, context }) => {
-    const { sendKickChatMessage } = await import("@/lib/clipCommand.server");
+    const { sendKickChatMessage } = await import("@/lib/kickChat.server");
     const message = `🎉 مبروك @${data.username}! أعد كتابة الكلمة المفتاحية (${data.keyword}) في الشات خلال ${data.claimSeconds} ثانية لتأكيد استلام الجائزة!`;
     const sent = await sendKickChatMessage(context.userId, "", message);
     return { ok: sent };

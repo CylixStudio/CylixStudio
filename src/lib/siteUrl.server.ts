@@ -1,5 +1,5 @@
 /**
- * Canonical public origin for production OAuth / EventSub / clip links.
+ * Canonical public origin for production OAuth / EventSub / public links.
  *
  * Vercel permanently redirects apex → www (308), so the only safe production
  * origin is https://www.cylixstudio.com (no trailing slash). Twitch/Kick

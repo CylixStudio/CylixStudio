@@ -268,9 +268,8 @@ function markMomentMs(mark: StreamMark): number | null {
 }
 
 /**
- * Honest Kick VOD lookup: public channel videos list (same v2 surface as
- * `fetchKickChannel` in kickClip), then optional HLS `source` from
- * `/api/v1/video/{uuid}`. No VOD is invented when Kick has none.
+ * Honest Kick VOD lookup: public channel videos list, then optional HLS
+ * `source` from `/api/v1/video/{uuid}`. No VOD is invented when Kick has none.
  */
 export async function resolveKickMarkVod(
   slug: string,

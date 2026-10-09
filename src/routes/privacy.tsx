@@ -77,8 +77,8 @@ function PrivacyPage() {
 
       <LegalSection id="scope" title="Scope of this policy">
         <p>
-          This policy covers the CylixStudio website, control room, public overlay URLs, clip
-          pages, mark-point share links, media-request player, giveaway overlays, schedule feeds,
+          This policy covers the CylixStudio website, control room, public overlay URLs,
+          mark-point share links, media-request player, giveaway overlays, schedule feeds,
           and related APIs. It does not replace the privacy policies of Twitch, Kick, TikTok,
           YouTube, Spotify, Anghami, SoundCloud, Streamlabs, StreamElements, OBS, or any payment
           or redeem-code partner you use.
@@ -118,20 +118,15 @@ function PrivacyPage() {
           </p>
         </LegalSub>
 
-        <LegalSub title="Chat ingest, webhooks, channel points and clips">
+        <LegalSub title="Chat ingest, webhooks and channel points">
           <p>
-            To drive chat box, spotlight, emote rain, custom commands, message timers, giveaways,
-            media requests and clip commands, we ingest chat and related events from connected
+            To drive chat box, spotlight, emote rain, custom commands, message timers, giveaways
+            and media requests, we ingest chat and related events from connected
             platforms. Kick channel events may arrive through Kick webhooks. Twitch EventSub and
             similar subscriptions may be used for follows, subscriptions, bits and related
             activity. Channel-point or equivalent redemptions (for example Kick media requests)
             include the redeemer’s platform id, username, avatar if provided, and the text or URL
             they submitted.
-          </p>
-          <p>
-            Clip command can create or fetch clips on the connected platform and store clip
-            identifiers, titles, durations and playback URLs so you can replay them in studio or
-            on a public clip page.
           </p>
         </LegalSub>
 
@@ -142,7 +137,7 @@ function PrivacyPage() {
             <li>Subathon timer rules, remaining time and awarded events.</li>
             <li>Goal bars (followers, subscribers, donations, custom targets).</li>
             <li>Giveaway keywords, entries and winners.</li>
-            <li>Custom chat commands and clip-command settings.</li>
+            <li>Custom chat commands.</li>
             <li>Message timers (scheduled chat messages).</li>
             <li>Schedule items and public calendar / ICS tokens.</li>
             <li>Mark points (timestamps, notes, optional VOD links, share tokens).</li>
@@ -221,7 +216,7 @@ function PrivacyPage() {
           receive what is needed to validate access. We do not sell OAuth tokens.
         </p>
         <p>
-          Overlay URLs, clip pages, mark-point links, media-request players and schedule feeds
+          Overlay URLs, mark-point links, media-request players and schedule feeds
           are visible to whoever has the link (for example OBS on your PC, or a moderator using
           a queue page). That is intentional product behaviour, not a sale of data.
         </p>
@@ -242,7 +237,7 @@ function PrivacyPage() {
       <LegalSection id="retention" title="Retention and deletion">
         <p>
           Disconnect a platform in Settings to revoke that connection and remove stored tokens
-          for it. You can export a settings backup (commands, clip-command options, connection
+          for it. You can export a settings backup (commands, connection
           labels — not tokens) and delete widgets or queue items from the control room.
         </p>
         <p>

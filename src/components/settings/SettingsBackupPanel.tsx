@@ -40,7 +40,6 @@ export function SettingsBackupPanel() {
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["custom-commands"] });
-    void queryClient.invalidateQueries({ queryKey: ["clip-command"] });
     void queryClient.invalidateQueries({ queryKey: ["workspace"] });
   };
 
@@ -101,7 +100,6 @@ export function SettingsBackupPanel() {
             mode,
             defaultPrefix: pending.file.customCommands.defaultPrefix,
             commands: pending.file.customCommands.commands,
-            clipCommand: pending.file.clipCommand,
           },
         });
         if (!result.ok) throw new Error(result.error);
@@ -176,10 +174,6 @@ export function SettingsBackupPanel() {
               </li>
               <li>
                 {t("settings.backup.summaryLanguage")}: {summary.language ?? t("settings.backup.none")}
-              </li>
-              <li>
-                {t("settings.backup.summaryClip")}:{" "}
-                {summary.hasClipCommand ? t("settings.backup.included") : t("settings.backup.none")}
               </li>
               <li>
                 {t("settings.backup.summaryConnections")}: {summary.connectionCount}
