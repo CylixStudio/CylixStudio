@@ -394,6 +394,9 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             const isTest =
               (body as { isTest?: unknown }).isTest === true ||
               (body as { is_test?: unknown }).is_test === true;
+            // Starts now. The webhook returns before this settles so Kick does
+            // not retry, and deferRequestWork keeps the chat POST alive after
+            // the response instead of waiting for the next chat command.
             const command = handleClipCommand({
               userId: connection.user_id,
               broadcasterUserId: broadcasterId,
@@ -407,17 +410,20 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             });
             deferRequestWork(
               request,
-              command.then((result) => {
-                console.log("[kick-webhook] clip command completed", {
-                  messageId,
-                  broadcasterId,
-                  status: result.status,
-                  reason: result.reason,
-                });
-              }),
+              command.then(
+                (result) => {
+                  console.log("[kick-webhook] clip command completed", {
+                    messageId,
+                    broadcasterId,
+                    status: result.status,
+                    reason: result.reason,
+                  });
+                },
+                (error) => {
+                  console.error("[kick-webhook] clip command failed", error);
+                },
+              ),
             );
-            // Kick expects a fast acknowledgement. The clip request and chat reply
-            // continue after this response so the webhook itself does not wait.
             return jsonResponse({ status: "accepted", command: "clip" });
           }
 

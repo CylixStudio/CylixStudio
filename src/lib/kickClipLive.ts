@@ -75,16 +75,17 @@ export function cooldownAfterRateLimitMs(
 
 /**
  * During a 429 cooldown the next `!clip` must not call Kick.
- * A clip URL from the last few seconds is reused. Otherwise capture locally.
+ * A clip URL from the last few seconds is reused. Otherwise the bot replies
+ * locally and does not POST.
  */
 export function clipDuringCooldown(
   now: number,
   cooldownUntil: number,
   lastSuccessAt: number | null,
-): "kick" | "reuse" | "hls" {
+): "kick" | "reuse" | "local" {
   if (now >= cooldownUntil) return "kick";
   if (lastSuccessAt != null && now - lastSuccessAt <= RECENT_CLIP_MS) return "reuse";
-  return "hls";
+  return "local";
 }
 
 /**

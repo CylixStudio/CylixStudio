@@ -1,7 +1,8 @@
 import { publicClipPageUrl } from "@/lib/clipStorage";
 import { chatMention } from "@/lib/commandTemplate";
 import { createNativeKickClip, fetchKickChannel } from "@/lib/kickClip.server";
-import { clipFailureNotice } from "@/lib/kickClipLive";
+import { clipDuringCooldown, clipFailureNotice, cooldownAfterRateLimitMs } from "@/lib/kickClipLive";
+import { getKickAccessToken } from "@/lib/platformTokens.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 
@@ -46,7 +47,6 @@ function isAllowed(settings: ClipCommandSettings, badges: string[]): boolean {
 }
 
 async function kickToken(userId: string): Promise<string | null> {
-  const { getKickAccessToken } = await import("@/lib/platformTokens.server");
   return getKickAccessToken(userId, { requireScopes: ["chat:write"] });
 }
 
@@ -70,8 +70,13 @@ export async function sendKickChatMessage(
   const replyId = replyToMessageId?.trim() ?? "";
 
   const post = async (payload: Record<string, unknown>) => {
+    // Own signal so this POST is not cancelled or held by the webhook request.
+    const signal = new AbortController().signal;
     const response = await fetch("https://api.kick.com/public/v1/chat", {
       method: "POST",
+      keepalive: true,
+      cache: "no-store",
+      signal,
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json; charset=utf-8",
@@ -126,8 +131,58 @@ type CreatedClip = {
   duration: number;
 };
 
+type RecentClip = CreatedClip & { at: number };
+
+/** One Kick create per channel slug. A second `!clip` awaits this and does not POST. */
+const inflightByChannel = new Map<string, Promise<CreatedClip | { error: string }>>();
+/** Epoch ms when this channel may call Kick clip create again after a 429. */
+const cooldownUntilByChannel = new Map<string, number>();
+/** Consecutive 429s for this channel. Cleared after a clip is created. */
+const cooldownStrikeByChannel = new Map<string, number>();
+const recentClipBySlug = new Map<string, RecentClip>();
+
 function channelKey(slug: string): string {
   return slug.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function rememberClip(key: string, clip: CreatedClip): void {
+  recentClipBySlug.set(key, { ...clip, at: Date.now() });
+}
+
+function armCooldown(key: string, retryAfter?: string | null): void {
+  const strike = (cooldownStrikeByChannel.get(key) ?? 0) + 1;
+  cooldownStrikeByChannel.set(key, strike);
+  const waitMs = cooldownAfterRateLimitMs(strike, retryAfter);
+  cooldownUntilByChannel.set(key, Date.now() + waitMs);
+  console.warn("[clip-command] kick clip cooldown", { slug: key, strike, waitMs });
+}
+
+function clearCooldown(key: string): void {
+  cooldownStrikeByChannel.delete(key);
+  cooldownUntilByChannel.delete(key);
+}
+
+/**
+ * During a 429 ban: hand back a clip from the last few seconds, or a local
+ * failure. Either way Kick is not called.
+ */
+function clipWithoutPost(key: string): CreatedClip | { error: string } | null {
+  const now = Date.now();
+  const recent = recentClipBySlug.get(key);
+  const mode = clipDuringCooldown(now, cooldownUntilByChannel.get(key) ?? 0, recent?.at ?? null);
+  if (mode === "kick") return null;
+  if (mode === "reuse" && recent) {
+    console.log("[clip-command] reusing recent clip during cooldown", { slug: key });
+    return {
+      externalId: recent.externalId,
+      url: recent.url,
+      title: recent.title,
+      thumbnail: recent.thumbnail,
+      duration: recent.duration,
+    };
+  }
+  console.warn("[clip-command] clip cooldown — no Kick request", { slug: key });
+  return { error: "clip_api_429" };
 }
 
 /** Resolves the channel slug stored with the Kick connection. */
@@ -145,21 +200,51 @@ async function kickSlug(userId: string): Promise<string | null> {
 }
 
 /**
- * One channel read and one Kick clip create. Any failure returns at once so
- * chat can answer without a local buffer or a cooldown wait.
+ * One channel read and one Kick clip create. A second command for the same
+ * channel shares the in-flight job. During a 429 cooldown this reuses the
+ * last link or returns `clip_api_429`, and does not call Kick.
  */
 async function createKickClip(
   userId: string,
   duration: number,
 ): Promise<CreatedClip | { error: string }> {
+  const slug = await kickSlug(userId);
+  if (!slug) return { error: "kick_channel_unknown" };
+  const key = channelKey(slug);
+
+  const running = inflightByChannel.get(key);
+  if (running) {
+    console.log("[clip-command] joining in-flight clip", { slug: key });
+    return running;
+  }
+
+  const gated = clipWithoutPost(key);
+  if (gated) return gated;
+
+  const job = createKickClipOnce(userId, key, duration);
+  inflightByChannel.set(key, job);
+  try {
+    return await job;
+  } finally {
+    if (inflightByChannel.get(key) === job) inflightByChannel.delete(key);
+  }
+}
+
+async function createKickClipOnce(
+  userId: string,
+  key: string,
+  duration: number,
+): Promise<CreatedClip | { error: string }> {
+  const held = clipWithoutPost(key);
+  if (held) return held;
+
   const token = await kickToken(userId);
   if (!token) return { error: "kick_not_connected" };
 
-  const slug = await kickSlug(userId);
-  if (!slug) return { error: "kick_channel_unknown" };
-
-  const key = channelKey(slug);
   const channel = await fetchKickChannel(key);
+  const beforePost = clipWithoutPost(key);
+  if (beforePost) return beforePost;
+
   try {
     const native = await createNativeKickClip({
       token,
@@ -169,14 +254,18 @@ async function createKickClip(
       vodId: channel?.vodId ?? null,
     });
     if ("url" in native) {
-      return {
+      const clip: CreatedClip = {
         externalId: native.externalId,
         url: native.url,
         title: native.title ?? channel?.title ?? `Clip from ${key}`,
         thumbnail: native.thumbnail ?? channel?.thumbnail ?? null,
         duration: native.duration || duration,
       };
+      clearCooldown(key);
+      rememberClip(key, clip);
+      return clip;
     }
+    if (native.rateLimited) armCooldown(key, native.retryAfter);
     return { error: native.error };
   } catch (error) {
     console.error("[clip-command] kick clip create threw", error);
