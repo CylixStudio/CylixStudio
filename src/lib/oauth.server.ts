@@ -251,12 +251,36 @@ export const oauthCallbackPath = (provider: OAuthProvider) => {
   return `/api/auth/${provider}/callback`;
 };
 
+/** Registered in the Streamlabs app. Must match character-for-character. */
+export const STREAMLABS_PRODUCTION_CALLBACK =
+  "https://www.cylixstudio.com/api/auth/streamlabs/callback";
+
+function isLocalOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      host.endsWith(".local")
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Exact redirect URI sent to the provider (no trailing slash on origin).
- * Must match Kick/Twitch developer console entries character-for-character.
+ * Must match Kick/Twitch/Streamlabs developer console entries character-for-character.
+ * Streamlabs production always uses the www callback. Localhost keeps the request origin.
  */
-export const redirectUriFor = (request: Request, provider: OAuthProvider) =>
-  `${publicSiteUrl(request)}${oauthCallbackPath(provider)}`;
+export const redirectUriFor = (request: Request, provider: OAuthProvider) => {
+  const origin = publicSiteUrl(request);
+  if (provider === "streamlabs" && !isLocalOrigin(origin)) {
+    return STREAMLABS_PRODUCTION_CALLBACK;
+  }
+  return `${origin}${oauthCallbackPath(provider)}`;
+};
 
 /**
  * Build the authorize URL.

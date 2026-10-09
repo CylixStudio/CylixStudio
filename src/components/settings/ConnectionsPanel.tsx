@@ -179,6 +179,7 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
       tiktok: "settings.connections.toast.tiktok",
       twitch: "settings.connections.toast.twitch",
       kick: "settings.connections.toast.kick",
+      streamlabs: "settings.connections.toast.generic",
     };
     toast.success(t(labels[connected] ?? "settings.connections.toast.generic"));
     params.delete("connected");
@@ -220,7 +221,7 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
     void refresh();
   };
 
-  const startOAuth = async (provider: OAuthProviderId) => {
+  const startOAuth = async (provider: OAuthProviderId | "streamlabs") => {
     const blocked = OAUTH_PLATFORMS.find((entry) => entry.provider === provider);
     if (blocked?.comingSoon) return;
     setBusy(provider);
@@ -303,11 +304,12 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
   };
 
   const seConnection = findConnection("STREAMELEMENTS");
-  const slSocketConnection = connections.find(
-    (c) =>
-      c.platform === "STREAMLABS" &&
-      (c.metadata as { source?: string } | null)?.source === "socket_token",
-  );
+  const slSocketConnection =
+    connections.find(
+      (c) =>
+        c.platform === "STREAMLABS" &&
+        (c.metadata as { source?: string } | null)?.source === "oauth",
+    ) ?? connections.find((c) => c.platform === "STREAMLABS");
 
   const connectedActions = (connection: { id: string; is_active: boolean }) => (
     <>
@@ -482,6 +484,17 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
           status={<StatusBadge connection={slSocketConnection} t={t} />}
           actions={
             <>
+              <button
+                type="button"
+                disabled={busy === "streamlabs"}
+                onClick={() => startOAuth("streamlabs")}
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#31C48D] px-3 text-[0.75rem] font-semibold text-[#04231a] transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {busy === "streamlabs" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                {slSocketConnection
+                  ? t("settings.connections.reconnect")
+                  : t("settings.connections.connect")}
+              </button>
               <button
                 type="button"
                 disabled={busy === "STREAMLABS_TOKEN" || !slDraft.trim()}

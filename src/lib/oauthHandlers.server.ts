@@ -214,7 +214,7 @@ export async function handleOAuthCallback(request: Request, providerRaw: string)
       : null;
     const scopeList = Array.isArray(tokens.scope)
       ? tokens.scope
-      : (tokens.scope ?? config.scopes).split(" ").filter(Boolean);
+      : (tokens.scope ?? config.scopes).split(/[ ,]+/).filter(Boolean);
 
     const linkedUserId = verifyLinkState(state);
     if (linkedUserId) {
@@ -357,7 +357,9 @@ export async function handleOAuthCallback(request: Request, providerRaw: string)
       : null;
     const scopes = Array.isArray(tokens.scope)
       ? tokens.scope
-      : (tokens.scope ?? config.scopes).split(" ").filter(Boolean);
+      : (tokens.scope ?? config.scopes).split(/[ ,]+/).filter(Boolean);
+    const socketToken =
+      provider === "streamlabs" ? await fetchStreamlabsSocketToken(tokens.access_token) : null;
 
     const { error: userUpsertError } = await supabaseAdmin.from("users").upsert(
       {
@@ -412,7 +414,9 @@ export async function handleOAuthCallback(request: Request, providerRaw: string)
         metadata: {
           avatar_url: profile.image,
           email,
+          source: "oauth",
           ...(profile.extra ?? {}),
+          ...(socketToken ? { socket_token: socketToken } : {}),
         },
       },
       { onConflict: "user_id,platform,platform_user_id" },
