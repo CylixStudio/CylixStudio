@@ -4,26 +4,29 @@ export type KickLivestreamShape = {
 };
 
 /**
- * A missing livestream object is unknown, not offline.
- * `is_live === true` or `viewer_count > 0` is live.
+ * A missing livestream object, or a livestream list, is unknown — not offline.
+ * Live means `is_live === true` or `viewer_count > 0`.
  */
 export function liveStateFromLivestream(
-  livestream: KickLivestreamShape | null | undefined,
+  livestream: KickLivestreamShape | readonly unknown[] | null | undefined,
 ): boolean | null {
-  if (!livestream || typeof livestream !== "object") return null;
-  const viewers = livestream.viewer_count;
-  if (livestream.is_live === true || (typeof viewers === "number" && viewers > 0)) return true;
-  if (livestream.is_live === false) return false;
+  if (livestream == null || typeof livestream !== "object" || Array.isArray(livestream)) return null;
+  const stream = livestream as KickLivestreamShape;
+  const viewers = stream.viewer_count;
+  if (stream.is_live === true || (typeof viewers === "number" && viewers > 0)) return true;
+  if (stream.is_live === false) return false;
   return null;
 }
 
 /**
- * Never map a confirmed-live channel to the offline chat reply.
- * A null livestream only becomes "offline" after the clip call itself says so.
+ * The offline chat sentence is only for a fresh read that says not live
+ * together with a clip attempt that also says the stream is offline.
+ * A missing livestream, a live channel, or any other API error stays a
+ * generic capture failure.
  */
 export function clipErrorAfterAttempt(liveState: boolean | null, clipError: string): string {
-  if (liveState === true) return clipError === "stream_offline" ? "capture_failed" : clipError;
-  if (clipError === "stream_offline") return "stream_offline";
+  if (liveState === false && clipError === "stream_offline") return "stream_offline";
+  if (clipError === "stream_offline") return "capture_failed";
   return clipError;
 }
 
@@ -33,59 +36,24 @@ export function shouldAttemptClip(liveState: boolean | null): boolean {
   return true;
 }
 
-/**
- * A successful clip URL this fresh can be handed out again while Kick is in
- * cooldown, so a second `!clip` does not create another request.
- */
-export const RECENT_CLIP_MS = 15_000;
+export type TimedSegment = { duration: number };
 
 /**
- * Cooldown after a 429, across later `!clip` commands. It grows and then
- * stops. This is not a same-URL retry loop.
+ * Segments already listed on one playlist read, taken from the live edge
+ * (the end of the list) until `seconds` is covered. Does not wait for more.
  */
-export const CLIP_COOLDOWN_STEPS_MS = [5_000, 10_000, 15_000] as const;
-
-function retryAfterDelayMs(retryAfter: string | null | undefined, now: number): number | null {
-  const raw = retryAfter?.trim();
-  if (!raw) return null;
-  const seconds = Number(raw);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
-  const when = Date.parse(raw);
-  if (Number.isFinite(when)) return Math.max(0, when - now);
-  return null;
-}
-
-/**
- * How long to keep Kick clip creates closed after a 429.
- * `strike` is how many 429s this channel has hit in a row (1, 2, 3…).
- * Steps are 5s, 10s, then 15s. A longer `Retry-After` is honored up to 15s.
- */
-export function cooldownAfterRateLimitMs(
-  strike: number,
-  retryAfter?: string | null,
-  now = Date.now(),
-): number {
-  const cap = CLIP_COOLDOWN_STEPS_MS[CLIP_COOLDOWN_STEPS_MS.length - 1]!;
-  const index = Math.min(CLIP_COOLDOWN_STEPS_MS.length - 1, Math.max(0, strike - 1));
-  const stepped = CLIP_COOLDOWN_STEPS_MS[index]!;
-  const header = retryAfterDelayMs(retryAfter, now);
-  if (header == null) return stepped;
-  return Math.min(cap, Math.max(stepped, header));
-}
-
-/**
- * During a 429 cooldown the next `!clip` must not call Kick.
- * A clip URL from the last few seconds is reused. Otherwise the bot replies
- * locally and does not POST.
- */
-export function clipDuringCooldown(
-  now: number,
-  cooldownUntil: number,
-  lastSuccessAt: number | null,
-): "kick" | "reuse" | "local" {
-  if (now >= cooldownUntil) return "kick";
-  if (lastSuccessAt != null && now - lastSuccessAt <= RECENT_CLIP_MS) return "reuse";
-  return "local";
+export function liveEdgeWindow<T extends TimedSegment>(segments: readonly T[], seconds: number): T[] {
+  if (segments.length === 0 || !(seconds > 0)) return [];
+  const picked: T[] = [];
+  let covered = 0;
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const segment = segments[index]!;
+    picked.push(segment);
+    covered += segment.duration > 0 ? segment.duration : 2;
+    if (covered >= seconds) break;
+  }
+  picked.reverse();
+  return picked;
 }
 
 const ARABIC_LETTER = /[\u0600-\u06FF]/;

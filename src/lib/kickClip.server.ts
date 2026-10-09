@@ -1,15 +1,23 @@
-import { liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
+import { liveEdgeWindow, liveStateFromLivestream, type KickLivestreamShape } from "@/lib/kickClipLive";
 
 /**
- * One channel read, then one Kick clip create. No local buffer and no retry loop.
- * A failure returns immediately so chat can answer without waiting.
+ * One channel read, then one Kick clip create. On failure the caller may
+ * capture the live edge once. No buffer fill, no cooldown, no second host.
  */
 
 /**
- * Channel reads with a long Chrome UA plus referer get HTTP 403.
- * `okhttp/4.12.0`, then a short `Mozilla/5.0`, get 200 from kick.com/api/v2.
+ * A long Chrome UA plus Referer gets HTTP 403 on kick.com/api/v2/channels.
+ * `okhttp/4.12.0`, then a short `Mozilla/5.0`, gets 200. No Referer.
+ * Channel reads and live-edge playlist/segment fetches use this same pair.
  */
-const KICK_CHANNEL_AGENTS = ["okhttp/4.12.0", "Mozilla/5.0"] as const;
+const KICK_READ_AGENTS = ["okhttp/4.12.0", "Mozilla/5.0"] as const;
+
+function kickReadHeaders(agent: string, accept: string): Headers {
+  const headers = new Headers();
+  headers.set("Accept", accept);
+  headers.set("User-Agent", agent);
+  return headers;
+}
 
 type KickLivestream = KickLivestreamShape & {
   session_title?: string;
@@ -33,30 +41,36 @@ export type ChannelInfo = {
   vodId: string | null;
 };
 
-async function readKickJson(
+async function readKick(
   url: string,
-  init: RequestInit,
-  agents: readonly string[],
-): Promise<{ status: number; json: unknown; text: string }> {
-  let last = { status: 0, json: null as unknown, text: "" };
-  for (const agent of agents) {
-    const headers = new Headers(init.headers);
-    if (!headers.has("Accept")) headers.set("Accept", "application/json");
-    headers.set("User-Agent", agent);
-    const res = await fetch(url, { ...init, headers });
-    const text = await res.text().catch(() => "");
-    let json: unknown = null;
-    if (text) {
-      try {
-        json = JSON.parse(text) as unknown;
-      } catch {
-        json = null;
-      }
-    }
-    last = { status: res.status, json, text };
+  accept: string,
+): Promise<{ status: number; buffer: ArrayBuffer }> {
+  let last = { status: 0, buffer: new ArrayBuffer(0) };
+  for (const agent of KICK_READ_AGENTS) {
+    const res = await fetch(url, {
+      headers: kickReadHeaders(agent, accept),
+      redirect: "follow",
+      signal: AbortSignal.timeout(20_000),
+    });
+    const buffer = await res.arrayBuffer().catch(() => new ArrayBuffer(0));
+    last = { status: res.status, buffer };
     if (res.status !== 403) return last;
   }
   return last;
+}
+
+async function readKickJson(url: string): Promise<{ status: number; json: unknown; text: string }> {
+  const res = await readKick(url, "application/json");
+  const text = new TextDecoder().decode(res.buffer);
+  let json: unknown = null;
+  if (text) {
+    try {
+      json = JSON.parse(text) as unknown;
+    } catch {
+      json = null;
+    }
+  }
+  return { status: res.status, json, text };
 }
 
 export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null> {
@@ -64,8 +78,6 @@ export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null
   try {
     const res = await readKickJson(
       `https://kick.com/api/v2/channels/${encodeURIComponent(channelSlug)}`,
-      { headers: { Accept: "application/json" } },
-      KICK_CHANNEL_AGENTS,
     );
     if (res.status < 200 || res.status >= 300) {
       console.warn("[clip-capture] channel lookup failed", res.status, channelSlug);
@@ -75,9 +87,13 @@ export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null
       id?: number;
       slug?: string;
       playback_url?: string | null;
-      livestream?: KickLivestream | null;
+      livestream?: (KickLivestream & { playback_url?: string | null }) | null;
     };
     const liveState = liveStateFromLivestream(json.livestream);
+    const playback =
+      (typeof json.playback_url === "string" && json.playback_url.trim()) ||
+      (typeof json.livestream?.playback_url === "string" && json.livestream.playback_url.trim()) ||
+      "";
     const channelId = typeof json.id === "number" && Number.isSafeInteger(json.id) ? json.id : null;
     const vod = json.livestream?.vod_id;
     const vodId = typeof vod === "string" && vod.trim() ? vod.trim() : typeof vod === "number" ? String(vod) : null;
@@ -88,7 +104,7 @@ export async function fetchKickChannel(slug: string): Promise<ChannelInfo | null
     return {
       slug: (json.slug ?? channelSlug).toLowerCase(),
       channelId,
-      playbackUrl: json.playback_url ?? null,
+      playbackUrl: playback || null,
       liveState,
       isLive: liveState === true,
       title: json.livestream?.session_title ?? null,
@@ -294,4 +310,139 @@ export async function createNativeKickClip(input: {
   }
 
   return { error: "clip_api_unavailable" };
+}
+
+type MediaSegment = { url: string; duration: number };
+type Variant = { url: string; bandwidth: number };
+
+function absoluteMediaUrl(base: string, value: string): string | null {
+  try {
+    const url = new URL(value, base);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/** One playlist body. A master playlist yields variants; a media playlist yields segments. */
+function parseHlsPlaylist(body: string, baseUrl: string): { variants: Variant[]; segments: MediaSegment[] } {
+  const variants: Variant[] = [];
+  const segments: MediaSegment[] = [];
+  let bandwidth = 0;
+  let expectVariant = false;
+  let duration = 0;
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#EXT-X-I-FRAME-STREAM-INF") || line.startsWith("#EXT-X-MEDIA:")) continue;
+    if (line.startsWith("#EXT-X-STREAM-INF")) {
+      const match = /BANDWIDTH=(\d+)/.exec(line);
+      bandwidth = match ? Number(match[1]) : 0;
+      expectVariant = true;
+      continue;
+    }
+    if (line.startsWith("#EXTINF:")) {
+      const parsed = Number(line.slice("#EXTINF:".length).split(",")[0]);
+      duration = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      continue;
+    }
+    if (line.startsWith("#")) continue;
+    const url = absoluteMediaUrl(baseUrl, line);
+    if (!url) continue;
+    if (expectVariant) {
+      variants.push({ url, bandwidth });
+      expectVariant = false;
+      bandwidth = 0;
+      continue;
+    }
+    segments.push({ url, duration: duration > 0 ? duration : 2 });
+    duration = 0;
+  }
+  return { variants, segments };
+}
+
+function lowestVariant(variants: Variant[]): string | null {
+  if (variants.length === 0) return null;
+  const ranked = [...variants].sort((left, right) => {
+    if (left.bandwidth <= 0 && right.bandwidth <= 0) return 0;
+    if (left.bandwidth <= 0) return 1;
+    if (right.bandwidth <= 0) return -1;
+    return left.bandwidth - right.bandwidth;
+  });
+  return ranked[0]?.url ?? null;
+}
+
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.byteLength;
+  }
+  return out;
+}
+
+export type LiveEdgeCapture = {
+  bytes: Uint8Array;
+  duration: number;
+};
+
+/**
+ * One read of the current live playlist, then the segments already listed,
+ * capped to `durationSeconds`. A master playlist gets one follow to its
+ * lowest variant. No sleep, no second playlist poll, no forward-fill.
+ * Returns null when the playlist has no segments or a download fails.
+ */
+export async function captureKickLiveEdge(
+  playbackUrl: string,
+  durationSeconds: number,
+): Promise<LiveEdgeCapture | null> {
+  const root = playbackUrl.trim();
+  if (!root) return null;
+  try {
+    const first = await readKick(root, "*/*");
+    if (first.status < 200 || first.status >= 300 || first.buffer.byteLength === 0) {
+      console.warn("[clip-capture] live playlist declined", { status: first.status });
+      return null;
+    }
+    let parsed = parseHlsPlaylist(new TextDecoder().decode(first.buffer), root);
+    if (parsed.segments.length === 0) {
+      const variant = lowestVariant(parsed.variants);
+      if (!variant) {
+        console.warn("[clip-capture] live playlist had no segments");
+        return null;
+      }
+      const media = await readKick(variant, "*/*");
+      if (media.status < 200 || media.status >= 300 || media.buffer.byteLength === 0) {
+        console.warn("[clip-capture] live variant declined", { status: media.status });
+        return null;
+      }
+      parsed = parseHlsPlaylist(new TextDecoder().decode(media.buffer), variant);
+    }
+    const chosen = liveEdgeWindow(parsed.segments, durationSeconds);
+    if (chosen.length === 0) {
+      console.warn("[clip-capture] live playlist had no segments");
+      return null;
+    }
+    const parts = await Promise.all(
+      chosen.map(async (segment) => {
+        const file = await readKick(segment.url, "*/*");
+        if (file.status < 200 || file.status >= 300 || file.buffer.byteLength === 0) return null;
+        return new Uint8Array(file.buffer);
+      }),
+    );
+    if (parts.some((part) => part == null)) {
+      console.warn("[clip-capture] live segment download failed", { segments: chosen.length });
+      return null;
+    }
+    const bytes = concatBytes(parts as Uint8Array[]);
+    if (bytes.byteLength === 0) return null;
+    const duration = Math.max(1, Math.round(chosen.reduce((sum, segment) => sum + segment.duration, 0)));
+    console.log("[clip-capture] live edge captured", { segments: chosen.length, bytes: bytes.byteLength, duration });
+    return { bytes, duration };
+  } catch (error) {
+    console.error("[clip-capture] live edge capture error", error instanceof Error ? error.message : "failed");
+    return null;
+  }
 }

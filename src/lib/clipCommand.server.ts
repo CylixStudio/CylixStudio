@@ -1,7 +1,7 @@
-import { publicClipPageUrl } from "@/lib/clipStorage";
+import { clipStoragePath, publicClipPageUrl } from "@/lib/clipStorage";
 import { chatMention } from "@/lib/commandTemplate";
-import { createNativeKickClip, fetchKickChannel } from "@/lib/kickClip.server";
-import { clipFailureNotice } from "@/lib/kickClipLive";
+import { captureKickLiveEdge, createNativeKickClip, fetchKickChannel } from "@/lib/kickClip.server";
+import { clipErrorAfterAttempt, clipFailureNotice } from "@/lib/kickClipLive";
 import { getKickAccessToken } from "@/lib/platformTokens.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
@@ -125,10 +125,13 @@ export async function sendKickChatMessage(
 
 type CreatedClip = {
   externalId: string | null;
+  /** Kick watch page for a native clip. Local captures leave this empty until the short page exists. */
   url: string;
   title: string;
   thumbnail: string | null;
   duration: number;
+  /** True when `externalId` is a storage object path and `url` must become the short page. */
+  localFile: boolean;
 };
 
 function channelKey(slug: string): string {
@@ -149,10 +152,31 @@ async function kickSlug(userId: string): Promise<string | null> {
   return fromMeta ?? data?.username ?? null;
 }
 
+async function storeLiveEdge(userId: string, bytes: Uint8Array): Promise<string | null> {
+  const folder = userId.trim();
+  const file = `edge${crypto.randomUUID().replace(/-/g, "")}.ts`;
+  const objectPath = `${folder}/${file}`;
+  if (!clipStoragePath(objectPath)) {
+    console.warn("[clip-capture] storage path rejected");
+    return null;
+  }
+  const uploaded = await supabaseAdmin.storage.from("clips").upload(objectPath, Buffer.from(bytes), {
+    contentType: "video/mp2t",
+    upsert: false,
+  });
+  if (uploaded.error) {
+    console.error("[clip-capture] storage upload failed", uploaded.error.message);
+    return null;
+  }
+  return objectPath;
+}
+
 /**
- * One channel read for the VOD or livestream slug, then one Kick clip create.
- * A second `!clip` starts its own attempt and does not wait on the first.
- * Errors, including 429, return immediately with no cooldown and no retry.
+ * One channel read, then one Kick clip create. A failure — including 429 —
+ * captures the segments already on the live playlist and uploads them.
+ * There is no cooldown, no second host, and no wait for a fuller buffer.
+ * The offline error is returned only when the channel read and the clip
+ * attempt both say the stream is offline and the local capture also fails.
  */
 async function createKickClip(
   userId: string,
@@ -163,35 +187,62 @@ async function createKickClip(
   const key = channelKey(slug);
 
   const token = await kickToken(userId);
-  if (!token) return { error: "kick_not_connected" };
-
   const channel = await fetchKickChannel(key);
   const vodId = channel?.vodId ?? null;
   const livestreamSlug = channel?.livestreamSlug ?? null;
-  if (!vodId && !livestreamSlug) return { error: "clip_api_unavailable" };
+  const liveState = channel?.liveState ?? null;
+  const title = channel?.title ?? `Clip from ${key}`;
+  const thumbnail = channel?.thumbnail ?? null;
 
-  try {
-    const native = await createNativeKickClip({
-      token,
-      slug: channel?.slug ?? key,
-      duration,
-      livestreamSlug,
-      vodId,
-    });
-    if ("url" in native) {
-      return {
-        externalId: native.externalId,
-        url: native.url,
-        title: native.title ?? channel?.title ?? `Clip from ${key}`,
-        thumbnail: native.thumbnail ?? channel?.thumbnail ?? null,
-        duration: native.duration || duration,
-      };
+  let nativeError = "clip_api_unavailable";
+  if (!token) {
+    nativeError = "kick_not_connected";
+  } else if (vodId || livestreamSlug) {
+    try {
+      const native = await createNativeKickClip({
+        token,
+        slug: channel?.slug ?? key,
+        duration,
+        livestreamSlug,
+        vodId,
+      });
+      if ("url" in native) {
+        return {
+          externalId: native.externalId,
+          url: native.url,
+          title: native.title ?? title,
+          thumbnail: native.thumbnail ?? thumbnail,
+          duration: native.duration || duration,
+          localFile: false,
+        };
+      }
+      nativeError = native.error;
+      console.warn("[clip-capture] kick create failed, using live edge", { error: native.error });
+    } catch (error) {
+      console.error("[clip-command] kick clip create threw", error);
+      nativeError = "clip_api_failed";
     }
-    return { error: native.error };
-  } catch (error) {
-    console.error("[clip-command] kick clip create threw", error);
-    return { error: "clip_api_failed" };
   }
+
+  const playbackUrl = channel?.playbackUrl ?? null;
+  if (playbackUrl) {
+    const edge = await captureKickLiveEdge(playbackUrl, duration);
+    if (edge) {
+      const objectPath = await storeLiveEdge(userId, edge.bytes);
+      if (objectPath) {
+        return {
+          externalId: objectPath,
+          url: "",
+          title,
+          thumbnail,
+          duration: edge.duration || duration,
+          localFile: true,
+        };
+      }
+    }
+  }
+
+  return { error: clipErrorAfterAttempt(liveState, nativeError) };
 }
 
 export async function loadClipSettings(userId: string): Promise<ClipCommandSettings> {
@@ -257,7 +308,7 @@ export async function handleClipCommand(input: {
         platform: "KICK" as const,
         external_id: created.externalId,
         title: created.title,
-        url: created.url,
+        url: created.localFile ? "https://cylixstudio.com/clip" : created.url,
         thumbnail_url: created.thumbnail,
         duration_seconds: created.duration,
         clipped_by: sender.username,
@@ -270,7 +321,10 @@ export async function handleClipCommand(input: {
 
   const shareUrl = row?.id ? publicClipPageUrl(row.id) : "";
   if (row?.id && shareUrl) {
-    await supabaseAdmin.from("clips").update({ share_url: shareUrl }).eq("id", row.id);
+    await supabaseAdmin
+      .from("clips")
+      .update(created.localFile ? { url: shareUrl, share_url: shareUrl } : { share_url: shareUrl })
+      .eq("id", row.id);
   }
   if (!shareUrl) {
     await sendKickChatMessage(
