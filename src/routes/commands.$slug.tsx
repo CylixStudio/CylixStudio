@@ -117,30 +117,30 @@ function PublicCommandsRoute() {
       loadingLabel={t("commands.public.loading")}
     >
       {found ? (
-        <div className="space-y-4">
-          <header className="rounded-2xl border border-white/5 bg-[#0d0e12] p-4 sm:p-5">
+        <div className="space-y-4" dir="ltr">
+          <header className="rounded-2xl border border-white/5 bg-[#0d0e12] px-4 py-3.5 sm:px-5">
             <div className="flex items-center justify-between gap-4" dir="ltr">
               <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                 <ChannelAvatar url={data.avatarUrl} name={data.displayName} />
-                <div className="min-w-0">
-                  <p className="truncate text-lg font-semibold tracking-tight text-zinc-50" dir="auto">
+                <div className="min-w-0 text-left">
+                  <p className="truncate text-lg font-bold tracking-tight text-zinc-50" dir="auto">
                     {data.displayName}
                   </p>
-                  <p className="mt-1 inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-zinc-300">
+                  <p className="mt-0.5 truncate text-xs text-zinc-500">
                     {t("commands.public.available", { n: availableCount })}
                   </p>
                 </div>
               </div>
               <div className="shrink-0 text-right">
-                <p className="text-[0.68rem] font-semibold tracking-[0.22em] text-zinc-200">CYLIXSTUDIO</p>
-                <p className="mt-1 text-sm text-zinc-400" dir="auto">
+                <p className="text-[0.65rem] font-medium tracking-[0.22em] text-zinc-400">CYLIXSTUDIO</p>
+                <p className="mt-1 text-xs text-zinc-500" dir="auto">
                   {t("commands.public.section")}
                 </p>
               </div>
             </div>
           </header>
 
-          <div className="flex flex-wrap gap-2 rounded-2xl border border-white/5 bg-[#0d0e12] p-1.5">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {tabs.map((item) => {
               const active = tab === item.id;
               return (
@@ -149,10 +149,10 @@ function PublicCommandsRoute() {
                   type="button"
                   onClick={() => setTab(item.id)}
                   className={cn(
-                    "rounded-xl border px-3 py-2 text-sm transition",
+                    "rounded-xl border px-2 py-2.5 text-center text-xs transition sm:px-3 sm:text-sm",
                     active
-                      ? "border-red-500/80 bg-red-950/40 text-red-300 shadow-[0_0_16px_rgba(239,68,68,0.28)]"
-                      : "border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-200",
+                      ? "border-[#00D8FF]/80 bg-[#0c1c22] text-zinc-50 shadow-[0_0_16px_rgba(0,216,255,0.32)]"
+                      : "border-white/5 bg-[#121318] text-zinc-400 hover:border-white/10 hover:text-zinc-200",
                   )}
                 >
                   {item.label}
@@ -213,8 +213,8 @@ function PublicCommandsRoute() {
                     className={cn(
                       "grid h-8 min-w-8 place-items-center rounded-lg px-2 text-sm",
                       entry === currentPage
-                        ? "border border-red-500/50 bg-red-950/40 text-red-400"
-                        : "border border-white/10 text-zinc-300 hover:bg-white/5",
+                        ? "rounded-full bg-[#00D8FF] font-medium text-zinc-950 shadow-[0_0_14px_rgba(0,216,255,0.4)]"
+                        : "border border-white/10 bg-[#121318] text-zinc-300 hover:bg-white/5",
                     )}
                   >
                     {entry}
@@ -255,7 +255,7 @@ function ChannelAvatar({ url, name }: { url: string; name: string }) {
   const [broken, setBroken] = useState(false);
   const showImage = Boolean(url) && !broken;
   return (
-    <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-[0_0_18px_rgba(239,68,68,0.18)] sm:size-[4.5rem]">
+    <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-[0_0_18px_rgba(0,216,255,0.22)] sm:size-16">
       {showImage ? (
         <img src={url} alt="" className="size-full object-cover" onError={() => setBroken(true)} />
       ) : (
@@ -289,7 +289,7 @@ function CommandCard({ item, copyLabel }: { item: CardItem; copyLabel: string })
         className="absolute top-2 right-2 grid size-6 place-items-center rounded-md text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
         aria-label={copyLabel}
       >
-        {copied ? <Check className="size-3.5 text-red-300" /> : <Copy className="size-3.5" />}
+        {copied ? <Check className="size-3.5 text-cyan-300" /> : <Copy className="size-3.5" />}
       </button>
       <ResponseText text={item.body} />
     </article>
@@ -297,26 +297,21 @@ function CommandCard({ item, copyLabel }: { item: CardItem; copyLabel: string })
 }
 
 function ResponseText({ text }: { text: string }) {
-  const parts = text.split(/(https?:\/\/\S+|\$\([^)]+\)|\{[A-Za-z0-9_]+\})/g);
+  const parts = text.split(/(https?:\/\/\S+)/g);
   return (
-    <p className="mt-2 line-clamp-5 text-[0.72rem] leading-snug text-zinc-400 [overflow-wrap:anywhere]" dir="auto">
+    <p className="mt-2 line-clamp-5 text-[0.72rem] font-normal leading-snug text-zinc-400 [overflow-wrap:anywhere] [&_a]:!font-normal [&_a]:!text-zinc-400 [&_a]:![text-decoration:none]" dir="auto">
       {parts.map((part, index) => {
         if (/^https?:\/\//.test(part)) {
           return (
-            <a key={index} href={part} className="text-red-300 underline" dir="ltr" rel="noreferrer">
-              {part}
-            </a>
-          );
-        }
-        if (part.startsWith("$(") || part.startsWith("{")) {
-          return (
-            <code
+            <a
               key={index}
-              className="mx-0.5 inline-flex rounded-md bg-white/10 px-1 py-px align-baseline font-mono text-[0.65rem] text-zinc-100"
+              href={part}
+              className="!font-normal !text-zinc-400 ![text-decoration:none]"
               dir="ltr"
+              rel="noreferrer"
             >
               {part}
-            </code>
+            </a>
           );
         }
         return <span key={index}>{part}</span>;

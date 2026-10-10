@@ -4,6 +4,7 @@ import {
   listPublicCommands,
   listPublicShop,
   listPublicTimers,
+  loadCommandsChannel,
   loadPublishedChannel,
   type PublicCommand,
   type PublicShopItem,
@@ -34,7 +35,7 @@ export type PublicStorePage =
 export const loadPublicCommandsPage = createServerFn({ method: "POST" })
   .inputValidator(readSlug)
   .handler(async ({ data }): Promise<PublicCommandsPage> => {
-    const channel = await loadPublishedChannel(data.slug);
+    const channel = await loadCommandsChannel(data.slug);
     if (!channel) return { found: false };
     const [commands, timers] = await Promise.all([
       listPublicCommands(channel.userId),

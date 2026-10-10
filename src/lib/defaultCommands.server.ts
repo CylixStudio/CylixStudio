@@ -9,7 +9,7 @@ import {
   parseShoutoutTarget,
   type DefaultCommand,
 } from "@/lib/defaultCommands";
-import { publishedSlugForUser } from "@/lib/publicChannel.server";
+import { commandsPublicKeyForUser } from "@/lib/publicChannel.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 type ChatSender = {
@@ -112,9 +112,9 @@ export async function handleDefaultChatCommand(input: {
     if (!command.enabled || !command.platforms.includes(input.platform)) {
       return { status: "ignored", reason: "reserved", command: "!commands" };
     }
-    const slug = await publishedSlugForUser(input.userId);
-    if (!slug) return { status: "ignored", reason: "unpublished", command: "!commands" };
-    const reply = `You can find a list of all Commands here :https://cylixstudio.com/commands/${slug}`;
+    const username = await commandsPublicKeyForUser(input.userId);
+    if (!username) return { status: "ignored", reason: "unpublished", command: "!commands" };
+    const reply = `You can find a list of all Commands here :https://cylixstudio.com/commands/${username}`;
     if (input.platform === "KICK") {
       const sent = await sendKickChatMessage(
         input.userId,

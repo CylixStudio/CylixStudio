@@ -42,6 +42,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: true,
+      watch: {
+        // Browser profiles dropped here lock cache.db and crash the file watcher.
+        ignored: ["**/.tmp-ui/**"],
+      },
     },
     resolve: {
       alias: {

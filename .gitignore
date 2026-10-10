@@ -40,3 +40,6 @@ dist-ssr
 System Volume Information/
 $RECYCLE.BIN/
 
+# Local browser captures. Vite must not watch these; locked cache files crash the dev server.
+.tmp-ui/
+

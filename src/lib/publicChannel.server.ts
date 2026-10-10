@@ -44,6 +44,109 @@ export async function publishedSlugForUser(userId: string): Promise<string | nul
   return SLUG.test(slug) ? slug : null;
 }
 
+/** Public /commands path: Kick username, then other platforms, then a published link-in-bio slug. */
+const COMMANDS_KEY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+const AVATAR_PLATFORM_ORDER = ["KICK", "TWITCH", "YOUTUBE", "TIKTOK", "X"] as const;
+
+const AVATAR_METADATA_KEYS = ["avatar_url", "profile_picture", "profile_pic", "image", "avatar", "thumbnail"] as const;
+
+type ConnectionIdentity = {
+  user_id?: string;
+  platform: string;
+  username: string | null;
+  metadata?: unknown;
+};
+
+export function normalizeCommandsKey(raw: string): string | null {
+  const key = raw.trim().toLowerCase();
+  return COMMANDS_KEY.test(key) ? key : null;
+}
+
+function platformRank(platform: string): number {
+  const index = AVATAR_PLATFORM_ORDER.indexOf(platform as (typeof AVATAR_PLATFORM_ORDER)[number]);
+  return index === -1 ? AVATAR_PLATFORM_ORDER.length : index;
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+function preferredUsername(rows: ConnectionIdentity[]): string {
+  const ranked = [...rows].sort((a, b) => platformRank(a.platform) - platformRank(b.platform));
+  for (const row of ranked) {
+    const username = row.username?.trim();
+    if (username) return username;
+  }
+  return "";
+}
+
+function avatarFromRows(rows: ConnectionIdentity[]): string {
+  const ranked = [...rows].sort((a, b) => platformRank(a.platform) - platformRank(b.platform));
+  for (const row of ranked) {
+    const url = avatarFromMetadata(row.metadata);
+    if (url) return url;
+  }
+  return "";
+}
+
+async function loadIdentityRows(userId: string): Promise<ConnectionIdentity[]> {
+  const { data } = await supabaseAdmin
+    .from("platform_connections")
+    .select("platform, username, metadata")
+    .eq("user_id", userId)
+    .eq("is_active", true);
+  return data ?? [];
+}
+
+/** Username used in https://cylixstudio.com/commands/{username}. */
+export async function commandsPublicKeyForUser(userId: string): Promise<string | null> {
+  const username = preferredUsername(await loadIdentityRows(userId)).toLowerCase();
+  const key = normalizeCommandsKey(username);
+  if (key) return key;
+  return publishedSlugForUser(userId);
+}
+
+async function findUserIdByPlatformUsername(key: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("platform_connections")
+    .select("user_id, platform, username")
+    .eq("is_active", true)
+    .ilike("username", escapeLike(key));
+  const matches = (data ?? []).filter(
+    (row) => Boolean(row.user_id) && row.username?.trim().toLowerCase() === key,
+  );
+  matches.sort((a, b) => platformRank(a.platform) - platformRank(b.platform));
+  return matches[0]?.user_id ?? null;
+}
+
+/** Resolve /commands/{key} by connected platform username, then a published link-in-bio slug. */
+export async function loadCommandsChannel(raw: string): Promise<PublicChannel | null> {
+  const key = normalizeCommandsKey(raw);
+  if (!key) return null;
+
+  const byUsername = await findUserIdByPlatformUsername(key);
+  const published = byUsername ? null : await loadPublishedChannel(key);
+  const userId = byUsername ?? published?.userId ?? null;
+  if (!userId) return null;
+
+  const [rows, profileResult] = await Promise.all([
+    loadIdentityRows(userId),
+    supabaseAdmin
+      .from("link_in_bio_profiles")
+      .select("slug, display_name, avatar_url")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
+  const profile = profileResult.data;
+  const username = preferredUsername(rows);
+  const profileAvatar = typeof profile?.avatar_url === "string" ? profile.avatar_url.trim() : "";
+  const displayName = username || profile?.display_name?.trim() || published?.displayName || profile?.slug || key;
+  const avatarUrl = avatarFromRows(rows) || profileAvatar || published?.avatarUrl || "";
+  const publicKey = normalizeCommandsKey(username.toLowerCase()) || published?.slug || profile?.slug || key;
+  return { userId, slug: publicKey, displayName, avatarUrl };
+}
+
 export async function loadPublishedChannel(slug: string): Promise<PublicChannel | null> {
   const normalized = normalizePublicSlug(slug);
   if (!normalized) return null;
@@ -59,10 +162,6 @@ export async function loadPublishedChannel(slug: string): Promise<PublicChannel 
   const avatarUrl = (await loadConnectedAvatar(data.user_id)) || profileAvatar;
   return { userId: data.user_id, slug: data.slug, displayName, avatarUrl };
 }
-
-const AVATAR_PLATFORM_ORDER = ["KICK", "TWITCH", "YOUTUBE", "TIKTOK", "X"] as const;
-
-const AVATAR_METADATA_KEYS = ["avatar_url", "profile_picture", "profile_pic", "image", "avatar", "thumbnail"] as const;
 
 function avatarFromMetadata(metadata: unknown): string {
   if (!metadata || typeof metadata !== "object") return "";
