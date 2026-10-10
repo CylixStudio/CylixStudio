@@ -8,7 +8,6 @@ import { supabase } from "@/lib/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   connectStreamElements,
-  connectStreamlabsSocket,
   disconnectPlatformConnection,
   startPlatformLink,
 } from "@/lib/connections.functions";
@@ -159,15 +158,11 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
 
   const linkFn = useServerFn(startPlatformLink);
   const connectSeFn = useServerFn(connectStreamElements);
-  const connectSlFn = useServerFn(connectStreamlabsSocket);
   const disconnectFn = useServerFn(disconnectPlatformConnection);
 
   const [jwtDraft, setJwtDraft] = useState("");
   const [showJwt, setShowJwt] = useState(false);
   const [seError, setSeError] = useState<string | null>(null);
-  const [slDraft, setSlDraft] = useState("");
-  const [showSl, setShowSl] = useState(false);
-  const [slError, setSlError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -179,7 +174,7 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
       tiktok: "settings.connections.toast.tiktok",
       twitch: "settings.connections.toast.twitch",
       kick: "settings.connections.toast.kick",
-      streamlabs: "settings.connections.toast.generic",
+      streamlabs: "settings.connections.toast.sl",
     };
     toast.success(t(labels[connected] ?? "settings.connections.toast.generic"));
     params.delete("connected");
@@ -257,29 +252,6 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
     }
   };
 
-  const saveStreamlabsToken = async () => {
-    const token = slDraft.trim();
-    if (!token) return;
-    setBusy("STREAMLABS_TOKEN");
-    setSlError(null);
-    try {
-      const result = await connectSlFn({ data: { token } });
-      if (!result.ok) {
-        setSlError(t("settings.connections.slInvalid"));
-        return;
-      }
-      setSlDraft("");
-      setShowSl(false);
-      toast.success(t("settings.connections.toast.sl"));
-      void refresh();
-      void queryClient.invalidateQueries({ queryKey: ["streamlabs-socket-token"] });
-    } catch (err) {
-      setSlError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const toggleActive = async (id: string, isActive: boolean) => {
     const { error: writeError } = await supabase
       .from("platform_connections")
@@ -310,6 +282,9 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
         c.platform === "STREAMLABS" &&
         (c.metadata as { source?: string } | null)?.source === "oauth",
     ) ?? connections.find((c) => c.platform === "STREAMLABS");
+  const slAvatar = slSocketConnection?.metadata
+    ? (slSocketConnection.metadata as { avatar_url?: string | null }).avatar_url
+    : null;
 
   const connectedActions = (connection: { id: string; is_active: boolean }) => (
     <>
@@ -473,7 +448,17 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
         {liveOauth.map(renderOAuthRow)}
 
         <ConnectionRow
-          icon={<PlatformIcon platform="STREAMLABS" size={18} />}
+          icon={
+            slAvatar ? (
+              <img
+                src={slAvatar}
+                alt=""
+                className="h-7 w-7 rounded-full object-cover ring-1 ring-white/10"
+              />
+            ) : (
+              <PlatformIcon platform="STREAMLABS" size={18} />
+            )
+          }
           label="Streamlabs"
           hint={t("settings.connections.slHint")}
           account={
@@ -493,62 +478,10 @@ export function ConnectionsPanel({ userId }: { userId: string }) {
                 {busy === "streamlabs" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {slSocketConnection
                   ? t("settings.connections.reconnect")
-                  : t("settings.connections.connect")}
-              </button>
-              <button
-                type="button"
-                disabled={busy === "STREAMLABS_TOKEN" || !slDraft.trim()}
-                onClick={saveStreamlabsToken}
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#31C48D] px-3 text-[0.75rem] font-semibold text-[#04231a] transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {busy === "STREAMLABS_TOKEN" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : null}
-                {t("settings.connections.saveConnect")}
+                  : t("settings.connections.connectStreamlabs")}
               </button>
               {slSocketConnection ? connectedActions(slSocketConnection) : null}
             </>
-          }
-          extra={
-            <div className="mt-3 max-w-xl space-y-1.5 ps-11">
-              <div className="relative flex items-center">
-                <input
-                  type={showSl ? "text" : "password"}
-                  value={slDraft}
-                  onChange={(event) => {
-                    setSlDraft(event.target.value);
-                    setSlError(null);
-                  }}
-                  placeholder={t("settings.connections.socketPlaceholder")}
-                  autoComplete="off"
-                  spellCheck={false}
-                  dir="ltr"
-                  className={`${tokenField} w-full`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSl((v) => !v)}
-                  aria-label={
-                    showSl
-                      ? t("settings.connections.hideToken")
-                      : t("settings.connections.showToken")
-                  }
-                  className="absolute inset-y-0 end-1 my-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white/[0.04]"
-                >
-                  {showSl ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-              {slError ? <p className="text-[11px] text-destructive">{slError}</p> : null}
-              <a
-                href="https://streamlabs.com/dashboard#/settings/api-settings"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-              >
-                <ExternalLink className="h-3 w-3" />
-                {t("settings.connections.apiSettings")}
-              </a>
-            </div>
           }
         />
 

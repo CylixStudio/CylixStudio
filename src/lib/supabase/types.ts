@@ -1478,6 +1478,33 @@ export type Database = {
           },
         ]
       }
+      channel_access_grants: {
+        Row: {
+          created_at: string
+          id: string
+          member_user_id: string
+          owner_user_id: string
+          permissions: string[]
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_user_id: string
+          owner_user_id: string
+          permissions?: string[]
+          role: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_user_id?: string
+          owner_user_id?: string
+          permissions?: string[]
+          role?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string

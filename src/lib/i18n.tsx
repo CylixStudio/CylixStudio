@@ -179,25 +179,22 @@ const DICT = {
   "settings.connections.saveConnect": "حفظ وربط",
   "settings.connections.account": "الحساب",
   "settings.connections.jwtPlaceholder": "رمز JWT",
-  "settings.connections.socketPlaceholder": "رمز Socket API",
   "settings.connections.showToken": "إظهار الرمز",
   "settings.connections.hideToken": "إخفاء الرمز",
-  "settings.connections.apiSettings": "إعدادات الـ API",
   "settings.connections.jwtHelp": "أين أجد رمز JWT؟",
   "settings.connections.seInvalid": "رمز StreamElements غير صالح. تحقق منه ثم أعد المحاولة.",
-  "settings.connections.slInvalid":
-    "رمز Socket API غير صالح. انسخ الرمز كاملاً من إعدادات Streamlabs.",
   "settings.connections.twitchHint": "متابعات واشتراكات واشتراكات مُهداة وبتس عبر EventSub.",
   "settings.connections.kickHint": "متابعات واشتراكات واشتراكات مُهداة عبر webhooks في Kick.",
   "settings.connections.tiktokHint": "الملف والصورة وإحصائيات المتابعين المباشرة عبر Login Kit.",
-  "settings.connections.slHint": "الصق رمز Socket API لاستقبال الإكراميات والاشتراكات والغارات مباشرة.",
+  "settings.connections.slHint": "إكراميات واشتراكات وغارات مباشرة بعد الربط مع Streamlabs.",
+  "settings.connections.connectStreamlabs": "الربط مع Streamlabs",
   "settings.connections.seHint": "أدخل رمز JWT لحسابك لمزامنة التبرعات والتنبيهات.",
   "settings.connections.toast.generic": "تم ربط الحساب بنجاح!",
   "settings.connections.toast.tiktok": "تم ربط حساب TikTok بنجاح!",
   "settings.connections.toast.twitch": "تم ربط حساب Twitch بنجاح!",
   "settings.connections.toast.kick": "تم ربط حساب Kick بنجاح!",
   "settings.connections.toast.se": "تم ربط StreamElements",
-  "settings.connections.toast.sl": "تم ربط Streamlabs عبر Socket API",
+  "settings.connections.toast.sl": "تم ربط Streamlabs بنجاح!",
   "settings.test.title": "Test events",
   "settings.test.heading": "Simulate platform events",
   "settings.test.body":
@@ -1279,6 +1276,9 @@ const DICT = {
   "admin.codes.code": "الرمز",
   "admin.codes.notes": "ملاحظة",
   "admin.codes.save": "حفظ",
+  "nav.managedChannels": "القنوات المدارة",
+  "nav.managedChannels.unnamed": "قناة بدون اسم",
+  "nav.managedChannels.back": "العودة إلى حسابك",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

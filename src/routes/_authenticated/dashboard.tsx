@@ -124,7 +124,7 @@ function GiveawayPreview() {
 }
 import { getMediaRequestDashboard } from "@/lib/mediaRequests.functions";
 import { useWidgets } from "@/hooks/useWidgets";
-import { useWorkspace } from "@/hooks/useWorkspace";
+import { useGrantedWorkspace, useWorkspace } from "@/hooks/useWorkspace";
 import { createWidget, widgetErrorText } from "@/lib/createWidget";
 import { useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 import type { WidgetType } from "@/lib/widgets";
@@ -384,9 +384,13 @@ const TOOLS: Tool[] = [
 ];
 
 function HomePage() {
-  const { user } = Route.useRouteContext();
-  const userId = user?.id ?? "";
-  const { data: workspace } = useWorkspace(userId);
+  const { user, workspaceOwnerId } = Route.useRouteContext();
+  const actorId = user?.id ?? "";
+  const ownerId = workspaceOwnerId || actorId;
+  const switched = ownerId !== actorId;
+  const actorWorkspace = useWorkspace(actorId);
+  const grantedWorkspace = useGrantedWorkspace(ownerId, switched);
+  const workspace = switched && grantedWorkspace.data ? grantedWorkspace.data : actorWorkspace.data;
   const widgets = useWidgets();
   const mediaRequests = useQuery({
     queryKey: ["media-requests"],
@@ -395,7 +399,7 @@ function HomePage() {
     enabled: !isTestMode(),
   });
   const mediaOverlayUrl = mediaRequests.data?.overlayUrl ?? undefined;
-  const subscription = useSubscription(userId);
+  const subscription = useSubscription(actorId);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useLanguage();
@@ -511,8 +515,8 @@ function HomePage() {
     setBusy(tool.id);
     try {
       const widget = await createWidget({
-        userId,
-        subathonId: workspace?.subathons[0]?.id ?? null,
+        userId: actorId,
+        subathonId: actorWorkspace.data?.subathons[0]?.id ?? null,
         type: tool.type,
         name: tool.name,
       });

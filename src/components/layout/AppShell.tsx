@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouteContext, useRouter, useRouterState } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   BarChart3,
   Bookmark,
   CalendarDays,
+  Check,
   ChevronsLeft,
   CreditCard,
   Crown,
@@ -24,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { supabase } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { disableTestMode, isTestMode } from "@/lib/testMode";
+import { listManagedChannels, switchManagedChannel } from "@/lib/managedChannels.functions";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import type { Subathon } from "@/hooks/useWorkspace";
@@ -106,7 +109,11 @@ const FALLBACK_STUDIO_VERSION = "v0.2";
 
 export function AppShell({ children, title, subtitle, actions, user, profile }: AppShellProps) {
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const { workspaceOwnerId } = useRouteContext({ from: "/_authenticated" });
+  const listChannels = useServerFn(listManagedChannels);
+  const switchChannel = useServerFn(switchManagedChannel);
   const studioVersion = useQuery({
     queryKey: ["studio-version"],
     queryFn: async () => {
@@ -127,6 +134,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
 
   const [collapsed, setCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const profileRef = useClickOutside(() => setProfileOpen(false));
 
   useEffect(() => {
@@ -157,7 +165,37 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
     navigate({ to: "/login", replace: true });
   };
 
-  const initials = (profile?.name?.trim() || "CY").slice(0, 2).toUpperCase();
+  const managed = useQuery({
+    queryKey: ["managed-channels", user?.id],
+    enabled: Boolean(user?.id) && !isTestMode() && isSupabaseConfigured(),
+    queryFn: () => listChannels(),
+    staleTime: 30_000,
+  });
+  const channels = managed.data?.channels ?? [];
+  const activeChannel = channels.find((channel) => channel.ownerUserId === workspaceOwnerId) ?? null;
+  const switched = Boolean(activeChannel);
+
+  const selectChannel = async (ownerUserId: string | null) => {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      await switchChannel({ data: { ownerUserId } });
+      await queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      await router.invalidate();
+      setProfileOpen(false);
+      await navigate({ to: "/dashboard" });
+    } catch {
+      /* The server rejects a switch that is not backed by a live grant. */
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const actorName = managed.data?.account.name || (!switched ? profile?.name : null) || "CylixStudio";
+  const actorImage = managed.data?.account.image || (!switched ? profile?.image : null);
+  const buttonName = activeChannel?.name || actorName;
+  const buttonImage = activeChannel ? activeChannel.image : actorImage;
+  const initials = (buttonName.trim() || "CY").slice(0, 2).toUpperCase();
   const menuItem =
     "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-start text-[0.8rem] transition-colors";
   const sidebarW = collapsed ? COLLAPSED_W : EXPANDED_W;
@@ -284,8 +322,8 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                   )}
                 >
                   <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full border border-[oklch(1_0_0/0.12)]">
-                    {profile?.image ? (
-                      <img src={profile.image} alt="" className="size-full object-cover" loading="lazy" />
+                    {buttonImage ? (
+                      <img src={buttonImage} alt="" className="size-full object-cover" loading="lazy" />
                     ) : (
                       <span className="grid size-full place-items-center bg-secondary text-[0.65rem] font-semibold">
                         {initials}
@@ -294,9 +332,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                   </span>
                   {collapsed ? null : (
                     <span className="min-w-0 flex-1 text-left">
-                      <span className="block truncate text-xs font-semibold">
-                        {profile?.name ?? "CylixStudio"}
-                      </span>
+                      <span className="block truncate text-xs font-semibold">{buttonName}</span>
                     </span>
                   )}
                 </button>
@@ -312,10 +348,57 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                   style={menuSurfaceStyle}
                   role="menu"
                 >
-                  <div className="px-3 py-2.5 text-left" dir="ltr">
-                    <p className="text-[0.82rem] font-semibold">{profile?.name ?? "CylixStudio"}</p>
-                  </div>
+                  {switched ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      dir="ltr"
+                      onClick={() => void selectChannel(null)}
+                      aria-label={t("nav.managedChannels.back")}
+                      className="w-full rounded-xl px-3 py-2.5 text-left hover:bg-[oklch(1_0_0/0.06)]"
+                    >
+                      <p className="text-[0.82rem] font-semibold">{actorName}</p>
+                    </button>
+                  ) : (
+                    <div className="px-3 py-2.5 text-left" dir="ltr">
+                      <p className="text-[0.82rem] font-semibold">{actorName}</p>
+                    </div>
+                  )}
                   <div className="my-1 border-t border-[rgba(255,255,255,0.08)]" />
+                  {channels.length > 0 ? (
+                    <>
+                      <p className="px-3 py-1.5 text-start text-[0.68rem] font-semibold text-muted-foreground" dir={dir}>
+                        {t("nav.managedChannels")}
+                      </p>
+                      {channels.map((channel) => {
+                        const selected = channel.ownerUserId === workspaceOwnerId;
+                        const label = channel.name ?? t("nav.managedChannels.unnamed");
+                        return (
+                          <button
+                            key={channel.ownerUserId}
+                            type="button"
+                            role="menuitem"
+                            dir={dir}
+                            disabled={!channel.canOpen || switching}
+                            aria-current={selected ? "true" : undefined}
+                            onClick={() => void selectChannel(channel.ownerUserId)}
+                            className={cn(
+                              menuItem,
+                              "flex-row",
+                              selected
+                                ? "bg-[oklch(1_0_0/0.08)] text-foreground"
+                                : "text-muted-foreground hover:bg-[oklch(1_0_0/0.06)] hover:text-foreground",
+                              !channel.canOpen && "opacity-50",
+                            )}
+                          >
+                            {selected ? <Check className="size-4 shrink-0" aria-hidden /> : null}
+                            <span className="min-w-0 flex-1 truncate text-start">{label}</span>
+                          </button>
+                        );
+                      })}
+                      <div className="my-1 border-t border-[rgba(255,255,255,0.08)]" />
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"

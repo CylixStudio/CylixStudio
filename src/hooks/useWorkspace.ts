@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { loadManagedWorkspace } from "@/lib/managedChannels.functions";
 import { supabase } from "@/lib/supabase/client";
 import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { isStoredTestRow } from "@/lib/testAlert";
@@ -68,25 +69,25 @@ async function profileFromAuth(userId: string) {
   };
 }
 
+const testWorkspace = {
+  profile: {
+    name: "Test User",
+    email: "test@creovixstudio.local",
+    image: null,
+    timezone: null,
+    default_platform: null,
+  },
+  connections: [],
+  subathons: [] as Subathon[],
+};
+
 /** Profile + subathons + connections — the data every dashboard screen needs. */
 export function useWorkspace(userId: string) {
   return useQuery({
     queryKey: ["workspace", userId],
     enabled: userId.length > 0,
     queryFn: async () => {
-      if (isTestMode()) {
-        return {
-          profile: {
-            name: "Test User",
-            email: "test@creovixstudio.local",
-            image: null,
-            timezone: null,
-            default_platform: null,
-          },
-          connections: [],
-          subathons: [] as Subathon[],
-        };
-      }
+      if (isTestMode()) return testWorkspace;
 
       const [profile, connections, subathons] = await Promise.all([
         supabase
@@ -135,6 +136,18 @@ export function useWorkspace(userId: string) {
         subathons: (subathons.error ? [] : (subathons.data ?? [])) as Subathon[],
       };
     },
+  });
+}
+
+/**
+ * Home-dashboard read of a channel the signed-in member is granted to open.
+ * The server confirms the grant. Settings keep using `useWorkspace`.
+ */
+export function useGrantedWorkspace(ownerUserId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["workspace", "grant", ownerUserId],
+    enabled: enabled && ownerUserId.length > 0 && !isTestMode(),
+    queryFn: () => loadManagedWorkspace({ data: { ownerUserId } }),
   });
 }
 

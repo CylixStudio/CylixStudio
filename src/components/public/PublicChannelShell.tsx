@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { useLanguage } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 export function PublicChannelShell({
   title,
@@ -9,6 +10,7 @@ export function PublicChannelShell({
   loading,
   missingLabel,
   loadingLabel,
+  wide = false,
   children,
 }: {
   title: string;
@@ -17,20 +19,35 @@ export function PublicChannelShell({
   loading: boolean;
   missingLabel: string;
   loadingLabel: string;
+  /** Wider studio canvas so compact cards sit in a grid instead of stretching. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const { dir } = useLanguage();
   return (
-    <main dir={dir} className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto w-full max-w-3xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">CylixStudio</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{missing ? title : heading || title}</h1>
+    <main
+      dir={dir}
+      className={cn(
+        "min-h-screen px-4 text-foreground",
+        wide ? "ambient-field bg-background py-6" : "bg-zinc-950 py-10 text-zinc-100",
+      )}
+    >
+      <div className={cn("mx-auto w-full", wide ? "max-w-6xl" : "max-w-3xl")}>
+        <p className={cn("text-xs font-semibold uppercase tracking-[0.18em]", wide ? "text-muted-foreground" : "text-zinc-500")}>
+          CylixStudio
+        </p>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight">{missing ? title : heading || title}</h1>
         {missing ? (
-          <p className="glass-3d mt-6 rounded-2xl border border-white/10 px-5 py-8 text-sm text-zinc-400">
+          <p
+            className={cn(
+              "glass-3d mt-4 rounded-2xl px-4 py-5 text-sm text-muted-foreground",
+              !wide && "mt-6 border border-white/10 px-5 py-8 text-zinc-400",
+            )}
+          >
             {missingLabel}
           </p>
         ) : loading ? (
-          <p className="mt-6 text-sm text-zinc-500">{loadingLabel}</p>
+          <p className={cn("mt-4 text-sm", wide ? "text-muted-foreground" : "mt-6 text-zinc-500")}>{loadingLabel}</p>
         ) : (
           children
         )}
