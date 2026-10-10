@@ -55,8 +55,43 @@ export async function loadPublishedChannel(slug: string): Promise<PublicChannel 
     .maybeSingle();
   if (!data?.user_id) return null;
   const displayName = data.display_name?.trim() || data.slug;
-  const avatarUrl = typeof data.avatar_url === "string" ? data.avatar_url : "";
+  const profileAvatar = typeof data.avatar_url === "string" ? data.avatar_url : "";
+  const avatarUrl = (await loadConnectedAvatar(data.user_id)) || profileAvatar;
   return { userId: data.user_id, slug: data.slug, displayName, avatarUrl };
+}
+
+const AVATAR_PLATFORM_ORDER = ["KICK", "TWITCH", "YOUTUBE", "TIKTOK", "X"] as const;
+
+const AVATAR_METADATA_KEYS = ["avatar_url", "profile_picture", "profile_pic", "image", "avatar", "thumbnail"] as const;
+
+function avatarFromMetadata(metadata: unknown): string {
+  if (!metadata || typeof metadata !== "object") return "";
+  const record = metadata as Record<string, unknown>;
+  for (const key of AVATAR_METADATA_KEYS) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+/** Profile picture from an active Kick (then other) connection. Never logs metadata. */
+async function loadConnectedAvatar(userId: string): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from("platform_connections")
+    .select("platform, metadata")
+    .eq("user_id", userId)
+    .eq("is_active", true);
+  const rows = data ?? [];
+  for (const platform of AVATAR_PLATFORM_ORDER) {
+    const match = rows.find((row) => row.platform === platform);
+    const url = avatarFromMetadata(match?.metadata);
+    if (url) return url;
+  }
+  for (const row of rows) {
+    const url = avatarFromMetadata(row.metadata);
+    if (url) return url;
+  }
+  return "";
 }
 
 export async function listPublicCommands(userId: string): Promise<PublicCommand[]> {

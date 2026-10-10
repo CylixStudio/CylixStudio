@@ -635,7 +635,7 @@ function HomePage() {
         <p className="py-12 text-sm text-muted-foreground">{t("home.empty")}</p>
       ) : (
         <>
-          <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
+          <div className="widget-hub-grid">
             {shownTools.map((tool) => {
               const goalRank = HUB_GOAL_RANK.get(tool.id);
               const existing = existingFor(tool);
@@ -644,8 +644,7 @@ function HomePage() {
               return (
                 <ToolCard
                   key={tool.id}
-                  className={goalRank === 0 ? "col-start-1" : undefined}
-                  style={goalRank == null ? undefined : { order: goalRank + 1 }}
+                  className={goalRank === 0 ? "widget-hub-goal-lead" : undefined}
                   name={t(tool.nameKey)}
                   description={t(tool.descriptionKey)}
                   category={t(tool.categoryKey)}

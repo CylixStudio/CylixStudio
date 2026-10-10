@@ -146,7 +146,7 @@ function WidgetHub() {
     >
       <SessionAwareError error={error} signedOutLabel={t("widget.signedOut")} />
 
-      <section className="mb-6 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
+      <section className="widget-hub-grid mb-6">
         {[...STANDALONE_TOOLS]
           .sort((a, b) => {
             const aRank = WIDGET_GOAL_RANK.get(a.slug);
@@ -164,8 +164,7 @@ function WidgetHub() {
           return (
             <ToolCard
               key={tool.slug}
-              className={goalRank === 0 ? "col-start-1" : undefined}
-              style={goalRank == null ? undefined : { order: goalRank + 1 }}
+              className={goalRank === 0 ? "widget-hub-goal-lead" : undefined}
               name={t(tool.nameKey)}
               description={t(tool.descriptionKey)}
               category={t("nav.tools")}
@@ -234,7 +233,7 @@ function WidgetHub() {
         })}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <section className="widget-hub-grid">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading widgets…</p>
         ) : otherWidgets.length > 0 ? (

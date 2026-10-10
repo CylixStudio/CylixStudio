@@ -869,6 +869,35 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
 
+/* Widget hub cards: fixed tracks (1 / 2 / 3). auto-fit plus column-start collapses empty tracks and stacks cards. */
+.widget-hub-grid {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.25rem;
+}
+@media (min-width: 768px) {
+  .widget-hub-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .widget-hub-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.widget-hub-grid > * {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  margin-inline: 0;
+}
+/* First goal card starts a fresh row so the four goals stay together at the end. */
+.widget-hub-goal-lead {
+  grid-column-start: 1;
+}
+
 .overlay-poll-bar {
   transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1), flex 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }

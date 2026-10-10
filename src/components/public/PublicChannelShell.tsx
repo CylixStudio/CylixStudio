@@ -11,6 +11,8 @@ export function PublicChannelShell({
   missingLabel,
   loadingLabel,
   wide = false,
+  ink = false,
+  showIntro = true,
   children,
 }: {
   title: string;
@@ -21,6 +23,10 @@ export function PublicChannelShell({
   loadingLabel: string;
   /** Wider studio canvas so compact cards sit in a grid instead of stretching. */
   wide?: boolean;
+  /** Flat dark canvas for the public commands page. Store leaves this off. */
+  ink?: boolean;
+  /** When false, the page supplies its own title row. Store keeps the default intro. */
+  showIntro?: boolean;
   children: ReactNode;
 }) {
   const { dir } = useLanguage();
@@ -29,14 +35,22 @@ export function PublicChannelShell({
       dir={dir}
       className={cn(
         "min-h-screen px-4 text-foreground",
-        wide ? "ambient-field bg-background py-6" : "bg-zinc-950 py-10 text-zinc-100",
+        wide
+          ? ink
+            ? "bg-[#09090b] py-8 text-zinc-100"
+            : "ambient-field bg-background py-6"
+          : "bg-zinc-950 py-10 text-zinc-100",
       )}
     >
       <div className={cn("mx-auto w-full", wide ? "max-w-6xl" : "max-w-3xl")}>
-        <p className={cn("text-xs font-semibold uppercase tracking-[0.18em]", wide ? "text-muted-foreground" : "text-zinc-500")}>
-          CylixStudio
-        </p>
-        <h1 className="mt-1 text-xl font-semibold tracking-tight">{missing ? title : heading || title}</h1>
+        {showIntro ? (
+          <>
+            <p className={cn("text-xs font-semibold uppercase tracking-[0.18em]", wide ? "text-muted-foreground" : "text-zinc-500")}>
+              CylixStudio
+            </p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight">{missing ? title : heading || title}</h1>
+          </>
+        ) : null}
         {missing ? (
           <p
             className={cn(
