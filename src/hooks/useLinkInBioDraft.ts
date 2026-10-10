@@ -3,6 +3,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { toast } from "sonner";
 
+import { notePlanError } from "@/components/subscription/upgradePlan";
+
 import {
   checkTestSlugAvailable,
   DEFAULT_PROFILE,
@@ -281,6 +283,7 @@ export function useLinkInBioDraft(userId: string) {
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["link-in-bio", userId, test] }),
     onError: (error: Error) => {
+      if (notePlanError(error)) return;
       toast.error(
         error.message === "slug_taken"
           ? "That username is taken."

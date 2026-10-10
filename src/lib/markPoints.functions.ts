@@ -67,30 +67,45 @@ async function kickBroadcasterId(userId: string): Promise<string | null> {
   return data?.platform_user_id ?? null;
 }
 
+async function markScope(context: { supabase: any; userId: string }) {
+  const { resolveSharedFeatureSubject } = await import("@/lib/planAccess.server");
+  const subject = await resolveSharedFeatureSubject(context.userId);
+  if (subject.locked) return { locked: true as const };
+  if (subject.viaGrant) {
+    const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+    return { locked: false as const, db: supabaseAdmin, userId: subject.userId, isPro: true };
+  }
+  return { locked: false as const, db: context.supabase, userId: context.userId, isPro: subject.isPro };
+}
+
 export const listStreamMarks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<StreamMark[]> => {
-    const { data } = await context.supabase
+  .handler(async ({ context }): Promise<{ marks: StreamMark[]; locked: boolean }> => {
+    const scope = await markScope(context);
+    if (scope.locked) return { marks: [], locked: true };
+    const { data } = await scope.db
       .from("stream_marks")
       .select(MARK_COLUMNS)
-      .eq("user_id", context.userId)
+      .eq("user_id", scope.userId)
       .order("created_at", { ascending: false })
       .limit(200);
-    return (data ?? []).map(mapMark);
+    return { marks: (data ?? []).map(mapMark), locked: false };
   });
 
 export const updateStreamMark = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: StreamMarkPatch) => input)
   .handler(async ({ data, context }) => {
+    const scope = await markScope(context);
+    if (scope.locked) return { ok: false as const, error: "pro_required" };
     const payload: { note?: string; status?: MarkStatus } = {};
     if (data.note !== undefined) payload.note = sanitizeMarkNote(data.note);
     if (data.status && isMarkStatus(data.status)) payload.status = data.status;
-    const { error } = await context.supabase
+    const { error } = await scope.db
       .from("stream_marks")
       .update(payload)
       .eq("id", data.id)
-      .eq("user_id", context.userId);
+      .eq("user_id", scope.userId);
     if (error) return { ok: false as const, error: error.message };
     return { ok: true as const };
   });
@@ -99,11 +114,13 @@ export const deleteStreamMark = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string }) => input)
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase
+    const scope = await markScope(context);
+    if (scope.locked) return { ok: false };
+    const { error } = await scope.db
       .from("stream_marks")
       .delete()
       .eq("id", data.id)
-      .eq("user_id", context.userId);
+      .eq("user_id", scope.userId);
     return { ok: !error };
   });
 
@@ -111,10 +128,14 @@ export const startStudioMark = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { note?: string }) => input)
   .handler(async ({ data, context }) => {
-    const { resolveKickStreamClock } = await import("@/lib/markPoints.server");
-    const clock = await resolveKickStreamClock(context.userId, await kickBroadcasterId(context.userId));
-    const { error } = await context.supabase.from("stream_marks").insert({
-      user_id: context.userId,
+    const scope = await markScope(context);
+    if (scope.locked) return { ok: false as const, error: "pro_required" };
+    const { assertMarkRoom, resolveKickStreamClock } = await import("@/lib/markPoints.server");
+    const clock = await resolveKickStreamClock(scope.userId, await kickBroadcasterId(scope.userId));
+    const room = await assertMarkRoom(scope.userId, clock.live ? clock.startedAt : null);
+    if (!room.ok) return { ok: false as const, error: room.error };
+    const { error } = await scope.db.from("stream_marks").insert({
+      user_id: scope.userId,
       started_at: new Date().toISOString(),
       ended_at: null,
       duration_seconds: null,
@@ -136,10 +157,12 @@ export const closeStudioMark = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { note?: string }) => input)
   .handler(async ({ data, context }) => {
-    const { data: open } = await context.supabase
+    const scope = await markScope(context);
+    if (scope.locked) return { ok: false as const, error: "pro_required" };
+    const { data: open } = await scope.db
       .from("stream_marks")
       .select("id, note, uptime_start_seconds, stream_started_at, offline")
-      .eq("user_id", context.userId)
+      .eq("user_id", scope.userId)
       .is("ended_at", null)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -147,7 +170,7 @@ export const closeStudioMark = createServerFn({ method: "POST" })
     if (!open) return { ok: false as const, error: "no_open_start" };
 
     const { resolveKickStreamClock } = await import("@/lib/markPoints.server");
-    const clock = await resolveKickStreamClock(context.userId, await kickBroadcasterId(context.userId));
+    const clock = await resolveKickStreamClock(scope.userId, await kickBroadcasterId(scope.userId));
     const uptimeEnd = clock.live
       ? clock.uptimeSeconds
       : open.stream_started_at
@@ -158,7 +181,7 @@ export const closeStudioMark = createServerFn({ method: "POST" })
         ? Math.max(0, uptimeEnd - open.uptime_start_seconds)
         : null;
 
-    const { error } = await context.supabase
+    const { error } = await scope.db
       .from("stream_marks")
       .update({
         ended_at: new Date().toISOString(),
@@ -168,7 +191,7 @@ export const closeStudioMark = createServerFn({ method: "POST" })
         offline: open.offline || uptimeEnd == null,
       })
       .eq("id", open.id)
-      .eq("user_id", context.userId);
+      .eq("user_id", scope.userId);
     if (error) return { ok: false as const, error: error.message };
     return { ok: true as const };
   });
@@ -219,11 +242,13 @@ export const setStreamMarkStatus = createServerFn({ method: "POST" })
   .inputValidator((input: { id: string; status: MarkStatus }) => input)
   .handler(async ({ data, context }) => {
     if (!isMarkStatus(data.status)) return { ok: false as const, error: "bad_status" };
-    const { error } = await context.supabase
+    const scope = await markScope(context);
+    if (scope.locked) return { ok: false as const, error: "pro_required" };
+    const { error } = await scope.db
       .from("stream_marks")
       .update({ status: data.status })
       .eq("id", data.id)
-      .eq("user_id", context.userId);
+      .eq("user_id", scope.userId);
     if (error) return { ok: false as const, error: error.message };
     return { ok: true as const };
   });

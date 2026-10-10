@@ -1,15 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  ANALYTICS_FETCH_DAYS,
   buildDemoOverview,
   emptyLiveOverview,
-  rangeStart,
   summarizeEvents,
   type AnalyticsEvent,
   type DashboardOverview,
 } from "@/lib/dashboardAnalytics";
-import { supabase } from "@/lib/supabase/client";
+import { getPlanAnalytics } from "@/lib/planData.functions";
 import { isStoredTestRow } from "@/lib/testAlert";
 import { isTestMode } from "@/lib/testMode";
 
@@ -33,17 +31,14 @@ function toAnalyticsEvent(row: {
   };
 }
 
-async function fetchLiveOverview(): Promise<DashboardOverview> {
-  const since = rangeStart(ANALYTICS_FETCH_DAYS).toISOString();
-  const { data, error } = await supabase
-    .from("events")
-    .select("id, event_type, amount, quantity, created_at, raw_payload")
-    .gte("created_at", since)
-    .order("created_at", { ascending: true })
-    .limit(2000);
-  if (error) throw error;
-
-  const events = (data ?? []).map(toAnalyticsEvent);
+async function fetchLiveOverview(): Promise<DashboardOverview & { locked?: boolean; isPro?: boolean }> {
+  const result = (await getPlanAnalytics()) as {
+    locked: boolean;
+    isPro: boolean;
+    canExport: boolean;
+    events: Parameters<typeof toAnalyticsEvent>[0][];
+  };
+  const events = result.events.map(toAnalyticsEvent);
   const summarized = summarizeEvents(events);
   return {
     ...emptyLiveOverview(),
@@ -53,6 +48,10 @@ async function fetchLiveOverview(): Promise<DashboardOverview> {
     commandsUsed: 0,
     chatTracked: false,
     events,
+    locked: result.locked,
+    isPro: result.isPro,
+    canExport: result.canExport,
+    rangeDays: result.locked ? 7 : result.isPro ? 90 : 7,
   };
 }
 

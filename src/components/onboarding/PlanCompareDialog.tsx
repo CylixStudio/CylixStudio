@@ -13,6 +13,7 @@ import { PLAN_FEATURES, PLAN_PRICES, PRO_BILLING_OPTIONS, type FeatureAvailabili
 import { cn } from "@/lib/utils";
 
 function CellValue({ value }: { value: FeatureAvailability }) {
+  const { t } = useLanguage();
   if (value === true) {
     return (
       <span className="inline-flex items-center justify-center text-emerald-400" aria-label="Included">
@@ -27,7 +28,8 @@ function CellValue({ value }: { value: FeatureAvailability }) {
       </span>
     );
   }
-  return <span className="text-[0.8rem] font-medium text-foreground/90">{value}</span>;
+  const label = value.startsWith("gateway.") ? t(value as TranslationKey) : value;
+  return <span className="text-[0.8rem] font-medium text-foreground/90">{label}</span>;
 }
 
 type PlanCompareDialogProps = {

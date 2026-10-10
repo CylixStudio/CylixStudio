@@ -27,6 +27,9 @@ export async function captureGiveawayEntry(
   userId: string,
   input: EntryInput,
 ): Promise<EntryResult> {
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  if (!(await userHasActivePro(admin, userId))) return { status: "ignored", reason: "pro_required" };
+
   const { data: settings } = await admin
     .from("giveaway_settings")
     .select("keyword, sub_multiplier, subs_only, is_open")
@@ -155,6 +158,8 @@ export async function confirmGiveawayPresence(
   userId: string,
   input: ConfirmInput,
 ): Promise<ConfirmResult> {
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  if (!(await userHasActivePro(admin, userId))) return { status: "ignored", reason: "pro_required" };
   if (input.isTest) return { status: "ignored", reason: "test" };
 
   const username = input.username.trim();

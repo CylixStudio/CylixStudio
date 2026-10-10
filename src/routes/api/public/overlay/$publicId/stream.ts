@@ -42,6 +42,16 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
           return new Response("overlay_not_found", { status: 404 });
         }
 
+        const { userHasActivePro } = await import("@/lib/subscription.server");
+        const { clampFreeWidgetConfig, isProOnlyWidgetType } = await import("@/lib/planLimits");
+        const ownerPro = await userHasActivePro(supabase, widget.user_id);
+        if (!ownerPro && isProOnlyWidgetType(widget.type)) {
+          return new Response("overlay_not_found", { status: 404 });
+        }
+        if (!ownerPro) {
+          (widget as { config: unknown }).config = clampFreeWidgetConfig(widget.type, widget.config);
+        }
+
         let subathon = Array.isArray(widget.subathons) ? widget.subathons[0] : widget.subathons;
         let subathonId = widget.subathon_id;
 
@@ -63,6 +73,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
 
         const maxTimeSeconds = subathon?.max_duration_seconds ?? null;
         const type = widget.type;
+        const presentConfig = (config: unknown) =>
+          ownerPro ? (config ?? widget.config) : clampFreeWidgetConfig(type, config ?? widget.config);
 
         const encoder = new TextEncoder();
         const abort = request.signal;
@@ -188,7 +200,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               lastFetch = Date.now();
               if (type === "TIKTOK_TAP_GOAL") {
                 const current = await fetchWidgetState();
-                const config = current?.config ?? widget.config;
+                const config = presentConfig(current?.config);
                 const tapGoal = await fetchTapGoal();
                 const payload = JSON.stringify({ tapGoal, config });
                 if (payload !== lastTapGoalPayload) {
@@ -200,7 +212,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               }
               if (type === "TIKTOK_TAPPERS") {
                 const current = await fetchWidgetState();
-                const config = current?.config ?? widget.config;
+                const config = presentConfig(current?.config);
                 const tappers = await fetchTappers(parseTappersConfig(config).topLimit);
                 const payload = JSON.stringify({ tappers, config });
                 if (payload !== lastTappersPayload) {
@@ -224,25 +236,27 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               if (type === "CHAT_SPOTLIGHT") {
                 const current = await fetchWidgetState();
                 const spotlight = parseSpotlightState(current?.state ?? null);
-                const payload = JSON.stringify({ spotlight, config: current?.config ?? null });
+                const config = presentConfig(current?.config);
+                const payload = JSON.stringify({ spotlight, config });
                 if (payload !== lastSpotlightPayload) {
                   lastSpotlightPayload = payload;
                   lastBeat = Date.now();
-                  send("spotlight", { spotlight, config: current?.config ?? null });
+                  send("spotlight", { spotlight, config });
                 }
                 return;
               }
               if (type === "STREAM_EVENTS_SCHEDULE") {
                 const current = await fetchWidgetState();
                 const streamEvents = parseStreamEventsScheduleState(current?.state ?? null);
+                const config = presentConfig(current?.config);
                 const payload = JSON.stringify({
                   streamEvents,
-                  config: current?.config ?? null,
+                  config,
                 });
                 if (payload !== lastStreamEventsPayload) {
                   lastStreamEventsPayload = payload;
                   lastBeat = Date.now();
-                  send("streamevents", { streamEvents, config: current?.config ?? null });
+                  send("streamevents", { streamEvents, config });
                 }
                 return;
               }
@@ -258,7 +272,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               }
               if (isDynamicGoalWidget(type)) {
                 const current = await fetchWidgetState();
-                const config = current?.config ?? widget.config;
+                const config = presentConfig(current?.config);
                 const goalEvents = await fetchEvents(400);
                 const snapshot = dynamicGoalSnapshot(type, config, goalEvents);
                 const goalPayload = JSON.stringify(snapshot);
@@ -288,11 +302,12 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               if (type === "SPIN_WHEEL") {
                 const current = await fetchWidgetState();
                 const spin = parseSpinState(current?.state ?? null);
-                const payload = JSON.stringify({ spin, config: current?.config ?? null });
+                const config = presentConfig(current?.config);
+                const payload = JSON.stringify({ spin, config });
                 if (payload !== lastSpinPayload) {
                   lastSpinPayload = payload;
                   lastBeat = Date.now();
-                  send("spin", { spin, config: current?.config ?? null });
+                  send("spin", { spin, config });
                 }
               }
             };

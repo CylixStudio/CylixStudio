@@ -34,6 +34,8 @@ export async function runModAction(
   userId: string,
   input: { action: ModAction; requestId?: string | null; mode?: string | null },
 ): Promise<{ ok: boolean; error?: string }> {
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  if (!(await userHasActivePro(supabaseAdmin, userId))) return { ok: false, error: "pro_required" };
   const { acceptKickRedemption, rejectKickRedemption, advanceQueue, startIfIdle } = await import("@/lib/mediaRequests.server");
 
   if (input.action === "SET_MODE") {

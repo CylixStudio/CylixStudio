@@ -7,7 +7,10 @@ import { EventLabelsGuestCustomize } from "@/components/widgets/EventLabelsGuest
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { WheelGuestCustomize } from "@/components/widgets/WheelGuestCustomize";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { ProLockedScreen } from "@/components/subscription/ProLockedScreen";
+import { useSubscription } from "@/hooks/useSubscription";
 import { createWidget, widgetErrorText } from "@/lib/createWidget";
+const PRO_TOOL_SLUGS = new Set(["donation-goal", "kicks-goal", "wheel"]);
 import { useLanguage } from "@/lib/i18n";
 import { SIGNED_OUT_ERROR } from "@/lib/supabase/sessionError";
 import { standaloneToolBySlug } from "@/lib/standaloneTools";
@@ -24,6 +27,12 @@ function ToolOpenPage() {
   const { tool: slug } = Route.useParams();
   const { user } = Route.useRouteContext();
   const spec = standaloneToolBySlug(slug);
+  const subscription = useSubscription(user?.id ?? "");
+  const locked =
+    Boolean(spec) &&
+    subscription.isSuccess &&
+    !subscription.data.isActive &&
+    PRO_TOOL_SLUGS.has(spec!.slug);
   const { t } = useLanguage();
   const navigate = useNavigate();
   const workspace = useWorkspace(user?.id ?? "");
@@ -45,6 +54,8 @@ function ToolOpenPage() {
         setError(widgetErrorText(err, t("tools.openFailed")));
       });
   }, [navigate, spec, t, user.id, workspace.data?.subathons]);
+
+  if (locked) return <ProLockedScreen />;
 
   if (spec?.slug === "wheel" && isTestMode()) {
     return (

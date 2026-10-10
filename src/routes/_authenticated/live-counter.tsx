@@ -10,6 +10,8 @@ import { StudioPageTabs } from "@/components/layout/StudioPageTabs";
 import { DarkSelect } from "@/components/ui/dark-select";
 import { InfoTip } from "@/components/ui/info-tip";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
+import { requestUpgrade } from "@/components/subscription/upgradePlan";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { alternatePlatform, useApplyDefaultPlatform } from "@/lib/defaultPlatform";
 import { useLanguage } from "@/lib/i18n";
@@ -45,7 +47,11 @@ export const Route = createFileRoute("/_authenticated/live-counter")({
 type Target = { platform: CounterPlatform; username: string };
 
 /** Browser calls our origin only. Platform APIs are fetched by the server route. */
-async function lookupViaProxy(platform: CounterPlatform, username: string): Promise<ChannelSnapshot> {
+async function lookupViaProxy(
+  platform: CounterPlatform,
+  username: string,
+  compare = false,
+): Promise<ChannelSnapshot> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error("Sign in to look up a channel");
@@ -55,7 +61,7 @@ async function lookupViaProxy(platform: CounterPlatform, username: string): Prom
       "content-type": "application/json",
       authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ platform, username }),
+    body: JSON.stringify({ platform, username, compare }),
   });
   const payload = (await response.json()) as ChannelSnapshot & { message?: string };
   if (!response.ok) throw new Error(payload.message || "Channel Not Found");
@@ -191,15 +197,15 @@ function RollingCounter({ value, size = "text-7xl" }: { value: number | null; si
  * One tracked channel. The last good reading is remembered in state and in
  * localStorage, so a failed or empty background poll never blanks the counter.
  */
-function useChannel(target: Target | null) {
+function useChannel(target: Target | null, compare = false) {
   const query = useQuery({
-    queryKey: ["live-counter", target?.platform, target?.username?.toLowerCase()],
+    queryKey: ["live-counter", target?.platform, target?.username?.toLowerCase(), compare],
     enabled: Boolean(target?.username),
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: true,
     retry: 1,
     placeholderData: (previous: ChannelSnapshot | undefined) => previous,
-    queryFn: () => lookupViaProxy(target!.platform, target!.username),
+    queryFn: () => lookupViaProxy(target!.platform, target!.username, compare),
   });
 
   const key = target ? `${target.platform}:${target.username.trim().toLowerCase()}` : null;
@@ -1004,6 +1010,8 @@ function LiveCounterPage() {
   const { user } = Route.useRouteContext();
   const { data: workspace } = useWorkspace(user.id);
   const { t } = useLanguage();
+  const subscription = useSubscription(user.id);
+  const isPro = Boolean(subscription.data?.isActive);
 
   const [pane, setPane] = useState<"live" | "social">("live");
   const [vsMode, setVsMode] = useState(false);
@@ -1089,8 +1097,8 @@ function LiveCounterPage() {
   }, [debouncedA, debouncedB, platformA, platformB]);
   const main = useChannel(target);
 
-  const sideA = useChannel(vsMode ? targetA : null);
-  const sideB = useChannel(vsMode ? targetB : null);
+  const sideA = useChannel(vsMode ? targetA : null, true);
+  const sideB = useChannel(vsMode ? targetB : null, true);
 
   useEffect(() => {
     if (main.data) rememberRecent(main.data);
@@ -1209,8 +1217,19 @@ function LiveCounterPage() {
           <button type="button" className={toggleClass(!vsMode)} onClick={() => setVsMode(false)}>
             <Radio className="size-4" aria-hidden /> {t("counter.singleView")}
           </button>
-          <button type="button" className={toggleClass(vsMode)} onClick={() => setVsMode(true)}>
+          <button
+            type="button"
+            className={toggleClass(vsMode)}
+            onClick={() => {
+              if (!isPro) {
+                requestUpgrade();
+                return;
+              }
+              setVsMode(true);
+            }}
+          >
             <Swords className="size-4" aria-hidden /> {t("counter.vsMode")}
+            {isPro ? null : <span className="text-[0.65rem] opacity-70">Pro</span>}
           </button>
           <InfoTip text={t("tooltips.counter.vs")} />
         </div>

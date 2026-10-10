@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bookmark, Copy, Link2, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
 import { AppShell } from "@/components/layout/AppShell";
 import { HowItWorks } from "@/components/layout/HowItWorks";
 import {
@@ -199,8 +200,8 @@ function MarkPointsPage() {
 
   const marksQuery = useQuery({
     queryKey: ["mark-points", user.id],
-    queryFn: async (): Promise<StreamMark[]> => {
-      if (test) return loadTestMarks();
+    queryFn: async () => {
+      if (test) return { marks: loadTestMarks(), locked: false };
       return fetchMarks();
     },
     refetchInterval: test ? false : 15000,
@@ -222,7 +223,7 @@ function MarkPointsPage() {
     },
   });
 
-  const marks = marksQuery.data ?? [];
+  const marks = marksQuery.data?.marks ?? [];
   const allowlist = allowQuery.data ?? [];
   const share = shareQuery.data;
   const shareUrl = share?.shareToken && origin ? `${origin}${markSharePath(share.shareToken)}` : "";
@@ -261,7 +262,10 @@ function MarkPointsPage() {
       setEditor(null);
       void invalidate();
     },
-    onError: () => toast.error(c.errSave),
+    onError: (error: Error) => {
+      if (notePlanError(error)) return;
+      toast.error(c.errSave);
+    },
   });
 
   const closeMutation = useMutation({
@@ -418,6 +422,15 @@ function MarkPointsPage() {
       }
     >
       <div className="space-y-10 text-start">
+        {marksQuery.data?.locked ? (
+          <button
+            type="button"
+            onClick={() => requestUpgrade()}
+            className="w-full rounded-2xl border border-primary/25 px-4 py-3 text-start text-sm"
+          >
+            {t("plan.channelLocked")}
+          </button>
+        ) : null}
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="relative w-44 shrink-0">

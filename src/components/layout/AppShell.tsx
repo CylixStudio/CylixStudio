@@ -19,6 +19,7 @@ import {
   Settings,
 } from "lucide-react";
 
+import { UpgradePlanHost } from "@/components/subscription/UpgradePlanHost";
 import { StreamlabsBridge } from "@/components/layout/StreamlabsBridge";
 import { StreamElementsBridge } from "@/components/layout/StreamElementsBridge";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -211,6 +212,7 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
 
   return (
     <TooltipProvider delayDuration={80}>
+      <UpgradePlanHost />
       <div className="ambient-field min-h-screen bg-background text-foreground">
         {isTestMode() || !user?.id ? null : (
           <>

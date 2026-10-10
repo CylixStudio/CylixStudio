@@ -12,6 +12,10 @@ export const Route = createFileRoute("/api/public/giveaway/$token/live")({
           .eq("overlay_token", params.token)
           .maybeSingle();
         if (!settings) return Response.json({ error: "overlay_not_found" }, { status: 404 });
+        const { userHasActivePro } = await import("@/lib/subscription.server");
+        if (!(await userHasActivePro(supabaseAdmin, settings.user_id))) {
+          return Response.json({ error: "overlay_not_found" }, { status: 404 });
+        }
 
         const { data: participants } = await supabaseAdmin
           .from("giveaway_participants")

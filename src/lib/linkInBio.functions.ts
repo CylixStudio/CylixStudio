@@ -16,6 +16,7 @@ import {
   sanitizeSlug,
   sanitizeColSpan,
   sanitizeRowSpan,
+  linkInBioThemeRequiresPro,
   sanitizeTheme,
   slugError,
   applyUsernameClaim,
@@ -26,7 +27,9 @@ import {
   type LinkInBioState,
   type LinkInBioTheme,
 } from "@/lib/linkInBio";
+import { FREE_PLAN_LIMITS } from "@/lib/plans";
 import { requireSupabaseAuth } from "@/lib/supabase/auth-middleware";
+import { userHasActivePro } from "@/lib/subscription.server";
 
 type ProfileRow = {
   slug: string;
@@ -277,6 +280,8 @@ export const saveLinkInBioTheme = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await ensureRows(context.supabase, context.userId);
     const theme = sanitizeTheme(data);
+    const isPro = await userHasActivePro(context.supabase, context.userId);
+    if (!isPro && linkInBioThemeRequiresPro(theme)) return { ok: false as const, error: "pro_required" };
     const { error } = await context.supabase
       .from("link_in_bio_themes")
       .update({
@@ -315,7 +320,18 @@ export const upsertLinkInBioLink = createServerFn({ method: "POST" })
   .inputValidator((input: LinkInBioLinkInput) => input)
   .handler(async ({ data, context }) => {
     await ensureRows(context.supabase, context.userId);
+    const isPro = await userHasActivePro(context.supabase, context.userId);
     const kind = sanitizeKind(data.kind ?? "link");
+    if (!isPro && kind === "gallery") return { ok: false as const, error: "pro_required" };
+    if (!isPro && !data.id) {
+      const { count } = await context.supabase
+        .from("link_in_bio_links")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", context.userId);
+      if ((count ?? 0) >= FREE_PLAN_LIMITS.linkInBioLinks) {
+        return { ok: false as const, error: "free_limit_links" };
+      }
+    }
     const title = sanitizeDisplayName(data.title) || (kind === "gallery" ? "Gallery" : "");
     const url = sanitizeLinkUrl(data.url);
     if (!title) return { ok: false as const, error: "title_required" };
@@ -419,6 +435,13 @@ export const replaceLinkInBioLinks = createServerFn({ method: "POST" })
   .inputValidator((input: { links: LinkInBioLinkInput[] }) => input)
   .handler(async ({ data, context }) => {
     await ensureRows(context.supabase, context.userId);
+    const isPro = await userHasActivePro(context.supabase, context.userId);
+    if (!isPro && data.links.length > FREE_PLAN_LIMITS.linkInBioLinks) {
+      return { ok: false as const, error: "free_limit_links" };
+    }
+    if (!isPro && data.links.some((link) => (link.kind ?? "link") === "gallery")) {
+      return { ok: false as const, error: "pro_required" };
+    }
     const rows = [];
     for (const [index, input] of data.links.entries()) {
       const kind = sanitizeKind(input.kind ?? "link");

@@ -37,6 +37,14 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
           return Response.json({ error: "overlay_not_found" }, { status: 404 });
         }
 
+        const { userHasActivePro } = await import("@/lib/subscription.server");
+        const { clampFreeWidgetConfig, isProOnlyWidgetType } = await import("@/lib/planLimits");
+        const ownerPro = await userHasActivePro(supabase, widget.user_id);
+        if (!ownerPro && isProOnlyWidgetType(widget.type)) {
+          return Response.json({ error: "overlay_not_found" }, { status: 404 });
+        }
+        const config = ownerPro ? widget.config : clampFreeWidgetConfig(widget.type, widget.config);
+
         let subathon = Array.isArray(widget.subathons) ? widget.subathons[0] : widget.subathons;
         let subathonId = widget.subathon_id;
         if (!subathonId) {
@@ -103,14 +111,14 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
             };
           }
         } else if (dynamicGoal) {
-          goal = dynamicGoalSnapshot(type, widget.config, events);
+          goal = dynamicGoalSnapshot(type, config, events);
         }
 
         let tappers = null;
         if (type === "TIKTOK_TAPPERS" && subathonId) {
           const { data } = await supabase.rpc("overlay_tiktok_tappers", {
             p_subathon: subathonId,
-            p_limit: parseTappersConfig(widget.config).topLimit,
+            p_limit: parseTappersConfig(config).topLimit,
           });
           tappers = parseTappers(data);
         }
@@ -136,7 +144,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
 
         return Response.json(
           {
-            widget: { id: widget.id, name: widget.name, type, config: widget.config },
+            widget: { id: widget.id, name: widget.name, type, config },
             frame,
             goal,
             events,

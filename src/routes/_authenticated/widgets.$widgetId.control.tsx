@@ -8,6 +8,7 @@ import { SubathonElementControlPanel } from "@/components/widgets/SubathonElemen
 import { widgetErrorText } from "@/lib/createWidget";
 import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { supabase } from "@/lib/supabase/client";
+import { notePlanError } from "@/components/subscription/upgradePlan";
 import { saveWidgetSettings } from "@/lib/widgets.functions";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
 
@@ -50,6 +51,7 @@ function TimerControlPopout() {
       void queryClient.invalidateQueries({ queryKey: ["widget-control", widgetId] });
     },
     onError: (error: Error) => {
+      if (notePlanError(error)) return;
       const message = widgetErrorText(error, "Could not save");
       if (!isMissingViewerSession(message)) toast.error(message);
     },

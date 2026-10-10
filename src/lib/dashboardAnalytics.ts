@@ -40,6 +40,9 @@ export type DashboardOverview = {
   bits: number;
   series: AnalyticsDayPoint[];
   events: AnalyticsEvent[];
+  locked?: boolean;
+  isPro?: boolean;
+  canExport?: boolean;
 };
 
 function localDayKey(date: Date) {

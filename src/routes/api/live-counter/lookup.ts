@@ -49,6 +49,14 @@ export const Route = createFileRoute("/api/live-counter/lookup")({
 
         const platform = typeof body.platform === "string" ? body.platform : "ALL";
         const username = typeof body.username === "string" ? body.username : "";
+        const compare = (body as { compare?: unknown }).compare === true;
+        if (compare) {
+          const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+          const { userHasActivePro } = await import("@/lib/subscription.server");
+          if (!(await userHasActivePro(supabaseAdmin, userId))) {
+            return Response.json({ error: "pro_required", message: "pro_required" }, { status: 403 });
+          }
+        }
         if (!PLATFORMS.has(platform)) {
           return Response.json({ error: "invalid_platform", message: "Unknown platform" }, { status: 400 });
         }

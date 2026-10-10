@@ -9,13 +9,40 @@ import {
   type MarkVodInfo,
   type StreamMark,
 } from "@/lib/markPoints";
+import { FREE_PLAN_LIMITS } from "@/lib/plans";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
+import { userHasActivePro } from "@/lib/subscription.server";
 
 type ChatSender = {
   username: string;
   platformId: string | null;
   identityBadges: string[];
 };
+
+/** Free accounts can store three bookmarks on the current stream. Pro is unlimited. */
+export async function assertMarkRoom(
+  userId: string,
+  streamStartedAt: string | null,
+): Promise<{ ok: true } | { ok: false; error: "free_limit_bookmarks" }> {
+  if (await userHasActivePro(supabaseAdmin, userId)) return { ok: true };
+  let query = supabaseAdmin
+    .from("stream_marks")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (streamStartedAt) {
+    query = query.eq("stream_started_at", streamStartedAt);
+  } else {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    query = query.is("stream_started_at", null).gte("created_at", start.toISOString());
+  }
+  const { count, error } = await query;
+  if (error) return { ok: false, error: "free_limit_bookmarks" };
+  if ((count ?? 0) >= FREE_PLAN_LIMITS.bookmarksPerStream) {
+    return { ok: false, error: "free_limit_bookmarks" };
+  }
+  return { ok: true };
+}
 
 export type KickStreamClock =
   | { live: true; startedAt: string; uptimeSeconds: number }
@@ -188,6 +215,8 @@ export async function handleMarkCommand(input: {
       const { rememberMarkStaff } = await import("@/lib/markPoints.share.server");
       await rememberMarkStaff(input.userId, author);
     }
+    const room = await assertMarkRoom(input.userId, clock.startedAt);
+    if (!room.ok) return { status: "ignored", reason: room.error, command: "mark" };
     const { error } = await supabaseAdmin.from("stream_marks").insert({
       user_id: input.userId,
       started_at: new Date().toISOString(),

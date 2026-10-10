@@ -9,6 +9,8 @@ import {
   sanitizePlatform,
   sanitizeProfile,
   sanitizeRowSpan,
+  DEFAULT_THEME,
+  linkInBioThemeRequiresPro,
   sanitizeTheme,
   type LinkInBioState,
   type LinkPlatform,
@@ -528,8 +530,12 @@ export async function publicLinkInBioJson(slug: string): Promise<PublicLinkInBio
   if (!theme) return null;
   const kickUsername = connections?.find((row) => row.platform === "KICK")?.username?.trim().toLowerCase() ?? null;
   const twitchUsername = connections?.find((row) => row.platform === "TWITCH")?.username?.trim().toLowerCase() ?? null;
+  const mapped = mapState(profile as ProfileRow, theme as ThemeRow, (links ?? []) as LinkRow[], kickUsername, twitchUsername);
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  const ownerPro = await userHasActivePro(supabaseAdmin, profile.user_id);
   const state = {
-    ...mapState(profile as ProfileRow, theme as ThemeRow, (links ?? []) as LinkRow[], kickUsername, twitchUsername),
+    ...mapped,
+    theme: ownerPro || !linkInBioThemeRequiresPro(mapped.theme) ? mapped.theme : { ...DEFAULT_THEME },
     scheduleShareToken: schedule?.share_token ?? null,
     scheduleTitle: schedule?.title ?? null,
   };

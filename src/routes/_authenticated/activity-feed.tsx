@@ -23,6 +23,9 @@ import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { readReplyMeta } from "@/lib/replyAlert";
 import { isStoredTestRow, readTestDisplay } from "@/lib/testAlert";
+import { requestUpgrade } from "@/components/subscription/upgradePlan";
+import { getPlanActivity } from "@/lib/planData.functions";
+import { FREE_PLAN_LIMITS } from "@/lib/plans";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { groupConsecutiveEvents, type FeedEventGroup } from "@/lib/activityFeed";
@@ -425,31 +428,16 @@ function ActivityFeedPage() {
     enabled: !testMode,
     refetchInterval: scrolled || testMode ? false : 8000,
     queryFn: async () => {
-      const [eventsResult, targetsResult] = await Promise.all([
-        supabase
-          .from("events")
-          .select(
-            "id, platform, event_type, actor_name, amount, currency, quantity, seconds_added, raw_payload, created_at",
-          )
-          .order("created_at", { ascending: false })
-          .limit(200),
-        supabase
-          .from("target_events")
-          .select("id, platform, event_type, actor_name, amount, currency, quantity, created_at")
-          .order("created_at", { ascending: false })
-          .limit(200),
-      ]);
-      if (eventsResult.error) throw eventsResult.error;
-      if (targetsResult.error && targetsResult.error.code !== "PGRST205") throw targetsResult.error;
+      const result = await getPlanActivity();
       const rows = [
-        ...(eventsResult.data ?? []),
-        ...(targetsResult.data ?? []).map((row) => ({
+        ...result.events,
+        ...result.targets.map((row) => ({
           ...row,
           seconds_added: 0,
           raw_payload: {},
         })),
       ];
-      return rows.map((row) => toFeedEvent(row as EventRow));
+      return { rows: rows.map((row) => toFeedEvent(row as EventRow)), locked: result.locked, isPro: result.isPro };
     },
   });
 
@@ -494,7 +482,7 @@ function ActivityFeedPage() {
 
   const events = useMemo(() => {
     const map = new Map<string, FeedEvent>();
-    for (const item of [...live, ...(query.data ?? [])]) map.set(item.id, item);
+    for (const item of [...live, ...(query.data?.rows ?? [])]) map.set(item.id, item);
     const sorted = [...map.values()]
       .filter((event) => isAllowedPlatformEvent(event.platform, event.event_type))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -529,8 +517,11 @@ function ActivityFeedPage() {
         kept[twinIndex] = event;
       }
     }
+    if (!testMode && query.data && !query.data.isPro) {
+      return kept.slice(0, FREE_PLAN_LIMITS.activityEvents);
+    }
     return kept;
-  }, [query.data, live]);
+  }, [query.data, live, testMode]);
 
 
 
@@ -563,6 +554,17 @@ function ActivityFeedPage() {
         />
       }
     >
+      {query.data?.locked ? (
+        <button
+          type="button"
+          onClick={() => requestUpgrade()}
+          className="mb-4 w-full rounded-2xl border border-primary/25 px-4 py-3 text-start text-sm"
+        >
+          {t("plan.channelLocked")}
+        </button>
+      ) : query.data && !query.data.isPro ? (
+        <p className="mb-4 text-[0.75rem] text-muted-foreground">{t("activity.freeLimit")}</p>
+      ) : null}
       <div className="mb-4 flex flex-wrap items-center gap-3">
 
         <div ref={filterRef} className="relative flex items-center gap-2">

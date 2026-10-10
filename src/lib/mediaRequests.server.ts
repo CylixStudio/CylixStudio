@@ -365,6 +365,10 @@ export async function ingestKickMediaRedemption(input: { messageId: string; body
   const { data: connection } = await supabaseAdmin.from("platform_connections").select("user_id")
     .eq("platform", "KICK").eq("platform_user_id", broadcasterId).eq("is_active", true).maybeSingle();
   if (!connection) return { status: "ignored" as const, reason: "kick_connection_not_found" };
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  if (!(await userHasActivePro(supabaseAdmin, connection.user_id))) {
+    return { status: "ignored" as const, reason: "pro_required" };
+  }
   const { data: settings } = await supabaseAdmin.from("media_request_settings").select(
     "user_id,kick_reward_id,request_mode,require_approval,keyword_blacklist,user_blacklist,max_duration_seconds,min_view_count",
   )
@@ -453,6 +457,8 @@ export async function ingestChatMediaRequest(input: {
   userId: string; messageId: string; username: string; text: string;
 }): Promise<{ ok: true; status: "pending" | "queued"; title: string } | { ok: false; reason: string }> {
   const { userId, messageId, username, text } = input;
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  if (!(await userHasActivePro(supabaseAdmin, userId))) return { ok: false, reason: "pro_required" };
   const { data: settings } = await supabaseAdmin.from("media_request_settings").select(
     "user_id,kick_reward_id,request_mode,require_approval,keyword_blacklist,user_blacklist,max_duration_seconds,min_view_count",
   ).eq("user_id", userId).maybeSingle();

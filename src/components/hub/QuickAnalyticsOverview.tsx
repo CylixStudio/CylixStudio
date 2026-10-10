@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
+import { Lock } from "lucide-react";
 
 import {
   MetricAnalyticsModal,
@@ -7,7 +8,9 @@ import {
 } from "@/components/activity/MetricAnalyticsModal";
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
 import { useDashboardAnalytics } from "@/hooks/useDashboardAnalytics";
+import { exportPlanAnalyticsCsv } from "@/lib/planData.functions";
 import {
   customRange,
   isoDay,
@@ -100,6 +103,8 @@ export function QuickAnalyticsOverview({
   const events = query.data?.events ?? [];
   const demo = query.data?.source === "demo";
   const loading = query.isLoading && !query.data;
+  const isPro = Boolean(query.data?.isPro) || demo;
+  const locked = Boolean(query.data?.locked);
 
   const chatLine = query.data?.chatTracked
     ? `${formatCount(query.data.messages, lang)} ${t("dash.chatMessages")}${
@@ -123,11 +128,43 @@ export function QuickAnalyticsOverview({
         )}
         <p className={`text-[0.72rem] text-muted-foreground ${showHeading ? "mt-1" : ""}`}>
           {demo ? <span className="text-muted-foreground/70">{t("dash.demo")} · </span> : null}
-          {chatLine}
+          {locked ? t("plan.channelLocked") : isPro ? chatLine : t("dash.freeRange")}
         </p>
+        {query.data?.canExport && !locked ? (
+          <button
+            type="button"
+            className="mt-3 rounded-full border border-white/10 px-3 py-1 text-[0.72rem] text-foreground hover:bg-white/5"
+            onClick={() => {
+              void exportPlanAnalyticsCsv().then((result) => {
+                if (!result.ok) {
+                  notePlanError(result.error);
+                  return;
+                }
+                const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = "cylix-analytics.csv";
+                anchor.click();
+                URL.revokeObjectURL(url);
+              });
+            }}
+          >
+            {t("dash.exportCsv")}
+          </button>
+        ) : null}
       </div>
 
-      {query.isError ? (
+      {locked ? (
+        <button
+          type="button"
+          onClick={() => requestUpgrade()}
+          className="flex w-full items-center gap-3 rounded-2xl border border-primary/25 bg-white/[0.02] p-4 text-start"
+        >
+          <Lock className="size-4 text-primary" aria-hidden />
+          <span className="text-sm">{t("plan.channelLocked")}</span>
+        </button>
+      ) : query.isError ? (
         <p className="py-8 text-start text-sm text-muted-foreground">{t("dash.loadError")}</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -138,6 +175,7 @@ export function QuickAnalyticsOverview({
               events={events}
               demo={demo}
               loading={loading}
+              isPro={isPro}
               chartHeight={chartHeight}
               onOpen={() => setOpenMetric(key)}
             />
@@ -165,6 +203,7 @@ function MetricChartCard({
   events,
   demo,
   loading,
+  isPro,
   chartHeight,
   onOpen,
 }: {
@@ -172,6 +211,7 @@ function MetricChartCard({
   events: AnalyticsEvent[];
   demo: boolean;
   loading: boolean;
+  isPro: boolean;
   chartHeight: number;
   onOpen: () => void;
 }) {
@@ -239,7 +279,7 @@ function MetricChartCard({
 
         <div className="flex flex-col items-end gap-2">
           <div role="group" aria-label={t("dash.analyticsHint")} className="flex flex-wrap items-center gap-1">
-            {(["7", "30", "custom"] as const).map((id) => {
+            {(isPro ? (["7", "30", "custom"] as const) : (["7"] as const)).map((id) => {
               const on = preset === id;
               return (
                 <button

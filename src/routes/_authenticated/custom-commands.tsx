@@ -40,6 +40,7 @@ import {
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
 import { FREE_PLAN_LIMITS } from "@/lib/plans";
 import {
   COMMAND_ROLES,
@@ -430,6 +431,7 @@ function CustomCommandsPage() {
     },
     onError: (error: Error) => {
       const code = error.message;
+      if (notePlanError(error)) return;
       toast.error(
         code === "name_required"
           ? c.errName
@@ -466,7 +468,10 @@ function CustomCommandsPage() {
       setDeleteId(null);
       void invalidate();
     },
-    onError: (error: Error) => toast.error(error.message || c.errSave),
+    onError: (error: Error) => {
+      if (notePlanError(error)) return;
+      toast.error(error.message || c.errSave);
+    },
   });
 
   const visibleCommands = useMemo(() => {
@@ -505,13 +510,8 @@ function CustomCommandsPage() {
       void invalidateTimers();
     },
     onError: (error: Error) => {
-      toast.error(
-        error.message === "message_required"
-          ? c.errTimerMessage
-          : error.message === "free_limit_timers"
-            ? c.errFreeTimers
-            : c.errTimerSave,
-      );
+      if (notePlanError(error)) return;
+      toast.error(error.message === "message_required" ? c.errTimerMessage : c.errTimerSave);
     },
   });
 
@@ -567,14 +567,14 @@ function CustomCommandsPage() {
 
   const openCreate = () => {
     if (subscription.isSuccess && !isPro && commands.length >= FREE_PLAN_LIMITS.customCommands) {
-      toast.error(c.errFreeCommands);
+      requestUpgrade();
       return;
     }
     setEditor(emptyCommandDraft());
   };
   const openAddTimer = () => {
     if (subscription.isSuccess && !isPro && timerRows.length >= FREE_PLAN_LIMITS.messageTimers) {
-      toast.error(c.errFreeTimers);
+      requestUpgrade();
       return;
     }
     setTimerEditor(emptyTimerDraft());

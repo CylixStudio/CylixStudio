@@ -466,6 +466,27 @@ export const DEFAULT_THEME: LinkInBioTheme = {
   countdownEndsAt: null,
 };
 
+/** Free pages may use the paper or dark preset only. Custom fonts, motion, and layouts are Pro. */
+export function linkInBioThemeRequiresPro(theme: LinkInBioTheme): boolean {
+  const preset = BACKGROUND_PRESETS.find(
+    (entry) => entry.paletteBg.toLowerCase() === theme.paletteBg.toLowerCase(),
+  );
+  if (!preset) return true;
+  if (theme.paletteFg.toLowerCase() !== preset.paletteFg.toLowerCase()) return true;
+  if (theme.paletteAccent.toLowerCase() !== preset.paletteAccent.toLowerCase()) return true;
+  if (theme.paletteMuted.toLowerCase() !== preset.paletteMuted.toLowerCase()) return true;
+  if (theme.fontFamily !== DEFAULT_THEME.fontFamily) return true;
+  if (theme.fontCustomName.trim() || theme.fontCustomHref.trim()) return true;
+  if (theme.layout !== "bento" && theme.layout !== "list") return true;
+  if (theme.ambientEnabled || theme.ambientPreset !== "none") return true;
+  if (theme.countdownEnabled || theme.widgetBannerUrl.trim()) return true;
+  if (theme.bentoColorMode !== "brand" && theme.bentoColorMode !== "mono") return true;
+  if (theme.glowStrength !== DEFAULT_THEME.glowStrength) return true;
+  if (theme.glassIntensity !== DEFAULT_THEME.glassIntensity) return true;
+  if (theme.surfaceStyle !== DEFAULT_THEME.surfaceStyle) return true;
+  return false;
+}
+
 export const DEFAULT_PROFILE: LinkInBioProfile = {
   slug: "",
   displayName: "",

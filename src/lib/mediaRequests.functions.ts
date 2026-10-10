@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/lib/supabase/auth-middleware";
+import { userHasActivePro } from "@/lib/subscription.server";
 
 type RequestMode = "AUTO" | "MANUAL" | "PAUSED";
 type SettingsInput = {
@@ -105,6 +106,9 @@ export const saveMediaRequestSettings = createServerFn({ method: "POST" })
     volume: Math.max(0, Math.min(100, Math.round(input.volume))),
   }))
   .handler(async ({ data, context }) => {
+    if (!(await userHasActivePro(context.supabase, context.userId))) {
+      return { ok: false as const, error: "pro_required" };
+    }
     const { data: row, error } = await context.supabase
       .from("media_request_settings")
       .upsert(
@@ -143,6 +147,7 @@ export const createKickMediaRewardFn = createServerFn({ method: "POST" })
     cost: Math.max(1, Math.min(1_000_000, Math.round(Number(input.cost ?? 5000)))),
   }))
   .handler(async ({ data, context }) => {
+    if (!(await userHasActivePro(context.supabase, context.userId))) return { error: "pro_required" };
     const { createKickMediaReward } = await import("@/lib/mediaRequests.server");
     const result = await createKickMediaReward(context.userId, data);
     if ("reward" in result) {
@@ -174,6 +179,7 @@ export const mediaRequestAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: z.infer<typeof MediaActionSchema>) => MediaActionSchema.parse(input))
   .handler(async ({ data, context }) => {
+    if (!(await userHasActivePro(context.supabase, context.userId))) throw new Error("pro_required");
     const admin = (await import("@/lib/supabase/client.server")).supabaseAdmin;
     const { acceptKickRedemption, rejectKickRedemption, advanceQueue, startIfIdle } = await import(
       "@/lib/mediaRequests.server"
@@ -280,6 +286,9 @@ export const addManualMediaRequest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { url: string }) => ({ url: String(input.url ?? "").trim().slice(0, 500) }))
   .handler(async ({ data, context }) => {
+    if (!(await userHasActivePro(context.supabase, context.userId))) {
+      return { ok: false as const, error: "pro_required" };
+    }
     const { parseMediaUrl, fetchMediaMetadata } = await import("@/lib/mediaRequests.server");
     const parsed = parseMediaUrl(data.url);
     if (!parsed) return { ok: false as const, error: "invalid_media_url" };
@@ -366,6 +375,9 @@ export const testKickMediaRedemption = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { url: string }) => ({ url: String(input.url ?? "").trim().slice(0, 500) }))
   .handler(async ({ data, context }) => {
+    if (!(await userHasActivePro(context.supabase, context.userId))) {
+      return { ok: false as const, error: "pro_required" };
+    }
     const admin = (await import("@/lib/supabase/client.server")).supabaseAdmin;
     const [{ data: settings }, { data: connection }] = await Promise.all([
       admin

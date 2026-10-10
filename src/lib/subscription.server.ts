@@ -16,3 +16,8 @@ export async function userHasActivePro(supabase: Client, userId: string): Promis
   if (data.subscription_status !== "active" || !data.expires_at) return false;
   return new Date(data.expires_at).getTime() > Date.now();
 }
+
+/** Throws `pro_required` when the account has no active paid Pro subscription. */
+export async function assertActivePro(supabase: Client, userId: string): Promise<void> {
+  if (!(await userHasActivePro(supabase, userId))) throw new Error("pro_required");
+}

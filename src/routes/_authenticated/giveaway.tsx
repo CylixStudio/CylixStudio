@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { GiveawayDisplay, type DrawPhase } from "@/components/widgets/GiveawayDisplay";
 import { PlatformIcon } from "@/components/widgets/PlatformIcon";
 import { ProFeatureGate } from "@/components/subscription/ProLockedScreen";
+import { notePlanError } from "@/components/subscription/upgradePlan";
 import { useLiveChat } from "@/hooks/useLiveChat";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
@@ -239,9 +240,12 @@ function GiveawayPage() {
       if (result.ok) {
         toast.success(t("giveaway.saved"));
         void queryClient.invalidateQueries({ queryKey: ["giveaway"] });
-      } else toast.error(result.error);
+      } else if (!notePlanError(result.error)) toast.error(result.error);
     },
-    onError: (error: Error) => toast.error(error.message || "Could not save giveaway"),
+    onError: (error: Error) => {
+      if (notePlanError(error)) return;
+      toast.error(error.message || "Could not save giveaway");
+    },
   });
 
   const update = (patch: Partial<GiveawaySettings>) => {
@@ -262,7 +266,10 @@ function GiveawayPage() {
       toast.success(t("giveaway.cleared"));
       void queryClient.invalidateQueries({ queryKey: ["giveaway"] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not clear participants"),
+    onError: (error: Error) => {
+      if (notePlanError(error)) return;
+      toast.error(error.message || "Could not clear participants");
+    },
   });
 
   const runDraw = async () => {

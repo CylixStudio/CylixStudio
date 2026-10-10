@@ -72,11 +72,15 @@ export const spinPublicWheel = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/lib/supabase/client.server");
     const { data: widget } = await supabaseAdmin
       .from("widgets")
-      .select("id, type, config, is_enabled")
+      .select("id, type, config, is_enabled, user_id")
       .eq("public_token", data.publicToken)
       .maybeSingle();
     if (!widget || !widget.is_enabled || widget.type !== "SPIN_WHEEL") {
       return { ok: false as const, message: "overlay_not_found" };
+    }
+    const { userHasActivePro } = await import("@/lib/subscription.server");
+    if (!(await userHasActivePro(supabaseAdmin, widget.user_id))) {
+      return { ok: false as const, message: "pro_required" };
     }
     const prizes = parseSpinConfig(widget.config).prizes;
     const result = pickWeightedPrize(prizes);

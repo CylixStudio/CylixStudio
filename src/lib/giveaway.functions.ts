@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/lib/supabase/auth-middleware";
+import { assertActivePro, userHasActivePro } from "@/lib/subscription.server";
 import type { GiveawayPlatform } from "@/lib/giveaway.server";
 
 export type GiveawaySettings = {
@@ -101,6 +102,9 @@ export const saveGiveawaySettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: GiveawaySettings) => GiveawaySettingsSchema.parse(input))
   .handler(async ({ data, context }) => {
+    if (!(await userHasActivePro(context.supabase, context.userId))) {
+      return { ok: false as const, error: "pro_required" };
+    }
     const { error } = await context.supabase.from("giveaway_settings").upsert(
       {
         user_id: context.userId,
@@ -124,6 +128,7 @@ export const saveGiveawayLayout = createServerFn({ method: "POST" })
     layout: input?.layout === "direct" || input?.layout === "bold" ? input.layout : "glass",
   }))
   .handler(async ({ data, context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const { readGiveawayDraw } = await import("@/lib/giveaway.server");
     const { data: row } = await context.supabase
       .from("giveaway_settings")
@@ -153,6 +158,7 @@ export const clearGiveawayParticipants = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
+    await assertActivePro(supabase, userId);
     const { error } = await supabase.from("giveaway_participants").delete().eq("user_id", userId);
     if (error) return { ok: false as const, error: error.message };
     const { readGiveawayDraw } = await import("@/lib/giveaway.server");
@@ -188,6 +194,7 @@ export const pickGiveawayWinner = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
+    await assertActivePro(supabase, userId);
     const { data: participants } = await supabase
       .from("giveaway_participants")
       .select("platform, username, entries")
@@ -280,6 +287,7 @@ export const announceGiveawayWinner = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { username: string; keyword: string; claimSeconds: number }) => input)
   .handler(async ({ data, context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const { sendKickChatMessage } = await import("@/lib/kickChat.server");
     const message = `🎉 مبروك @${data.username}! أعد كتابة الكلمة المفتاحية (${data.keyword}) في الشات خلال ${data.claimSeconds} ثانية لتأكيد استلام الجائزة!`;
     const sent = await sendKickChatMessage(context.userId, "", message);
@@ -311,6 +319,7 @@ export const publishGiveawayDraw = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: GiveawayDrawState) => input)
   .handler(async ({ data, context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const { readGiveawayDraw } = await import("@/lib/giveaway.server");
     const { data: row } = await context.supabase
       .from("giveaway_settings")
@@ -342,6 +351,7 @@ export const publishGiveawayDraw = createServerFn({ method: "POST" })
 export const getGiveawayOverlayToken = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const { getRequest } = await import("@tanstack/react-start/server");
     const { publicSiteUrl } = await import("@/lib/siteUrl.server");
     const origin = publicSiteUrl(getRequest());

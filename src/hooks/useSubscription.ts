@@ -39,8 +39,10 @@ export function useSubscription(userId: string) {
 
       const expiresAt = data?.expires_at ?? null;
       const expiryMs = expiresAt ? new Date(expiresAt).getTime() : 0;
-      const isActive = data?.subscription_status === "active" && expiryMs > Date.now();
-      const daysLeft = isActive ? Math.max(0, Math.ceil((expiryMs - Date.now()) / DAY)) : 0;
+      const lifetimeActive = Boolean(data?.is_lifetime) && data?.subscription_status === "active";
+      const timedActive = data?.subscription_status === "active" && expiryMs > Date.now();
+      const isActive = lifetimeActive || timedActive;
+      const daysLeft = timedActive ? Math.max(0, Math.ceil((expiryMs - Date.now()) / DAY)) : lifetimeActive ? LIFETIME_DAYS : 0;
 
       return {
         status: isActive ? "active" : data ? "expired" : "inactive",

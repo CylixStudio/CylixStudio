@@ -181,27 +181,44 @@ export function prepareProCheckout(
   return payload;
 }
 
-/** Soft caps for Free accounts — enforced server-side on create. */
+/** Soft caps for Free accounts — enforced server-side on create and query. */
 export const FREE_PLAN_LIMITS = {
   customCommands: 10,
   messageTimers: 3,
+  analyticsDays: 7,
+  activityEvents: 10,
+  bookmarksPerStream: 3,
+  loyaltyLeaderboard: 50,
+  linkInBioLinks: 8,
+  eventLabels: 3,
 } as const;
 
-/** Dashboard hub tool ids that require an active Pro subscription. */
+/**
+ * Dashboard hub tool ids that require an active Pro subscription.
+ * Follower and subscriber goals stay on Free.
+ */
 export const PRO_ONLY_HUB_TOOL_IDS = new Set([
+  "subathon-timer",
   "emote-rain",
-  "giveaway",
+  "wheel-of-fortune",
   "kick-media-requests",
+  "giveaway",
+  "donation-goal",
+  "kicks-goal",
   "stream-events-schedule",
 ]);
 
-/** Widget `type` values that require Pro (direct /widgets/$id access). */
+/** Widget `type` values that require Pro (create, editor, and public overlay). */
 export const PRO_ONLY_WIDGET_TYPES = new Set([
+  "SUBATHON_TIMER",
   "EMOTE_RAIN",
+  "SPIN_WHEEL",
+  "DONATION_GOAL",
+  "KICKS_GOAL",
   "STREAM_EVENTS_SCHEDULE",
 ] as const);
 
-/** Full feature matrix — source of truth for cards + detailed table. */
+/** Full feature matrix — source of truth for cards + detailed table. String cells are i18n keys. */
 export const PLAN_FEATURES: PlanFeatureRow[] = [
   {
     id: "platforms",
@@ -213,15 +230,61 @@ export const PLAN_FEATURES: PlanFeatureRow[] = [
   {
     id: "commands",
     labelKey: "gateway.feature.commands",
-    free: "Up to 10",
-    pro: "Unlimited",
+    free: "gateway.value.commandsFree",
+    pro: "gateway.value.unlimited",
     card: "both",
   },
   {
     id: "timers",
     labelKey: "gateway.feature.timers",
-    free: "Up to 3",
-    pro: "Unlimited",
+    free: "gateway.value.timersFree",
+    pro: "gateway.value.unlimited",
+    card: "both",
+  },
+  {
+    id: "analytics",
+    labelKey: "gateway.feature.analytics",
+    free: "gateway.value.analyticsFree",
+    pro: "gateway.value.analyticsPro",
+    card: "both",
+  },
+  {
+    id: "activityFeed",
+    labelKey: "gateway.feature.activityFeed",
+    free: "gateway.value.activityFree",
+    pro: "gateway.value.unlimited",
+    card: "both",
+  },
+  {
+    id: "bookmarks",
+    labelKey: "gateway.feature.bookmarks",
+    free: "gateway.value.marksFree",
+    pro: "gateway.value.unlimited",
+  },
+  {
+    id: "schedule",
+    labelKey: "gateway.feature.schedule",
+    free: "gateway.value.scheduleFree",
+    pro: "gateway.value.schedulePro",
+    card: "both",
+  },
+  {
+    id: "loyalty",
+    labelKey: "gateway.feature.loyalty",
+    free: "gateway.value.loyaltyFree",
+    pro: "gateway.value.unlimited",
+  },
+  {
+    id: "counter",
+    labelKey: "gateway.feature.counterVs",
+    free: "gateway.value.counterFree",
+    pro: "gateway.value.counterPro",
+  },
+  {
+    id: "themes",
+    labelKey: "gateway.feature.themes",
+    free: "gateway.value.themesFree",
+    pro: "gateway.value.themesPro",
     card: "both",
   },
   {
@@ -232,8 +295,8 @@ export const PLAN_FEATURES: PlanFeatureRow[] = [
     card: "both",
   },
   {
-    id: "advancedWidgets",
-    labelKey: "gateway.feature.advancedWidgets",
+    id: "subathon",
+    labelKey: "gateway.feature.subathon",
     free: false,
     pro: true,
     card: "pro-highlight",
@@ -246,11 +309,11 @@ export const PLAN_FEATURES: PlanFeatureRow[] = [
     card: "pro-highlight",
   },
   {
-    id: "giveaways",
-    labelKey: "gateway.feature.giveaways",
+    id: "wheel",
+    labelKey: "gateway.feature.wheel",
     free: false,
     pro: true,
-    card: "free-missing",
+    card: "pro-highlight",
   },
   {
     id: "mediaRequests",
@@ -260,25 +323,29 @@ export const PLAN_FEATURES: PlanFeatureRow[] = [
     card: "free-missing",
   },
   {
+    id: "giveaways",
+    labelKey: "gateway.feature.giveaways",
+    free: false,
+    pro: true,
+    card: "free-missing",
+  },
+  {
+    id: "donationGoal",
+    labelKey: "gateway.feature.donationGoal",
+    free: false,
+    pro: true,
+  },
+  {
+    id: "kicksGoal",
+    labelKey: "gateway.feature.kicksGoal",
+    free: false,
+    pro: true,
+  },
+  {
     id: "streamEvents",
     labelKey: "gateway.feature.streamEvents",
     free: false,
     pro: true,
-    card: "pro-highlight",
-  },
-  {
-    id: "linkInBio",
-    labelKey: "gateway.feature.linkInBio",
-    free: false,
-    pro: true,
-    card: "free-missing",
-  },
-  {
-    id: "analytics",
-    labelKey: "gateway.feature.analytics",
-    free: false,
-    pro: true,
-    card: "free-missing",
   },
   {
     id: "export",
@@ -288,26 +355,8 @@ export const PLAN_FEATURES: PlanFeatureRow[] = [
     card: "pro-highlight",
   },
   {
-    id: "overlays",
-    labelKey: "gateway.feature.overlays",
-    free: true,
-    pro: true,
-  },
-  {
-    id: "activityFeed",
-    labelKey: "gateway.feature.activityFeed",
-    free: true,
-    pro: true,
-  },
-  {
-    id: "schedule",
-    labelKey: "gateway.feature.schedule",
-    free: true,
-    pro: true,
-  },
-  {
-    id: "priority",
-    labelKey: "gateway.feature.priority",
+    id: "mods",
+    labelKey: "gateway.feature.mods",
     free: false,
     pro: true,
   },

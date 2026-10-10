@@ -131,6 +131,7 @@ import type { WidgetType } from "@/lib/widgets";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { getGiveawayState } from "@/lib/giveaway.functions";
 import { isTestMode } from "@/lib/testMode";
+import { notePlanError } from "@/components/subscription/upgradePlan";
 import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -524,7 +525,7 @@ function HomePage() {
       await openWidget(widget.id);
     } catch (err) {
       console.error("[dashboard] open tool failed", { toolId: tool.id, err });
-      setError(widgetErrorText(err, "Could not open this tool."));
+      if (!notePlanError(err)) setError(widgetErrorText(err, "Could not open this tool."));
     } finally {
       setBusy(null);
     }

@@ -9,6 +9,7 @@ import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { DarkSelect } from "@/components/ui/dark-select";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useLanguage } from "@/lib/i18n";
+import { getPlanLeaderboard } from "@/lib/planData.functions";
 import { supabase } from "@/lib/supabase/client";
 import { SIGNED_OUT_ERROR, isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
@@ -67,12 +68,8 @@ function LoyaltyPage() {
     queryKey: ["loyalty-members", user?.id],
     enabled: !guest && Boolean(user?.id),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("loyalty_members")
-        .select("id, display_name, level, points, watch_seconds")
-        .order("points", { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as Member[];
+      const result = await getPlanLeaderboard();
+      return { isPro: result.isPro, members: result.members as Member[] };
     },
   });
 
@@ -137,16 +134,21 @@ function LoyaltyPage() {
       ) : blocked ? (
         <SessionAwareError error={SIGNED_OUT_ERROR} signedOutLabel={t("loyalty.signedOut")} />
       ) : tab === "ranking" ? (
+        <>
+        {members.data && !members.data.isPro ? (
+          <p className="mb-3 text-[0.75rem] text-muted-foreground">{t("loyalty.freeLimit")}</p>
+        ) : null}
         <RankingTab
-          rows={members.data ?? []}
+          rows={members.data?.members ?? []}
           loading={members.isLoading}
           error={members.error}
           onChanged={() => void queryClient.invalidateQueries({ queryKey: ["loyalty-members", user?.id] })}
         />
+        </>
       ) : (
         <SalesTab
           rows={sales.data ?? []}
-          members={members.data ?? []}
+          members={members.data?.members ?? []}
           loading={sales.isLoading || members.isLoading}
           error={sales.error}
         />

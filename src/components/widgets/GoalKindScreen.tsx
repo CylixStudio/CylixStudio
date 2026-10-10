@@ -7,10 +7,11 @@ import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { useWidgets } from "@/hooks/useWidgets";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { notePlanError } from "@/components/subscription/upgradePlan";
 import { createWidget, widgetErrorText } from "@/lib/createWidget";
+import { saveWidgetSettings } from "@/lib/widgets.functions";
 import { useLanguage } from "@/lib/i18n";
 import type { StandaloneTool } from "@/lib/standaloneTools";
-import { supabase } from "@/lib/supabase/client";
 import { SIGNED_OUT_ERROR } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
 import { isSplitGoalKind, parseSplitGoalConfig, type SplitGoalKind } from "@/lib/widgets";
@@ -100,16 +101,13 @@ function GoalKindForm({
         });
         widgetId = created.id;
       }
-      const { error: writeError } = await supabase
-        .from("widgets")
-        .update({ name: title.trim() || spec.name, config: config as never })
-        .eq("id", widgetId)
-        .eq("user_id", userId);
-      if (writeError) throw writeError;
+      await saveWidgetSettings({
+        data: { widgetId, name: title.trim() || spec.name, config },
+      });
       await queryClient.invalidateQueries({ queryKey: ["widgets"] });
       await navigate({ to: "/widgets" });
     } catch (err) {
-      setError(widgetErrorText(err, t("goal.saveFailed")));
+      if (!notePlanError(err)) setError(widgetErrorText(err, t("goal.saveFailed")));
     } finally {
       setSaving(false);
     }

@@ -46,6 +46,8 @@ export async function loadPublicSchedule(token: string): Promise<ScheduleState |
     .eq("share_token", token)
     .maybeSingle();
   if (!settings) return null;
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  const ownerPro = await userHasActivePro(supabaseAdmin, settings.user_id);
   const { data: slots } = await supabaseAdmin
     .from("stream_schedule_slots")
     .select(
@@ -60,9 +62,12 @@ export async function loadPublicSchedule(token: string): Promise<ScheduleState |
       shareToken: settings.share_token,
       timezone: settings.timezone,
       title: settings.title,
-      reminderNote: settings.reminder_note,
+      reminderNote: ownerPro ? settings.reminder_note : "",
     },
-    slots: (slots ?? []).map(mapSlot),
+    slots: (slots ?? []).map((row) => {
+      const slot = mapSlot(row);
+      return ownerPro ? slot : { ...slot, coverUrl: "" };
+    }),
   };
 }
 

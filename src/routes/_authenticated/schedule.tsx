@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 
+import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
 import { MonthCalendar } from "@/components/schedule/MonthCalendar";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -25,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useLanguage } from "@/lib/i18n";
 import {
@@ -130,6 +132,8 @@ const ZONES = [
 
 function SchedulePage() {
   const { user } = Route.useRouteContext();
+  const subscription = useSubscription(user.id);
+  const isPro = Boolean(subscription.data?.isActive);
   const { data } = useWorkspace(user.id);
   const { t, lang } = useLanguage();
   const c = buildScheduleCopy(t);
@@ -183,7 +187,10 @@ function SchedulePage() {
       toast.success(c.saved);
       void invalidate();
     },
-    onError: () => toast.error(c.errSave),
+    onError: (error: Error) => {
+      if (notePlanError(error)) return;
+      toast.error(c.errSave);
+    },
   });
 
   const saveMutation = useMutation({
@@ -222,7 +229,10 @@ function SchedulePage() {
       setEditor(null);
       void invalidate();
     },
-    onError: () => toast.error(c.errSave),
+    onError: (error: Error) => {
+      if (notePlanError(error)) return;
+      toast.error(c.errSave);
+    },
   });
 
   const openCreate = (iso?: string) => {
@@ -269,7 +279,13 @@ function SchedulePage() {
               <input
                 className={field}
                 value={reminderNote}
-                onChange={(e) => setReminderNote(e.target.value)}
+                onChange={(e) => {
+                  if (!isPro && e.target.value.trim()) {
+                    requestUpgrade();
+                    return;
+                  }
+                  setReminderNote(e.target.value);
+                }}
                 placeholder={c.reminderPlaceholder}
                 maxLength={280}
                 dir="auto"
@@ -455,6 +471,10 @@ function SchedulePage() {
                       const file = event.target.files?.[0];
                       event.target.value = "";
                       if (!file) return;
+                      if (!isPro) {
+                        requestUpgrade();
+                        return;
+                      }
                       void compressCoverFile(file).then((url) => {
                         if (!url) {
                           toast.error(c.errCover);

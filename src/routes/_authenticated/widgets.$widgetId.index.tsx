@@ -20,6 +20,7 @@ import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
 import { supabase } from "@/lib/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { syncGoalFollowers } from "@/lib/goals.functions";
+import { notePlanError } from "@/components/subscription/upgradePlan";
 import { saveWidgetSettings } from "@/lib/widgets.functions";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -216,6 +217,7 @@ function WidgetBuilder() {
       });
     },
     onError: (err: Error) => {
+      if (notePlanError(err)) return;
       const message = widgetErrorText(err, "Could not save this widget.");
       setError(message);
       if (!isMissingViewerSession(message)) toast.error(message);

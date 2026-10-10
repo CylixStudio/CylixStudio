@@ -82,9 +82,9 @@ const FREE_FEATURES: Bullet[] = [
   { key: "gateway.free.bullet.widgets", tipKey: "gateway.tip.widgets", included: true, preview: "widgets" },
   { key: "gateway.free.bullet.giveaways", tipKey: "gateway.tip.giveaways", included: false, preview: "giveaways" },
   { key: "gateway.free.bullet.mediaRequests", tipKey: "gateway.tip.mediaRequests", included: false, preview: "mediaRequests" },
-  { key: "gateway.free.bullet.streamEvents", tipKey: "gateway.tip.streamEvents", included: false, preview: "streamEvents" },
-  { key: "gateway.free.bullet.linkInBio", tipKey: "gateway.tip.linkInBio", included: false, preview: "linkInBio" },
-  { key: "gateway.free.bullet.analytics", tipKey: "gateway.tip.analytics", included: false, preview: "analytics" },
+  { key: "gateway.free.bullet.streamEvents", tipKey: "gateway.tip.streamEvents", included: true, preview: "streamEvents" },
+  { key: "gateway.free.bullet.linkInBio", tipKey: "gateway.tip.linkInBio", included: true, preview: "linkInBio" },
+  { key: "gateway.free.bullet.analytics", tipKey: "gateway.tip.analytics", included: true, preview: "analytics" },
 ];
 
 const PRO_FEATURES: Bullet[] = [

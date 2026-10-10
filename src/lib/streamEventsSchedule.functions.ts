@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/lib/supabase/auth-middleware";
+import { assertActivePro } from "@/lib/subscription.server";
 import {
   normalizeScheduleEvents,
   previousBonusDelta,
@@ -75,6 +76,7 @@ export const startStreamEventsClock = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { widgetId: string; startedAt?: string | null }) => input)
   .handler(async ({ data, context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const widget = await loadOwnedScheduleWidget(data.widgetId, context.userId);
     const startedAt =
       typeof data.startedAt === "string" && data.startedAt.trim()
@@ -91,6 +93,7 @@ export const stopStreamEventsClock = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { widgetId: string }) => input)
   .handler(async ({ data, context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const widget = await loadOwnedScheduleWidget(data.widgetId, context.userId);
     return persistRuntime(widget, {
       startedAt: null,
@@ -103,6 +106,7 @@ export const skipStreamEvent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { widgetId: string; direction: "next" | "previous" }) => input)
   .handler(async ({ data, context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const widget = await loadOwnedScheduleWidget(data.widgetId, context.userId);
     const config = parseStreamEventsScheduleConfig(widget.config);
     const runtime = parseStreamEventsScheduleState(widget.state);
@@ -130,6 +134,7 @@ export const saveStreamEventsList = createServerFn({ method: "POST" })
     }) => input,
   )
   .handler(async ({ data, context }) => {
+    await assertActivePro(context.supabase, context.userId);
     const widget = await loadOwnedScheduleWidget(data.widgetId, context.userId);
     const runtime = parseStreamEventsScheduleState(widget.state);
     const events = normalizeScheduleEvents(data.events);

@@ -9,6 +9,10 @@ export const Route = createFileRoute("/api/public/media-request/$token/advance")
         const { data: settings } = await supabaseAdmin.from("media_request_settings")
           .select("user_id").eq("overlay_token", params.token).maybeSingle();
         if (!settings) return Response.json({ error: "overlay_not_found" }, { status: 404 });
+        const { userHasActivePro } = await import("@/lib/subscription.server");
+        if (!(await userHasActivePro(supabaseAdmin, settings.user_id))) {
+          return Response.json({ error: "overlay_not_found" }, { status: 404 });
+        }
         let finishedId: string | null = null;
         try {
           const body = await request.json() as { requestId?: string };

@@ -1,9 +1,9 @@
 import { supabase } from "@/lib/supabase/client";
+import { createOwnedWidget } from "@/lib/widgets.functions";
 import { SIGNED_OUT_ERROR, isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { isTestMode } from "@/lib/testMode";
 import { DEFAULT_OVERLAY_THEME } from "@/lib/overlayTheme";
 import { goalTypePreset, type GoalTypeId } from "@/lib/goalTypes";
-import { mintWidgetPublicToken } from "@/lib/widgetOverlayUrl";
 import {
   DEFAULT_STYLE,
   WIDGET_LABEL,
@@ -213,21 +213,14 @@ export async function createWidget(args: {
     if (!subathon) subathonId = null;
   }
 
-  const { data: widget, error } = await supabase
-    .from("widgets")
-    .insert({
-      user_id: args.userId,
-      subathon_id: subathonId,
+  const widget = await createOwnedWidget({
+    data: {
       type: args.type,
       name: args.name?.trim() || WIDGET_LABEL[args.type],
-      config: defaultConfig(args.type, args.goalType) as never,
-      // Assigned once. Later settings and token refreshes must not replace it.
-      public_token: mintWidgetPublicToken(),
-    })
-    .select("id, public_token")
-    .single();
-  if (error) throw error;
-  if (!widget?.id) throw new Error("Widget was created but no id was returned.");
+      subathonId,
+      config: defaultConfig(args.type, args.goalType),
+    },
+  });
 
   if (args.type === "GOAL_BAR") {
     const { error: goalError } = await supabase.from("goals").insert({

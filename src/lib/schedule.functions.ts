@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/lib/supabase/auth-middleware";
+import { userHasActivePro } from "@/lib/subscription.server";
 import type { Database } from "@/lib/supabase/types";
 import {
   clampDuration,
@@ -143,6 +144,8 @@ export const saveScheduleSettings = createServerFn({ method: "POST" })
   .inputValidator((input: Pick<ScheduleSettings, "timezone" | "title" | "reminderNote">) => input)
   .handler(async ({ data, context }) => {
     await ensureSettings(context.supabase, context.userId);
+    const isPro = await userHasActivePro(context.supabase, context.userId);
+    if (!isPro && data.reminderNote.trim()) return { ok: false as const, error: "pro_required" };
     const { error } = await context.supabase.from("stream_schedule_settings").upsert(
       {
         user_id: context.userId,
@@ -162,6 +165,8 @@ export const upsertScheduleSlot = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const title = data.title.trim().slice(0, 80);
     if (!title) return { ok: false as const, error: "title_required" };
+    const isPro = await userHasActivePro(context.supabase, context.userId);
+    if (!isPro && data.coverUrl.trim()) return { ok: false as const, error: "pro_required" };
     await ensureSettings(context.supabase, context.userId);
     const occursOn = sanitizeOccursOn(data.occursOn);
     const weekday = occursOn ? weekdayFromIso(occursOn) : clampWeekday(data.weekday);

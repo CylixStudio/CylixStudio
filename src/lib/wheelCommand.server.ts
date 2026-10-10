@@ -20,6 +20,10 @@ export async function handleWheelChatCommand(input: {
 }): Promise<{ status: string; reason?: string; command?: string }> {
   if (!matchWheelCommand(input.text)) return { status: "ignored", reason: "no_match" };
   if (input.isTest) return { status: "ignored", reason: "test", command: "!spin" };
+  const { userHasActivePro } = await import("@/lib/subscription.server");
+  if (!(await userHasActivePro(supabaseAdmin, input.userId))) {
+    return { status: "ignored", reason: "pro_required", command: "!spin" };
+  }
 
   // Several spin-wheel widgets: the chat command uses the most recently updated one.
   const { data: widget } = await supabaseAdmin
