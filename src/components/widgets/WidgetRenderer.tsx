@@ -6,6 +6,8 @@ import { ReplyAlertFrame } from "@/components/overlay/ReplyAlertFrame";
 import { PlatformIcon, normalizePlatform } from "@/components/widgets/PlatformIcon";
 import { RoleBadgeIcon, normalizeBadgeRole, resolveBadgeRoles } from "@/components/widgets/RoleBadgeIcon";
 import { StreamEventsScheduleView } from "@/components/widgets/StreamEventsScheduleCard";
+import { PollOverlay } from "@/components/widgets/PollOverlay";
+import { PredictionOverlay } from "@/components/widgets/PredictionOverlay";
 
 import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKickBadges";
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
@@ -20,6 +22,7 @@ import { chromeLayoutClass, parseChromeLayout, parseEventLabelLayout, parseGoalL
 import { SpinWheelView } from "@/components/widgets/SpinWheel";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
+import type { PollRuntime, PredictionRuntime } from "@/lib/interactiveWidgets";
 import { formatDuration, type TimerFrame } from "@/lib/timer";
 import {
   describeEvent,
@@ -2411,6 +2414,8 @@ export function WidgetRenderer({
   spin,
   spotlight = null,
   streamEvents = null,
+  poll = null,
+  prediction = null,
   tappers = [],
   tapGoal = 0,
   chat = null,
@@ -2430,6 +2435,8 @@ export function WidgetRenderer({
   spin: SpinState | null;
   spotlight?: SpotlightMessage | null;
   streamEvents?: StreamEventsRuntime | null;
+  poll?: PollRuntime | null;
+  prediction?: PredictionRuntime | null;
   tappers?: TapperEntry[];
   tapGoal?: number;
   chat?: ChatSources | null;
@@ -2499,6 +2506,10 @@ export function WidgetRenderer({
       return (
         <StreamEventsScheduleView config={config} runtime={streamEvents} demo={demo} />
       );
+    case "POLL":
+      return <PollOverlay config={config} runtime={poll} chat={chat} demo={demo} />;
+    case "PREDICTION":
+      return <PredictionOverlay config={config} runtime={prediction} chat={chat} demo={demo} />;
     case "SUBATHON_TIMER":
     default: {
       const skin = widgetThemeSkin(parseWidgetThemeId(config));

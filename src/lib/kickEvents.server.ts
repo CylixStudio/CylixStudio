@@ -1,4 +1,8 @@
-/** Kick EventSub-style webhook events required for Studio features. */
+/**
+ * Kick EventSub-style webhook events required for Studio features.
+ * Poll and prediction events are not in Kick's public catalog, so they are
+ * not requested here. The webhook still applies them when Kick delivers one.
+ */
 const REQUIRED_KICK_EVENTS = [
   { name: "chat.message.sent", version: 1 },
   { name: "channel.reward.redemption.updated", version: 1 },

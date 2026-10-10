@@ -19,6 +19,8 @@ import {
   parseViewerCounterConfig,
   parseEventLabelsConfig,
   parseSplitGoalConfig,
+  parsePollConfig,
+  parsePredictionConfig,
   type WidgetType,
 } from "@/lib/widgets";
 
@@ -32,6 +34,8 @@ const SINGLETON_WIDGETS = new Set<WidgetType>([
   "FOLLOWER_GOAL",
   "SUBSCRIBER_GOAL",
   "CUSTOM_GOAL",
+  "POLL",
+  "PREDICTION",
 ]);
 
 const singletonInflight = new Map<string, Promise<{ id: string; public_token: string }>>();
@@ -77,6 +81,10 @@ function defaultConfig(type: WidgetType, goalType?: GoalTypeId): Record<string, 
       return { ...parseSplitGoalConfig("SUBSCRIBER_GOAL", null) };
     case "CUSTOM_GOAL":
       return { ...parseSplitGoalConfig("CUSTOM_GOAL", null) };
+    case "POLL":
+      return { ...parsePollConfig(null) };
+    case "PREDICTION":
+      return { ...parsePredictionConfig(null) };
     default:
       return { ...DEFAULT_STYLE };
   }

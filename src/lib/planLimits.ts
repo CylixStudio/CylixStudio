@@ -12,6 +12,8 @@ import {
   parseSplitGoalConfig,
   parseStreamEventsScheduleConfig,
   parseViewerCounterConfig,
+  parsePollConfig,
+  parsePredictionConfig,
 } from "@/lib/widgets";
 
 const APPEARANCE_KEYS = [
@@ -51,6 +53,10 @@ export function defaultWidgetAppearance(type: string): Record<string, unknown> {
       return { ...parseViewerCounterConfig(null) };
     case "EVENT_LABELS":
       return { ...parseEventLabelsConfig(null) };
+    case "POLL":
+      return { ...parsePollConfig(null) };
+    case "PREDICTION":
+      return { ...parsePredictionConfig(null) };
     default:
       if (isSplitGoalKind(type)) return { ...parseSplitGoalConfig(type, null) };
       return { ...DEFAULT_STYLE };

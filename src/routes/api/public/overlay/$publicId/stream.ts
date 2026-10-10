@@ -12,6 +12,7 @@ import {
   parseTappers,
   parseTappersConfig,
 } from "@/lib/widgets";
+import { parsePollRuntime, parsePredictionRuntime } from "@/lib/interactiveWidgets";
 
 const TICK_MS = 1000;
 const DB_POLL_MS = 2000;
@@ -90,6 +91,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
             let lastSpinPayload = "";
             let lastSpotlightPayload = "";
             let lastStreamEventsPayload = "";
+            let lastPollPayload = "";
+            let lastPredictionPayload = "";
             let lastTapGoalPayload = "";
             let lastTappersPayload = "";
             let lastTimerEventsPayload = "";
@@ -260,6 +263,28 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
                 }
                 return;
               }
+              if (type === "POLL" || type === "PREDICTION") {
+                const current = await fetchWidgetState();
+                const config = presentConfig(current?.config);
+                if (type === "POLL") {
+                  const poll = parsePollRuntime(current?.state ?? null);
+                  const payload = JSON.stringify({ poll, config });
+                  if (payload !== lastPollPayload) {
+                    lastPollPayload = payload;
+                    lastBeat = Date.now();
+                    send("poll", { poll, config });
+                  }
+                } else {
+                  const prediction = parsePredictionRuntime(current?.state ?? null);
+                  const payload = JSON.stringify({ prediction, config });
+                  if (payload !== lastPredictionPayload) {
+                    lastPredictionPayload = payload;
+                    lastBeat = Date.now();
+                    send("prediction", { prediction, config });
+                  }
+                }
+                return;
+              }
               if (type === "GOAL_BAR") {
                 const goal = await fetchGoal();
                 const payload = JSON.stringify(goal);
@@ -369,8 +394,10 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               type === "STREAM_EVENTS_SCHEDULE"
                 ? parseStreamEventsScheduleState(widget.state)
                 : null;
+            const poll = type === "POLL" ? parsePollRuntime(widget.state) : null;
+            const prediction = type === "PREDICTION" ? parsePredictionRuntime(widget.state) : null;
             let chat = null;
-            if (type === "CHAT_BOX" || type === "CHAT_SPOTLIGHT") {
+            if (type === "CHAT_BOX" || type === "CHAT_SPOTLIGHT" || type === "POLL" || type === "PREDICTION") {
               const { resolveChatSources } = await import("@/lib/chatSources.server");
               chat = await resolveChatSources(supabase, widget.user_id);
             }
@@ -391,6 +418,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
             lastSpinPayload = JSON.stringify({ spin, config: widget.config });
             lastSpotlightPayload = JSON.stringify({ spotlight, config: widget.config });
             lastStreamEventsPayload = JSON.stringify({ streamEvents, config: widget.config });
+            lastPollPayload = JSON.stringify({ poll, config: widget.config });
+            lastPredictionPayload = JSON.stringify({ prediction, config: widget.config });
             lastTimerEventsPayload = type === "SUBATHON_TIMER" ? JSON.stringify(events) : "";
 
             send("init", {
@@ -407,6 +436,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               spin,
               spotlight,
               streamEvents,
+              poll,
+              prediction,
               tappers,
               tapGoal,
               chat,

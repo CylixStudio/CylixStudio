@@ -15,6 +15,9 @@ import { SubathonElementControlPanel } from "@/components/widgets/SubathonElemen
 import { SubathonTimerSidebar } from "@/components/widgets/SubathonTimerSidebar";
 import { SpotlightControlPanel } from "@/components/widgets/SpotlightControlPanel";
 import { StreamEventsScheduleControlPanel } from "@/components/widgets/StreamEventsScheduleControlPanel";
+import { PollControlPanel } from "@/components/widgets/PollControlPanel";
+import { PredictionControlPanel } from "@/components/widgets/PredictionControlPanel";
+import { parsePollRuntime, parsePredictionRuntime } from "@/lib/interactiveWidgets";
 import { isDynamicGoalWidget, isSplitGoalKind, parseSpotlightConfig, parseStreamEventsScheduleState } from "@/lib/widgets";
 import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
 import { supabase } from "@/lib/supabase/client";
@@ -1011,6 +1014,24 @@ function WidgetBuilder() {
               </>
             ) : null}
 
+            {widget.type === "POLL" ? (
+              <PollControlPanel
+                state={widget.state}
+                live={stream.poll}
+                chat={stream.chat}
+                kickConnected={Boolean(stream.chat?.kickChatroomId)}
+              />
+            ) : null}
+
+            {widget.type === "PREDICTION" ? (
+              <PredictionControlPanel
+                state={widget.state}
+                live={stream.prediction}
+                chat={stream.chat}
+                kickConnected={Boolean(stream.chat?.kickChatroomId)}
+              />
+            ) : null}
+
             {widget.type === "STREAM_EVENTS_SCHEDULE" ||
             widget.type === "SPIN_WHEEL" ||
             widget.type === "EVENT_LABELS" ||
@@ -1025,6 +1046,8 @@ function WidgetBuilder() {
             widget.type === "CHAT_BOX" ||
             widget.type === "CHAT_SPOTLIGHT" ||
             widget.type === "STREAM_EVENTS_SCHEDULE" ||
+            widget.type === "POLL" ||
+            widget.type === "PREDICTION" ||
             widget.type === "VIEWER_COUNTER" ? null : (
             <div className="rounded-xl border border-border bg-background p-4">
               <p className={labelClass}>OBS browser source</p>
@@ -1071,6 +1094,8 @@ function WidgetBuilder() {
                 stream.streamEvents ??
                 (widget ? parseStreamEventsScheduleState(widget.state) : null)
               }
+              poll={stream.poll ?? (widget ? parsePollRuntime(widget.state) : null)}
+              prediction={stream.prediction ?? (widget ? parsePredictionRuntime(widget.state) : null)}
               tappers={stream.tappers}
               tapGoal={stream.tapGoal}
 

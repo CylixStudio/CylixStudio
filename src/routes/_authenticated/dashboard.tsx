@@ -15,6 +15,8 @@ import {
   Pin,
   PlaySquare,
   Clock3,
+  BarChart3,
+  Scale,
   Sparkles,
   Timer,
   Trophy,
@@ -47,6 +49,8 @@ import {
   KicksGoalPreview,
   SpotlightPreview,
   StreamEventsSchedulePreview,
+  PollPreview,
+  PredictionPreview,
   TappersPreview,
   TapGoalPreview,
   ViewerCounterPreview,
@@ -131,7 +135,7 @@ import type { WidgetType } from "@/lib/widgets";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { getGiveawayState } from "@/lib/giveaway.functions";
 import { isTestMode } from "@/lib/testMode";
-import { notePlanError } from "@/components/subscription/upgradePlan";
+import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
 import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -273,6 +277,30 @@ const TOOLS: Tool[] = [
     type: "STREAM_EVENTS_SCHEDULE",
     keywords: "schedule events countdown segments timeline up next on stream clock",
     platforms: [...ALL_PLATFORMS],
+  },
+  {
+    id: "poll",
+    name: "Poll",
+    nameKey: "home.tool.poll.name",
+    descriptionKey: "home.tool.poll.desc",
+    categoryKey: "cat.Chat",
+    icon: BarChart3,
+    preview: PollPreview,
+    type: "POLL",
+    keywords: "poll vote chat percentages kick",
+    platforms: ["KICK"],
+  },
+  {
+    id: "prediction",
+    name: "Prediction",
+    nameKey: "home.tool.prediction.name",
+    descriptionKey: "home.tool.prediction.desc",
+    categoryKey: "cat.Chat",
+    icon: Scale,
+    preview: PredictionPreview,
+    type: "PREDICTION",
+    keywords: "prediction bet versus winner chat kick",
+    platforms: ["KICK"],
   },
   {
     id: "tiktok-tappers",
@@ -469,6 +497,10 @@ function HomePage() {
   const open = async (tool: Tool) => {
     if (tool.comingSoon) return;
     if (toolLocked(tool)) {
+      if (tool.id === "poll" || tool.id === "prediction") {
+        requestUpgrade();
+        return;
+      }
       await navigate({ to: "/subscription" });
       return;
     }

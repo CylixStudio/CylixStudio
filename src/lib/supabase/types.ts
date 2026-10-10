@@ -1956,6 +1956,8 @@ export type Database = {
         | "FOLLOWER_GOAL"
         | "SUBSCRIBER_GOAL"
         | "CUSTOM_GOAL"
+        | "POLL"
+        | "PREDICTION"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2122,6 +2124,8 @@ export const Constants = {
         "FOLLOWER_GOAL",
         "SUBSCRIBER_GOAL",
         "CUSTOM_GOAL",
+        "POLL",
+        "PREDICTION",
       ],
     },
   },

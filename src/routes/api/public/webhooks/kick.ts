@@ -372,6 +372,41 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           console.log("[kick-webhook] media request pipeline result", JSON.stringify({ type, messageId, result }));
           return jsonResponse(result);
         }
+
+        const { classifyKickInteractiveEvent } = await import("@/lib/interactiveWidgets");
+        const interactiveName = [type, pickString(body, "name") ?? "", pickString(body, "event_name") ?? ""].find(
+          (candidate) => classifyKickInteractiveEvent(candidate),
+        );
+        if (interactiveName) {
+          const broadcasterId =
+            pickString(body, "broadcaster", "user_id") ??
+            pickString(body, "broadcaster", "id") ??
+            pickString(body, "broadcaster_user_id") ??
+            pickString(asRecord(body["data"]) ?? {}, "broadcaster", "user_id") ??
+            pickString(asRecord(body["data"]) ?? {}, "broadcaster_user_id") ??
+            pickString(asRecord(body["payload"]) ?? {}, "broadcaster", "user_id") ??
+            pickString(body, "channel", "user_id");
+          if (!broadcasterId) {
+            console.log("[kick-webhook] interactive ignored", JSON.stringify({ messageId, eventType: interactiveName, reason: "no_broadcaster" }));
+            return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+          }
+          const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+          const userId = await resolveUserByPlatformUser(supabaseAdmin, "KICK", broadcasterId);
+          if (!userId) {
+            console.log("[kick-webhook] interactive ignored", JSON.stringify({ messageId, eventType: interactiveName, reason: "no_connection" }));
+            return jsonResponse({ status: "ignored", reason: "no_connection" });
+          }
+          const { ingestKickInteractiveEvent } = await import("@/lib/interactiveWidgets.server");
+          const result = await ingestKickInteractiveEvent({
+            userId,
+            eventName: interactiveName,
+            messageId: messageId ?? "",
+            body,
+          });
+          console.log("[kick-webhook] interactive", JSON.stringify({ messageId, eventType: interactiveName, result }));
+          return jsonResponse(result);
+        }
+
         if (isKickChatEvent(type, chat)) {
           const { broadcasterId, text, username, senderId, identityBadges } = chat;
           if (!broadcasterId) {

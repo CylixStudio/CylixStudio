@@ -952,13 +952,33 @@ export function MediaPreview() {
 }
 
 export function PollPreview() {
+  const reduced = useReducedMotion();
+  const [shift, setShift] = useState(0);
+  useEffect(() => {
+    if (reduced) return;
+    const id = window.setInterval(() => setShift((value) => (value + 1) % 3), 1600);
+    return () => window.clearInterval(id);
+  }, [reduced]);
+  const rows = [
+    { label: "نعم", width: 68 - shift * 6 },
+    { label: "لا", width: 32 + shift * 6 },
+  ];
   return (
-    <div className="flex h-full flex-col justify-center gap-2 overflow-hidden px-3.5">
-      {[64, 26, 10].map((value) => (
-        <div key={value} className="h-2 w-full overflow-hidden rounded-full bg-[oklch(1_0_0/0.06)]">
-          <div className="h-full rounded-full bg-primary/70" style={{ width: `${value}%` }} />
-        </div>
-      ))}
+    <div className="grid h-full place-items-center px-3">
+      <div className="w-full rounded-xl border border-[#bee1fc]/30 bg-zinc-950/70 px-3 py-2 backdrop-blur">
+        <p className="text-[0.62rem] font-semibold text-[#bee1fc]">استطلاع</p>
+        {rows.map((row) => (
+          <div key={row.label} className="mt-1.5">
+            <div className="mb-0.5 flex justify-between text-[0.55rem] text-foreground">
+              <span>{row.label}</span>
+              <span>{row.width}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="overlay-poll-bar h-full rounded-full bg-[#bee1fc]" style={{ width: `${row.width}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1237,6 +1257,31 @@ export function EventLabelsPreview() {
       <p className="event-line-swap text-center text-[0.72rem] text-foreground" data-motion={motion}>
         {EVENT_PREVIEW_LINES[index]}
       </p>
+    </div>
+  );
+}
+
+export function PredictionPreview() {
+  const reduced = useReducedMotion();
+  const [left, setLeft] = useState(58);
+  useEffect(() => {
+    if (reduced) return;
+    const id = window.setInterval(() => setLeft((value) => (value > 70 ? 42 : value + 8)), 1400);
+    return () => window.clearInterval(id);
+  }, [reduced]);
+  return (
+    <div className="grid h-full place-items-center px-3">
+      <div className="w-full rounded-xl border border-[#bee1fc]/30 bg-zinc-950/70 px-3 py-2 backdrop-blur">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center">
+          <span className="text-[0.68rem] font-semibold">فوز</span>
+          <span className="text-[0.55rem] font-black text-[#bee1fc]">VS</span>
+          <span className="text-[0.68rem] font-semibold">خسارة</span>
+        </div>
+        <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="overlay-poll-bar h-full bg-[#bee1fc]" style={{ width: `${left}%` }} />
+          <div className="h-full bg-[#7ec8f5]/70" style={{ width: `${100 - left}%` }} />
+        </div>
+      </div>
     </div>
   );
 }

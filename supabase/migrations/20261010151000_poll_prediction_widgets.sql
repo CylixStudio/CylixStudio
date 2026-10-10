@@ -1,0 +1,2 @@
+ALTER TYPE public.widget_type ADD VALUE IF NOT EXISTS 'POLL';
+ALTER TYPE public.widget_type ADD VALUE IF NOT EXISTS 'PREDICTION';

@@ -31,7 +31,7 @@ export const Route = createFileRoute("/overlay/$publicId")({
 
 function OverlayPage() {
   const { publicId } = Route.useParams();
-  const { widget, frame, remaining, goal, events, spin, spotlight, streamEvents, tappers, chat, testMessages, status } =
+  const { widget, frame, remaining, goal, events, spin, spotlight, streamEvents, poll, prediction, tappers, chat, testMessages, status } =
     useWidgetStream(publicId);
   const [wheelVisible, setWheelVisible] = useState(false);
   const shownSpin = spin;
@@ -76,6 +76,8 @@ function OverlayPage() {
           events={events}
           spotlight={spotlight}
           streamEvents={streamEvents}
+          poll={poll}
+          prediction={prediction}
           tappers={tappers}
           chat={chat}
           testMessages={testMessages}

@@ -11,6 +11,7 @@ import {
   parseTappersConfig,
   type OverlayEvent,
 } from "@/lib/widgets";
+import { parsePollRuntime, parsePredictionRuntime } from "@/lib/interactiveWidgets";
 
 /**
  * Token-gated snapshot of everything an overlay renders. The SSE stream keeps
@@ -135,9 +136,11 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
         const spotlight = type === "CHAT_SPOTLIGHT" ? parseSpotlightState(widget.state) : null;
         const streamEvents =
           type === "STREAM_EVENTS_SCHEDULE" ? parseStreamEventsScheduleState(widget.state) : null;
+        const poll = type === "POLL" ? parsePollRuntime(widget.state) : null;
+        const prediction = type === "PREDICTION" ? parsePredictionRuntime(widget.state) : null;
 
         let chat = null;
-        if (type === "CHAT_BOX" || type === "CHAT_SPOTLIGHT") {
+        if (type === "CHAT_BOX" || type === "CHAT_SPOTLIGHT" || type === "POLL" || type === "PREDICTION") {
           const { resolveChatSources } = await import("@/lib/chatSources.server");
           chat = await resolveChatSources(supabase, widget.user_id);
         }
@@ -151,6 +154,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
             spin,
             spotlight,
             streamEvents,
+            poll,
+            prediction,
             tappers,
             tapGoal,
             chat,

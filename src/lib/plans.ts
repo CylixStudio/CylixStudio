@@ -206,6 +206,8 @@ export const PRO_ONLY_HUB_TOOL_IDS = new Set([
   "donation-goal",
   "kicks-goal",
   "stream-events-schedule",
+  "poll",
+  "prediction",
 ]);
 
 /** Widget `type` values that require Pro (create, editor, and public overlay). */
@@ -216,6 +218,8 @@ export const PRO_ONLY_WIDGET_TYPES = new Set([
   "DONATION_GOAL",
   "KICKS_GOAL",
   "STREAM_EVENTS_SCHEDULE",
+  "POLL",
+  "PREDICTION",
 ] as const);
 
 /** Full feature matrix — source of truth for cards + detailed table. String cells are i18n keys. */

@@ -868,3 +868,17 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   opacity: 0.75;
   cursor: pointer;
 }
+
+.overlay-poll-bar {
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1), flex 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes overlay-prediction-win {
+  0% { transform: scale(0.94); filter: brightness(1); }
+  45% { transform: scale(1.08); filter: brightness(1.45); }
+  100% { transform: scale(1); filter: brightness(1.12); }
+}
+
+.overlay-prediction-win {
+  animation: overlay-prediction-win 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

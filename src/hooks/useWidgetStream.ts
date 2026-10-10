@@ -4,6 +4,7 @@ import { useWidgetRealtime } from "@/hooks/useWidgetRealtime";
 import type { ChatMessage, ChatSources } from "@/hooks/useLiveChat";
 import { readReplyMeta } from "@/lib/replyAlert";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
+import type { PollRuntime, PredictionRuntime } from "@/lib/interactiveWidgets";
 import { computeRemaining, type TimerFrame } from "@/lib/timer";
 import type {
   GoalSnapshot,
@@ -61,6 +62,8 @@ type Snapshot = {
   spin: SpinState | null;
   spotlight?: SpotlightMessage | null;
   streamEvents?: StreamEventsRuntime | null;
+  poll?: PollRuntime | null;
+  prediction?: PredictionRuntime | null;
   tappers?: TapperEntry[];
   tapGoal?: { taps: number } | null;
   chat?: ChatSources | null;
@@ -81,6 +84,8 @@ export function useWidgetStream(publicToken: string | null) {
   const [spin, setSpin] = useState<SpinState | null>(null);
   const [spotlight, setSpotlight] = useState<SpotlightMessage | null>(null);
   const [streamEvents, setStreamEvents] = useState<StreamEventsRuntime | null>(null);
+  const [pollRuntime, setPollRuntime] = useState<PollRuntime | null>(null);
+  const [predictionRuntime, setPredictionRuntime] = useState<PredictionRuntime | null>(null);
   const [tappers, setTappers] = useState<TapperEntry[]>([]);
   const [tapGoal, setTapGoal] = useState(0);
   const [chat, setChat] = useState<ChatSources | null>(null);
@@ -121,6 +126,8 @@ export function useWidgetStream(publicToken: string | null) {
         setSpin(payload.spin);
         setSpotlight(payload.spotlight ?? null);
         setStreamEvents(payload.streamEvents ?? null);
+        setPollRuntime(payload.poll ?? null);
+        setPredictionRuntime(payload.prediction ?? null);
         setTappers(payload.tappers ?? []);
         setTapGoal(payload.tapGoal?.taps ?? 0);
         setChat(payload.chat ?? null);
@@ -151,6 +158,22 @@ export function useWidgetStream(publicToken: string | null) {
           config: unknown;
         };
         setStreamEvents(payload.streamEvents);
+        setWidget((current) => (current ? { ...current, config: payload.config } : current));
+      });
+      source.addEventListener("poll", (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as {
+          poll: PollRuntime | null;
+          config: unknown;
+        };
+        setPollRuntime(payload.poll);
+        setWidget((current) => (current ? { ...current, config: payload.config } : current));
+      });
+      source.addEventListener("prediction", (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as {
+          prediction: PredictionRuntime | null;
+          config: unknown;
+        };
+        setPredictionRuntime(payload.prediction);
         setWidget((current) => (current ? { ...current, config: payload.config } : current));
       });
       source.addEventListener("tappers", (event) => {
@@ -215,6 +238,8 @@ export function useWidgetStream(publicToken: string | null) {
       setSpin(payload.spin);
       setSpotlight(payload.spotlight ?? null);
       setStreamEvents(payload.streamEvents ?? null);
+      setPollRuntime(payload.poll ?? null);
+      setPredictionRuntime(payload.prediction ?? null);
       setTappers(payload.tappers ?? []);
       setTapGoal(payload.tapGoal?.taps ?? 0);
       if (payload.chat) setChat(payload.chat);
@@ -291,6 +316,8 @@ export function useWidgetStream(publicToken: string | null) {
     spin,
     spotlight,
     streamEvents,
+    poll: pollRuntime,
+    prediction: predictionRuntime,
     tappers,
     tapGoal,
     chat,

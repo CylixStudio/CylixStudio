@@ -31,7 +31,9 @@ export type WidgetType =
   | "DONATION_GOAL"
   | "FOLLOWER_GOAL"
   | "SUBSCRIBER_GOAL"
-  | "CUSTOM_GOAL";
+  | "CUSTOM_GOAL"
+  | "POLL"
+  | "PREDICTION";
 
 export const WIDGET_TYPES: { value: WidgetType; label: string; hint: string }[] = [
   { value: "SUBATHON_TIMER", label: "Subathon timer", hint: "Live countdown driven by rules" },
@@ -65,6 +67,8 @@ export const WIDGET_TYPES: { value: WidgetType; label: string; hint: string }[] 
   { value: "FOLLOWER_GOAL", label: "Follower goal", hint: "Follower count progress bar" },
   { value: "SUBSCRIBER_GOAL", label: "Subscriber goal", hint: "Subscriber count progress bar" },
   { value: "CUSTOM_GOAL", label: "Custom goal", hint: "Progress bar with a free unit label" },
+  { value: "POLL", label: "Poll", hint: "Official Kick poll on the overlay" },
+  { value: "PREDICTION", label: "Prediction", hint: "Official Kick prediction with the winning outcome" },
 ];
 
 /** Create-menu types. Custom goal remains in the enum and is not offered. */
@@ -87,6 +91,8 @@ export const WIDGET_LABEL: Record<WidgetType, string> = {
   STREAM_EVENTS_SCHEDULE: "جدول فعاليات البث",
   TIKTOK_TAPPERS: "Top tappers overlay",
   TIKTOK_TAP_GOAL: "TikTok tap goal overlay",
+  POLL: "استطلاع",
+  PREDICTION: "توقع",
 };
 
 
@@ -829,6 +835,52 @@ export function parseEventLabelsConfig(raw: unknown): EventLabelsConfig {
     title: eventLabelsTitle(source["title"]),
     labels: selectedEventLabelOptions(source["labels"]),
     language,
+  };
+}
+
+/* ------------------------------- Poll ----------------------------------- */
+
+export type PollConfig = BaseStyle & {
+  title: string;
+  options: string[];
+  durationSeconds: number;
+};
+
+function pollOptions(value: unknown): string[] {
+  if (!Array.isArray(value)) return ["نعم", "لا"];
+  const options = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().slice(0, 40))
+    .filter(Boolean)
+    .slice(0, 6);
+  return options.length >= 2 ? options : ["نعم", "لا"];
+}
+
+export function parsePollConfig(raw: unknown): PollConfig {
+  const source = asRecord(raw);
+  return {
+    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28, accentColor: "#bee1fc", backgroundOpacity: 72 }),
+    title: text(source["title"], "استطلاع", 80),
+    options: pollOptions(source["options"]),
+    durationSeconds: num(source["durationSeconds"], 120, 15, 7200),
+  };
+}
+
+/* ---------------------------- Prediction -------------------------------- */
+
+export type PredictionConfig = BaseStyle & {
+  outcomeA: string;
+  outcomeB: string;
+  durationSeconds: number;
+};
+
+export function parsePredictionConfig(raw: unknown): PredictionConfig {
+  const source = asRecord(raw);
+  return {
+    ...parseStyle(source, { ...DEFAULT_STYLE, fontSize: 28, accentColor: "#bee1fc", backgroundOpacity: 72 }),
+    outcomeA: text(source["outcomeA"], "نعم", 40),
+    outcomeB: text(source["outcomeB"], "لا", 40),
+    durationSeconds: num(source["durationSeconds"], 180, 15, 7200),
   };
 }
 

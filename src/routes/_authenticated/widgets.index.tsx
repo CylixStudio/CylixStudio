@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { Coins, Copy, Check, Disc3, Gift, Star, Tags, Trash2, Users, type LucideIcon } from "lucide-react";
+import { Coins, Copy, Check, Disc3, Gift, Star, Tags, Trash2, Users, BarChart3, Scale, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -13,6 +13,8 @@ import {
   FollowerGoalPreview,
   KicksGoalPreview,
   SubscriberGoalPreview,
+  PollPreview,
+  PredictionPreview,
   ViewerCounterPreview,
   WheelPreview,
 } from "@/components/hub/previews";
@@ -23,6 +25,9 @@ import { createWidget, widgetErrorText } from "@/lib/createWidget";
 import { SessionAwareError } from "@/components/widgets/SessionAwareError";
 import { isMissingViewerSession } from "@/lib/supabase/sessionError";
 import { useLanguage } from "@/lib/i18n";
+import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
+import { useSubscription } from "@/hooks/useSubscription";
+import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
 import { widgetOverlayUrl } from "@/lib/widgetOverlayUrl";
 import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
 import { WIDGET_LABEL } from "@/lib/widgets";
@@ -38,6 +43,8 @@ const TOOL_VISUAL: Record<
   "donation-goal": { icon: Gift, preview: DonationGoalPreview },
   "follower-goal": { icon: Users, preview: FollowerGoalPreview },
   "subscriber-goal": { icon: Star, preview: SubscriberGoalPreview },
+  poll: { icon: BarChart3, preview: PollPreview },
+  prediction: { icon: Scale, preview: PredictionPreview },
 };
 const WIDGET_GOAL_ORDER = ["subscriber-goal", "follower-goal", "donation-goal", "kicks-goal"] as const;
 const WIDGET_GOAL_RANK = new Map<string, number>(WIDGET_GOAL_ORDER.map((slug, index) => [slug, index]));
@@ -70,6 +77,8 @@ function WidgetHub() {
   const queryClient = useQueryClient();
   const { data: workspace } = useWorkspace(user.id);
   const { data, isLoading } = useWidgets();
+  const subscription = useSubscription(user.id);
+  const needsPro = subscription.isSuccess && !subscription.data.isActive;
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
@@ -170,6 +179,8 @@ function WidgetHub() {
                     : t("home.status.ready")
               }
               live={Boolean(existing?.is_enabled)}
+              locked={needsPro && PRO_ONLY_HUB_TOOL_IDS.has(tool.slug)}
+              lockLabel={t("home.unlockPro")}
               publicToken={existing?.is_enabled ? existing.public_token : undefined}
               disabled={opening === tool.slug}
               actionLabel={
@@ -180,6 +191,10 @@ function WidgetHub() {
                     : t("home.action.open")
               }
               onOpen={() => {
+                if (needsPro && PRO_ONLY_HUB_TOOL_IDS.has(tool.slug)) {
+                  requestUpgrade();
+                  return;
+                }
                 if (tool.goalEditor) {
                   void navigate({ to: "/tools/$tool", params: { tool: tool.slug } });
                   return;
@@ -202,6 +217,7 @@ function WidgetHub() {
                     await navigate({ to: "/widgets/$widgetId", params: { widgetId: widget.id } });
                   })
                   .catch((err: unknown) => {
+                    if (notePlanError(err)) return;
                     const message = widgetErrorText(err, "Could not open this widget.");
                     setError(message);
                     if (!isMissingViewerSession(message)) toast.error(message);

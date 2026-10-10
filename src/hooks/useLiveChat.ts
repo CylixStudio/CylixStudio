@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { badgeAssetUrl, type KickBadge } from "@/hooks/useKickBadges";
+import { applyKickPoll, applyKickPrediction, type PollRuntime, type PredictionRuntime } from "@/lib/interactiveWidgets";
 import { readReplyMeta } from "@/lib/replyAlert";
 
 export type ChatMessage = {
@@ -73,6 +74,10 @@ export function useLiveChat(
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Messages the streamer pinned natively in Kick/Twitch chat.
   const [pinnedLive, setPinnedLive] = useState<ChatMessage | null>(null);
+  const [kickPoll, setKickPoll] = useState<PollRuntime | null>(null);
+  const [kickPrediction, setKickPrediction] = useState<PredictionRuntime | null>(null);
+  const kickPollRef = useRef<PollRuntime | null>(null);
+  const kickPredictionRef = useRef<PredictionRuntime | null>(null);
   const limit = useRef(max);
   limit.current = max;
   const onMessageRef = useRef(onMessage);
@@ -165,6 +170,10 @@ export function useLiveChat(
 
   // -------------------------------- Kick --------------------------------
   useEffect(() => {
+    kickPollRef.current = null;
+    kickPredictionRef.current = null;
+    setKickPoll(null);
+    setKickPrediction(null);
     if (!kickChatroomId) return;
     let socket: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
@@ -189,10 +198,27 @@ export function useLiveChat(
         try {
           const frame = JSON.parse(String(event.data)) as { event?: string; data?: unknown };
           const name = frame.event ?? "";
+          let parsed: unknown = frame.data;
+          if (typeof parsed === "string") {
+            try {
+              parsed = JSON.parse(parsed) as unknown;
+            } catch {
+              parsed = null;
+            }
+          }
+          const nextPoll = applyKickPoll(kickPollRef.current, name, parsed);
+          if (nextPoll && nextPoll !== kickPollRef.current) {
+            kickPollRef.current = nextPoll;
+            setKickPoll(nextPoll);
+          }
+          const nextPrediction = applyKickPrediction(kickPredictionRef.current, name, parsed);
+          if (nextPrediction && nextPrediction !== kickPredictionRef.current) {
+            kickPredictionRef.current = nextPrediction;
+            setKickPrediction(nextPrediction);
+          }
           const isPinEvent = name.includes("PinnedMessage") || name.includes("ChatMessagePinned");
           if (!name.includes("ChatMessage") && !isPinEvent) return;
-          const data =
-            typeof frame.data === "string" ? JSON.parse(frame.data) : (frame.data as unknown);
+          const data = parsed;
 
           if (isPinEvent) {
             if (name.includes("Deleted")) {
@@ -300,5 +326,5 @@ export function useLiveChat(
   /** Injects a message from outside (test simulation via Realtime). */
   const pushMessage = push.current;
 
-  return { messages, pushMessage, pinnedLive };
+  return { messages, pushMessage, pinnedLive, kickPoll, kickPrediction };
 }
