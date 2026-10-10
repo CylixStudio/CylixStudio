@@ -7,6 +7,7 @@ import { goalTypePreset, type GoalTypeId } from "@/lib/goalTypes";
 import {
   DEFAULT_STYLE,
   WIDGET_LABEL,
+  parseChatConfig,
   parseGoalConfig,
   parseEmoteRainConfig,
   parseSpinConfig,
@@ -39,6 +40,8 @@ function defaultConfig(type: WidgetType, goalType?: GoalTypeId): Record<string, 
   switch (type) {
     case "SUBATHON_TIMER":
       return { ...DEFAULT_OVERLAY_THEME };
+    case "CHAT_BOX":
+      return { ...parseChatConfig(null) };
     case "GOAL_BAR": {
       const preset = goalTypePreset(goalType);
       return {
