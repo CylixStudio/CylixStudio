@@ -140,7 +140,7 @@ function PublicCommandsRoute() {
             </div>
           </header>
 
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="flex w-full bg-[#0d0e12] border border-white/5 p-1.5 rounded-xl" dir="ltr">
             {tabs.map((item) => {
               const active = tab === item.id;
               return (
@@ -149,10 +149,10 @@ function PublicCommandsRoute() {
                   type="button"
                   onClick={() => setTab(item.id)}
                   className={cn(
-                    "rounded-xl border px-2 py-2.5 text-center text-xs transition sm:px-3 sm:text-sm",
+                    "flex-1 text-center py-2.5 rounded-lg transition-all text-sm",
                     active
-                      ? "border-[#00D8FF]/80 bg-[#0c1c22] text-zinc-50 shadow-[0_0_16px_rgba(0,216,255,0.32)]"
-                      : "border-white/5 bg-[#121318] text-zinc-400 hover:border-white/10 hover:text-zinc-200",
+                      ? "border border-[#00D8FF] bg-white/[0.04] text-zinc-50 shadow-[inset_0_0_18px_rgba(0,216,255,0.12),0_0_16px_rgba(0,216,255,0.16)]"
+                      : "border border-transparent text-zinc-500 hover:text-zinc-300",
                   )}
                 >
                   {item.label}
@@ -161,13 +161,17 @@ function PublicCommandsRoute() {
             })}
           </div>
 
-          <label className="relative block" dir="ltr">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" aria-hidden />
+          <label
+            className="flex h-12 w-full items-center gap-3 rounded-xl border border-white/5 bg-[#0d0e12] px-4"
+            dir="ltr"
+          >
+            <Search className="size-4 shrink-0 text-zinc-500" aria-hidden />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("commands.public.search")}
-              className="h-11 w-full rounded-xl border border-white/5 bg-[#0d0e12] pl-10 pr-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-white/15"
+              placeholder={`\u200e${t("commands.public.search")}`}
+              dir="ltr"
+              className="h-full min-w-0 flex-1 bg-transparent text-left text-sm text-zinc-100 outline-none placeholder:text-left placeholder:text-zinc-500"
             />
           </label>
 
@@ -252,12 +256,11 @@ function pageWindow(pageCount: number, current: number): Array<number | "gap"> {
 }
 
 function ChannelAvatar({ url, name }: { url: string; name: string }) {
-  const [broken, setBroken] = useState(false);
-  const showImage = Boolean(url) && !broken;
+  const photo = url.trim();
   return (
-    <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-[0_0_18px_rgba(0,216,255,0.22)] sm:size-16">
-      {showImage ? (
-        <img src={url} alt="" className="size-full object-cover" onError={() => setBroken(true)} />
+    <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-2xl border border-sky-500/20 bg-zinc-900 sm:size-16">
+      {photo ? (
+        <img src={photo} alt="" referrerPolicy="no-referrer" className="size-full object-cover" />
       ) : (
         <span className="text-lg font-semibold text-zinc-200">{name.slice(0, 1)}</span>
       )}
@@ -296,20 +299,16 @@ function CommandCard({ item, copyLabel }: { item: CardItem; copyLabel: string })
   );
 }
 
+const urlTextClass = "text-zinc-400 text-sm break-all font-normal no-underline decoration-transparent";
+
 function ResponseText({ text }: { text: string }) {
   const parts = text.split(/(https?:\/\/\S+)/g);
   return (
-    <p className="mt-2 line-clamp-5 text-[0.72rem] font-normal leading-snug text-zinc-400 [overflow-wrap:anywhere] [&_a]:!font-normal [&_a]:!text-zinc-400 [&_a]:![text-decoration:none]" dir="auto">
+    <p className="mt-2 line-clamp-5 text-[0.72rem] font-normal leading-snug text-zinc-400 [overflow-wrap:anywhere]" dir="auto">
       {parts.map((part, index) => {
         if (/^https?:\/\//.test(part)) {
           return (
-            <a
-              key={index}
-              href={part}
-              className="!font-normal !text-zinc-400 ![text-decoration:none]"
-              dir="ltr"
-              rel="noreferrer"
-            >
+            <a key={index} href={part} className={urlTextClass} dir="ltr" rel="noreferrer">
               {part}
             </a>
           );
