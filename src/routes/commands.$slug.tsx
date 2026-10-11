@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, Copy, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { PublicChannelShell } from "@/components/public/PublicChannelShell";
@@ -117,30 +117,31 @@ function PublicCommandsRoute() {
       loadingLabel={t("commands.public.loading")}
     >
       {found ? (
-        <div className="space-y-4" dir="ltr">
-          <header className="rounded-2xl border border-white/5 bg-[#0d0e12] px-4 py-3.5 sm:px-5">
-            <div className="flex items-center justify-between gap-4" dir="ltr">
-              <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                <ChannelAvatar url={data.avatarUrl} name={data.displayName} />
-                <div className="min-w-0 text-left">
-                  <p className="truncate text-lg font-bold tracking-tight text-zinc-50" dir="auto">
-                    {data.displayName}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-zinc-500">
-                    {t("commands.public.available", { n: availableCount })}
-                  </p>
-                </div>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-[0.65rem] font-medium tracking-[0.22em] text-zinc-400">CYLIXSTUDIO</p>
-                <p className="mt-1 text-xs text-zinc-500" dir="auto">
-                  {t("commands.public.section")}
+        <div dir="ltr">
+          <header
+            className="bg-[#0d0e12] border border-white/5 rounded-2xl p-5 mb-5 flex items-center justify-between"
+            dir="ltr"
+          >
+            <div className="flex min-w-0 items-center gap-4">
+              <ChannelAvatar url={data.avatarUrl} name={data.displayName} />
+              <div className="min-w-0 text-left">
+                <p className="truncate text-base font-bold text-white" dir="auto">
+                  {data.displayName}
+                </p>
+                <p className="mt-0.5 truncate text-sm text-zinc-500">
+                  {t("commands.public.available", { n: availableCount })}
                 </p>
               </div>
             </div>
+            <div className="shrink-0 text-right">
+              <p className="text-[0.65rem] font-medium tracking-[0.22em] text-zinc-500">CYLIXSTUDIO</p>
+              <p className="mt-1 text-sm text-zinc-400" dir="auto">
+                {t("commands.public.section")}
+              </p>
+            </div>
           </header>
 
-          <div className="flex w-full bg-[#0d0e12] border border-white/5 p-1.5 rounded-xl" dir="ltr">
+          <div className="bg-[#0d0e12] border border-white/5 rounded-2xl p-1.5 grid grid-cols-3 gap-2 mb-4 text-center">
             {tabs.map((item) => {
               const active = tab === item.id;
               return (
@@ -149,10 +150,10 @@ function PublicCommandsRoute() {
                   type="button"
                   onClick={() => setTab(item.id)}
                   className={cn(
-                    "flex-1 text-center py-2.5 rounded-lg transition-all text-sm",
+                    "w-full py-2.5 rounded-xl text-sm font-medium transition-all",
                     active
-                      ? "border border-[#00D8FF] bg-white/[0.04] text-zinc-50 shadow-[inset_0_0_18px_rgba(0,216,255,0.12),0_0_16px_rgba(0,216,255,0.16)]"
-                      : "border border-transparent text-zinc-500 hover:text-zinc-300",
+                      ? "border border-[#00D8FF] text-white bg-white/[0.03] shadow-[inset_0_0_18px_rgba(0,216,255,0.14),0_0_16px_rgba(0,216,255,0.18)]"
+                      : "border-0 bg-transparent text-zinc-500",
                   )}
                 >
                   {item.label}
@@ -162,25 +163,25 @@ function PublicCommandsRoute() {
           </div>
 
           <label
-            className="flex h-12 w-full items-center gap-3 rounded-xl border border-white/5 bg-[#0d0e12] px-4"
+            className="bg-[#0d0e12] border border-white/5 rounded-2xl px-4 py-3 mb-6 flex items-center gap-3"
             dir="ltr"
           >
             <Search className="size-4 shrink-0 text-zinc-500" aria-hidden />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={`\u200e${t("commands.public.search")}`}
+              placeholder={t("commands.public.search")}
               dir="ltr"
-              className="h-full min-w-0 flex-1 bg-transparent text-left text-sm text-zinc-100 outline-none placeholder:text-left placeholder:text-zinc-500"
+              className="min-w-0 flex-1 bg-transparent text-left text-sm text-zinc-100 outline-none placeholder:text-left placeholder:text-zinc-500"
             />
           </label>
 
           {filtered.length === 0 ? (
-            <p className="text-sm text-zinc-400">{query.trim() ? t("commands.public.noResults") : emptyLabel}</p>
+            <p className="mb-8 text-sm text-zinc-400">{query.trim() ? t("commands.public.noResults") : emptyLabel}</p>
           ) : (
-            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+            <ul className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-8">
               {visible.map((item) => (
-                <li key={item.key}>
+                <li key={item.key} className="min-w-0">
                   <CommandCard item={item} copyLabel={t("commands.public.copy")} />
                 </li>
               ))}
@@ -188,19 +189,15 @@ function PublicCommandsRoute() {
           )}
 
           {filtered.length > PAGE_SIZE ? (
-            <nav
-              className="flex items-center justify-center gap-1.5 pt-1"
-              dir="ltr"
-              aria-label={t("commands.public.section")}
-            >
+            <nav className="flex items-center justify-center gap-1.5" dir="ltr" aria-label={t("commands.public.section")}>
               <button
                 type="button"
-                className="grid size-8 place-items-center rounded-lg border border-white/10 text-sm text-zinc-300 hover:bg-white/5 disabled:opacity-40"
+                className="grid size-8 place-items-center rounded-lg text-zinc-400 hover:bg-white/5 disabled:opacity-40"
                 onClick={() => setPage((value) => Math.max(1, Math.min(value, pageCount) - 1))}
                 disabled={currentPage <= 1}
                 aria-label={t("commands.public.prev")}
               >
-                {"<"}
+                <ChevronLeft className="size-4" />
               </button>
               {pageWindow(pageCount, currentPage).map((entry, index) =>
                 entry === "gap" ? (
@@ -217,8 +214,8 @@ function PublicCommandsRoute() {
                     className={cn(
                       "grid h-8 min-w-8 place-items-center rounded-lg px-2 text-sm",
                       entry === currentPage
-                        ? "rounded-full bg-[#00D8FF] font-medium text-zinc-950 shadow-[0_0_14px_rgba(0,216,255,0.4)]"
-                        : "border border-white/10 bg-[#121318] text-zinc-300 hover:bg-white/5",
+                        ? "border border-[#00D8FF] bg-[#00D8FF]/25 font-medium text-white shadow-[0_0_12px_rgba(0,216,255,0.28)]"
+                        : "text-zinc-500 hover:bg-white/5 hover:text-zinc-300",
                     )}
                   >
                     {entry}
@@ -227,12 +224,12 @@ function PublicCommandsRoute() {
               )}
               <button
                 type="button"
-                className="grid size-8 place-items-center rounded-lg border border-white/10 text-sm text-zinc-300 hover:bg-white/5 disabled:opacity-40"
+                className="grid size-8 place-items-center rounded-lg text-zinc-400 hover:bg-white/5 disabled:opacity-40"
                 onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
                 disabled={currentPage >= pageCount}
                 aria-label={t("commands.public.next")}
               >
-                {">"}
+                <ChevronRight className="size-4" />
               </button>
             </nav>
           ) : null}
@@ -257,13 +254,19 @@ function pageWindow(pageCount: number, current: number): Array<number | "gap"> {
 
 function ChannelAvatar({ url, name }: { url: string; name: string }) {
   const photo = url.trim();
+  if (photo) {
+    return (
+      <img
+        src={photo}
+        alt=""
+        referrerPolicy="no-referrer"
+        className="w-16 h-16 rounded-2xl object-cover border border-white/10"
+      />
+    );
+  }
   return (
-    <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-2xl border border-sky-500/20 bg-zinc-900 sm:size-16">
-      {photo ? (
-        <img src={photo} alt="" referrerPolicy="no-referrer" className="size-full object-cover" />
-      ) : (
-        <span className="text-lg font-semibold text-zinc-200">{name.slice(0, 1)}</span>
-      )}
+    <span className="grid w-16 h-16 shrink-0 place-items-center rounded-2xl border border-white/10 bg-zinc-900 text-lg font-semibold text-zinc-200">
+      {name.slice(0, 1)}
     </span>
   );
 }
@@ -282,33 +285,40 @@ function CommandCard({ item, copyLabel }: { item: CardItem; copyLabel: string })
   }
 
   return (
-    <article className="relative flex h-full min-h-[8.5rem] flex-col rounded-xl border border-white/5 bg-[#121318] p-2.5 transition hover:border-white/15 hover:bg-[#181a21]">
-      <p className="line-clamp-2 pr-7 text-sm font-bold leading-snug tracking-tight text-zinc-50" dir="ltr">
-        {item.trigger}
-      </p>
-      <button
-        type="button"
-        onClick={() => void copyTrigger()}
-        className="absolute top-2 right-2 grid size-6 place-items-center rounded-md text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
-        aria-label={copyLabel}
-      >
-        {copied ? <Check className="size-3.5 text-cyan-300" /> : <Copy className="size-3.5" />}
-      </button>
+    <article className="bg-[#121318] border border-white/5 rounded-xl p-4 flex flex-col justify-between h-full min-h-[7.25rem]">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 font-bold text-white break-all" dir="ltr">
+          {item.trigger}
+        </p>
+        <button
+          type="button"
+          onClick={() => void copyTrigger()}
+          className="grid size-5 shrink-0 place-items-center text-zinc-500 hover:text-zinc-200"
+          aria-label={copyLabel}
+        >
+          {copied ? <Check className="size-3.5 text-cyan-300" /> : <Copy className="size-3.5" />}
+        </button>
+      </div>
       <ResponseText text={item.body} />
     </article>
   );
 }
 
-const urlTextClass = "text-zinc-400 text-sm break-all font-normal no-underline decoration-transparent";
-
 function ResponseText({ text }: { text: string }) {
   const parts = text.split(/(https?:\/\/\S+)/g);
   return (
-    <p className="mt-2 line-clamp-5 text-[0.72rem] font-normal leading-snug text-zinc-400 [overflow-wrap:anywhere]" dir="auto">
+    <p className="text-zinc-400 text-xs font-normal break-all line-clamp-4 mt-2 [&_a]:!text-inherit [&_a]:![text-decoration:none]">
       {parts.map((part, index) => {
         if (/^https?:\/\//.test(part)) {
           return (
-            <a key={index} href={part} className={urlTextClass} dir="ltr" rel="noreferrer">
+            <a
+              key={index}
+              href={part}
+              dir="ltr"
+              rel="noreferrer"
+              className="text-inherit no-underline"
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
               {part}
             </a>
           );
