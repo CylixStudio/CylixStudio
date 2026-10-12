@@ -1,0 +1,2 @@
+# Netlify-only SSR rewrite. Workers must not apply it, or every route 404s.
+_redirects

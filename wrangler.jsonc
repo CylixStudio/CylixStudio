@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cylixstudio",
+  // Current date. nodejs_compat is on by default for dates on/after 2026-08-04;
+  // the flag is still set so Workers Builds and older tooling enable it explicitly.
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  // Custom fetch entry: request context + host waitUntil. The Vite plugin
+  // bundles this to dist/server/index.js and attaches client assets from dist/client.
+  "main": "src/server.ts",
+  "observability": {
+    "enabled": true
+  }
+}

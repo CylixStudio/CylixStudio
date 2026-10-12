@@ -58,11 +58,20 @@ function isClientAbort(error: unknown): boolean {
   );
 }
 
-void import("./lib/relaySockets.server")
-  .then((mod) => mod.startRelaySockets())
-  .catch((error: unknown) => {
-    console.error("[relay-sockets] not started", error instanceof Error ? error.message : "error");
-  });
+function isCloudflareWorkersRuntime(): boolean {
+  return typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+}
+
+// Streamlabs / StreamElements sockets stay open for the life of the Node
+// process. Workers isolates do not keep that loop alive, so skip it there.
+// Webhook ingest still runs inside fetch, using the host waitUntil.
+if (!isCloudflareWorkersRuntime()) {
+  void import("./lib/relaySockets.server")
+    .then((mod) => mod.startRelaySockets())
+    .catch((error: unknown) => {
+      console.error("[relay-sockets] not started", error instanceof Error ? error.message : "error");
+    });
+}
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
