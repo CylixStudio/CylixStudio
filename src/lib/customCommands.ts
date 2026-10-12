@@ -1,4 +1,7 @@
 import { blankCommandTemplate, commandArgument, renderCommandTemplate, taggedUsername } from "@/lib/commandTemplate";
+import { messageStartsWithTrigger } from "@/lib/messageStartsWithTrigger";
+
+export { messageStartsWithTrigger };
 
 export type ChatCommandPlatform = "KICK" | "TWITCH";
 
@@ -7,9 +10,6 @@ export type CommandRole = (typeof COMMAND_ROLES)[number];
 
 export const PREFIX_MARKERS = ["!", "#"] as const;
 export const QUESTION_SUFFIX = "?";
-
-const ARABIC_LETTER = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
-const LATIN_LETTER = /[A-Za-z\u00C0-\u024F]/;
 
 export type CustomChatCommand = {
   id: string;
@@ -122,26 +122,9 @@ export function normalizeTriggerMarker(marker: string): string {
   return "";
 }
 
-/** Arabic vs Latin letters decide whether the suffix is `؟` or `?`. */
-export function questionSuffixForText(text: string): "?" | "؟" {
-  if (ARABIC_LETTER.test(text)) return "؟";
-  if (LATIN_LETTER.test(text)) return "?";
-  return "?";
-}
-
-export function resolveStoredMarker(marker: string | null, name: string): string | null {
+export function resolveStoredMarker(marker: string | null, _name: string): string | null {
   if (marker === null) return null;
-  const normalized = normalizeTriggerMarker(marker);
-  if (isSuffixMarker(normalized)) return questionSuffixForText(name);
-  return normalized;
-}
-
-export type MarkerPlacement = "none" | "prefix" | "suffix";
-
-export function markerPlacement(marker: string): MarkerPlacement {
-  if (!marker) return "none";
-  if (isSuffixMarker(marker)) return "suffix";
-  return "prefix";
+  return normalizeTriggerMarker(marker);
 }
 
 export function effectivePrefix(command: Pick<CustomChatCommand, "prefix">, defaultPrefix: string): string {
@@ -153,12 +136,7 @@ export function commandTrigger(command: Pick<CustomChatCommand, "name" | "prefix
   const name = command.name;
   const marker = effectivePrefix(command, defaultPrefix);
   if (!marker) return name;
-  if (isSuffixMarker(marker)) return `${name}${questionSuffixForText(name)}`;
   return `${marker}${name}`;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Legacy rows may have stored names without spaces — accept both forms. */
@@ -171,37 +149,18 @@ function nameMatchVariants(name: string): string[] {
   return [...variants];
 }
 
+/** The one trigger string for this name and the configured marker. No extra prefixes. */
+function configuredTrigger(name: string, marker: string): string {
+  if (!marker) return name;
+  return `${marker}${name}`;
+}
+
 function matchesTrigger(text: string, name: string, marker: string): boolean {
   const normalizedText = normalizeChatText(text);
   if (!normalizedText) return false;
-  const placement = markerPlacement(marker);
-  const flags = "iu";
 
   for (const variant of nameMatchVariants(name)) {
-    const word = escapeRegExp(variant);
-    if (placement === "none") {
-      if (/^[!#./]/.test(normalizedText)) continue;
-      if (new RegExp(`^${word}(?![?؟!#])(?:\\s|$)`, flags).test(normalizedText)) return true;
-      continue;
-    }
-    if (placement === "suffix") {
-      if (new RegExp(`(?:^|\\s)${word}[?؟]\\s*$`, flags).test(normalizedText)) return true;
-      continue;
-    }
-    if (!isAllowedPrefixMarker(marker)) continue;
-    const escapedMarker = escapeRegExp(marker);
-    // Logical order: !name  — and RTL-typed order: name!
-    if (new RegExp(`^${escapedMarker}${word}(?:\\s|$)`, flags).test(normalizedText)) return true;
-    if (new RegExp(`^${word}${escapedMarker}(?:\\s|$)`, flags).test(normalizedText)) return true;
-    // Arabic chat rarely leads with ASCII `!` — also accept the bare phrase at
-    // message start when the command name is Arabic-script.
-    if (
-      ARABIC_LETTER.test(variant) &&
-      !/^[!#./]/.test(normalizedText) &&
-      new RegExp(`^${word}(?![?؟!#])(?:\\s|$)`, flags).test(normalizedText)
-    ) {
-      return true;
-    }
+    if (messageStartsWithTrigger(normalizedText, configuredTrigger(variant, marker))) return true;
   }
   return false;
 }

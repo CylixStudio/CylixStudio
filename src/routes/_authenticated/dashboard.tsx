@@ -1,4 +1,4 @@
-﻿import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, type ReactElement } from "react";
@@ -141,13 +141,13 @@ import { PRO_ONLY_HUB_TOOL_IDS } from "@/lib/plans";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "CylixStudio â€” Widget Hub" },
+      { title: "CylixStudio — Widget Hub" },
       {
         name: "description",
         content:
           "Discover, open and customize every streaming widget: timers, goals, alerts, chat, wheels, emote rain and more.",
       },
-      { property: "og:title", content: "CylixStudio â€” Widget Hub" },
+      { property: "og:title", content: "CylixStudio — Widget Hub" },
       {
         property: "og:description",
         content: "Everything you need to build, customize, and control your stream.",

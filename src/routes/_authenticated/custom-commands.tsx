@@ -47,8 +47,8 @@ import {
   PREFIX_MARKERS,
   QUESTION_SUFFIX,
   commandTrigger,
+  effectivePrefix,
   isSuffixMarker,
-  questionSuffixForText,
   deleteTestCommand,
   emptyCommandDraft,
   loadTestCommandState,
@@ -149,7 +149,6 @@ function buildCommandsCopy(t: ReturnType<typeof useLanguage>["t"]) {
     namePlaceholder: t("commands.namePlaceholder"),
     prefixLabel: t("commands.prefixLabel"),
     inherit: t("commands.inherit"),
-    suffixAuto: t("commands.suffixAuto"),
     testerPlaceholder: t("commands.testerPlaceholder"),
     showVariables: t("commands.showVariables"),
     hideVariables: t("commands.hideVariables"),
@@ -751,20 +750,14 @@ function CustomCommandsPage() {
               onClick={() => setDefaultPrefix(QUESTION_SUFFIX)}
               className={cn(
                 pill,
-                "gap-1",
                 isSuffixMarker(prefixValue)
                   ? "border-primary/50 bg-primary/15 text-foreground"
                   : "border-[oklch(1_0_0/0.1)] text-muted-foreground hover:text-foreground",
               )}
             >
-              <TriggerPreview name="question" marker="?" placement="suffix" />
-              <span className="text-muted-foreground">/</span>
-              <TriggerPreview name="سؤال" marker="؟" placement="suffix" />
+              <TriggerPreview name="question" marker="?" placement="prefix" />
             </button>
           </div>
-          {isSuffixMarker(prefixValue) ? (
-            <p className="mt-2 text-[0.72rem] text-muted-foreground">{c.suffixAuto}</p>
-          ) : null}
 
         </section>
       </div>
@@ -1441,22 +1434,8 @@ function CommandCard({
       <h3 className="max-w-full text-sm font-semibold tracking-tight text-zinc-100 [overflow-wrap:anywhere]">
         <TriggerPreview
           name={command.name || "name"}
-          marker={
-            command.prefix === null
-              ? defaultPrefix
-              : isSuffixMarker(command.prefix)
-                ? questionSuffixForText(command.name)
-                : command.prefix
-          }
-          placement={
-            command.prefix === ""
-              ? "none"
-              : isSuffixMarker(command.prefix === null ? defaultPrefix : command.prefix)
-                ? "suffix"
-                : (command.prefix === null ? defaultPrefix : command.prefix)
-                  ? "prefix"
-                  : "none"
-          }
+          marker={effectivePrefix(command, defaultPrefix)}
+          placement={effectivePrefix(command, defaultPrefix) ? "prefix" : "none"}
         />
       </h3>
     </StudioFaceCard>
@@ -1487,7 +1466,6 @@ function CommandEditor({
   const prefixMode = draft.prefix === null ? "inherit" : draft.prefix === "" ? "none" : "custom";
   const suffixSelected = draft.prefix !== null && isSuffixMarker(draft.prefix);
   const liveName = draft.name.trim() || "name";
-  const liveSuffix = questionSuffixForText(liveName);
 
   const togglePlatform = (platform: ChatCommandPlatform) => {
     const has = draft.platforms.includes(platform);
@@ -1547,14 +1525,7 @@ function CommandEditor({
               </span>
               <input
                 value={draft.name}
-                onChange={(event) => {
-                  const name = event.target.value;
-                  const prefix =
-                    draft.prefix !== null && isSuffixMarker(draft.prefix)
-                      ? questionSuffixForText(name)
-                      : draft.prefix;
-                  onChange({ ...draft, name, prefix });
-                }}
+                onChange={(event) => onChange({ ...draft, name: event.target.value })}
                 placeholder={copy.namePlaceholder}
                 className={field}
                 dir="auto"
@@ -1583,7 +1554,7 @@ function CommandEditor({
                     <TriggerPreview
                       name={liveName}
                       marker={defaultPrefix}
-                      placement={defaultPrefix ? (isSuffixMarker(defaultPrefix) ? "suffix" : "prefix") : "none"}
+                      placement={defaultPrefix ? "prefix" : "none"}
                     />
                     <span>)</span>
                   </span>
@@ -1617,7 +1588,7 @@ function CommandEditor({
                 ))}
                 <button
                   type="button"
-                  onClick={() => onChange({ ...draft, prefix: questionSuffixForText(liveName) })}
+                  onClick={() => onChange({ ...draft, prefix: QUESTION_SUFFIX })}
                   className={cn(
                     pill,
                     suffixSelected
@@ -1625,7 +1596,7 @@ function CommandEditor({
                       : "border-[oklch(1_0_0/0.1)] text-muted-foreground",
                   )}
                 >
-                  <TriggerPreview name={liveName} marker={liveSuffix} placement="suffix" />
+                  <TriggerPreview name={liveName} marker="?" placement="prefix" />
                 </button>
               </div>
             </div>
