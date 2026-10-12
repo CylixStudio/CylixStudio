@@ -35,6 +35,7 @@ import { HubPlatformDot } from "@/components/hub/HubPlatformDot";
 import {
   ALL_PLATFORMS,
   FILTER_ORDER,
+  isTikTokHubCard,
   PLATFORM_META,
   type PlatformFilter,
   type PlatformId,
@@ -453,7 +454,15 @@ function HomePage() {
   });
 
   const visibleTools = TOOLS.filter(
-    (tool) => platformFilter === "ALL" || tool.platforms.includes(platformFilter),
+    (tool) =>
+      !isTikTokHubCard({
+        id: tool.id,
+        type: tool.type,
+        title: tool.name,
+        name: tool.name,
+        category: tool.categoryKey,
+        platforms: tool.platforms,
+      }) && (platformFilter === "ALL" || tool.platforms.includes(platformFilter)),
   ).sort((a, b) => {
     const aRank = HUB_GOAL_RANK.get(a.id);
     const bRank = HUB_GOAL_RANK.get(b.id);

@@ -34,6 +34,25 @@ export function sortHubPlatforms(platforms: readonly PlatformId[]): PlatformId[]
   );
 }
 
+const TIKTOK_HUB_PATTERN = /tiktok|تيك\s*توك/i;
+
+/** Hub grids only: hide a card that is itself a TikTok tool. Mixed-platform tools stay. */
+export function isTikTokHubCard(fields: {
+  id?: string | null;
+  type?: string | null;
+  title?: string | null;
+  name?: string | null;
+  category?: string | null;
+  platforms?: readonly string[] | null;
+}): boolean {
+  const texts = [fields.id, fields.type, fields.title, fields.name, fields.category];
+  if (texts.some((value) => typeof value === "string" && TIKTOK_HUB_PATTERN.test(value))) {
+    return true;
+  }
+  const platforms = fields.platforms ?? [];
+  return platforms.length > 0 && platforms.every((platform) => TIKTOK_HUB_PATTERN.test(platform));
+}
+
 export function platformAccent(platforms: PlatformId[]): string {
   const first = platforms[0];
   return first ? PLATFORM_META[first].color : PLATFORM_META.KICK.color;

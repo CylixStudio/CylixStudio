@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { RulesPager } from "@/components/widgets/WidgetRulesPanel";
 import { InfoTip } from "@/components/ui/info-tip";
 import { supabase } from "@/lib/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -75,6 +76,7 @@ function RulesPage() {
   const { data: workspace } = useWorkspace(user.id);
   const { t } = useLanguage();
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const [draft, setDraft] = useState({
     platform: "TWITCH" as Platform,
     event_type: "SUBSCRIPTION" as EventType,
@@ -102,6 +104,11 @@ function RulesPage() {
       return data as Rule[];
     },
   });
+
+  const ruleRows = rules.data ?? [];
+  const pageCount = Math.max(1, Math.ceil(ruleRows.length / 9));
+  const safePage = Math.min(page, pageCount - 1);
+  const visibleRules = ruleRows.slice(safePage * 9, safePage * 9 + 9);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["rules", id] });
 
@@ -295,61 +302,78 @@ function RulesPage() {
         </p>
       </section>
 
-      <section className="mt-6 space-y-3">
-        {rules.data?.length ? (
-          rules.data.map((rule) => (
-            <article
-              key={rule.id}
-              className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5"
-            >
-              <div className="min-w-0">
-                <p className="font-semibold">
-                  {rule.platform} · {t(triggerKey(rule.platform, rule.event_type))}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  every {rule.unit_amount} {UNIT_LABEL[rule.event_type]} → +{rule.seconds_per_unit}s
-                  {rule.min_amount != null ? ` · min ${rule.min_amount}` : ""}
-                  {rule.max_seconds_per_event != null
-                    ? ` · cap ${rule.max_seconds_per_event}s`
-                    : ""}{" "}
-                  · priority {rule.priority}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="peer sr-only"
-                    checked={rule.is_enabled}
-                    onChange={(event) =>
-                      patchRule.mutate({
-                        ruleId: rule.id,
-                        patch: { is_enabled: event.target.checked },
-                      })
-                    }
-                  />
-                  <span className="relative h-6 w-11 rounded-full bg-secondary transition-colors peer-checked:bg-primary after:absolute after:start-1 after:top-1 after:size-4 after:rounded-full after:bg-foreground after:transition-transform peer-checked:after:translate-x-5 rtl:peer-checked:after:-translate-x-5" />
-                  <span className="text-muted-foreground">
-                    {rule.is_enabled ? "Enabled" : "Disabled"}
-                  </span>
-                </label>
-                <button
-                  type="button"
-                  aria-label="Delete rule"
-                  onClick={() => deleteRule.mutate(rule.id)}
-                  className="rounded-lg border border-border p-2 text-destructive transition-colors hover:bg-destructive/10"
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                </button>
-              </div>
-            </article>
-          ))
-        ) : (
-          <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-            No rules yet — add your first conversion above.
-          </p>
-        )}
-      </section>
+      {ruleRows.length ? (
+        <>
+          <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {visibleRules.map((rule) => (
+              <article
+                key={rule.id}
+                className="flex min-w-0 flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-[0.65rem] font-semibold">
+                      {rule.platform}
+                    </span>
+                    <span className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-primary">
+                      {t(triggerKey(rule.platform, rule.event_type))}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    every {rule.unit_amount} {UNIT_LABEL[rule.event_type]} → +{rule.seconds_per_unit}s
+                    {rule.min_amount != null ? ` · min ${rule.min_amount}` : ""}
+                    {rule.max_seconds_per_event != null
+                      ? ` · cap ${rule.max_seconds_per_event}s`
+                      : ""}{" "}
+                    · priority {rule.priority}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="peer sr-only"
+                      checked={rule.is_enabled}
+                      onChange={(event) =>
+                        patchRule.mutate({
+                          ruleId: rule.id,
+                          patch: { is_enabled: event.target.checked },
+                        })
+                      }
+                    />
+                    <span className="relative h-6 w-11 rounded-full bg-secondary transition-colors peer-checked:bg-primary after:absolute after:start-1 after:top-1 after:size-4 after:rounded-full after:bg-foreground after:transition-transform peer-checked:after:translate-x-5 rtl:peer-checked:after:-translate-x-5" />
+                    <span className="text-xs text-muted-foreground">
+                      {rule.is_enabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    aria-label="Delete rule"
+                    onClick={() => deleteRule.mutate(rule.id)}
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-border text-destructive transition-colors hover:bg-destructive/10"
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </section>
+          {pageCount > 1 ? (
+            <RulesPager
+              page={safePage}
+              pageCount={pageCount}
+              onPage={setPage}
+              prevLabel={t("commands.public.prev")}
+              nextLabel={t("commands.public.next")}
+              pageLabel={(n) => t("commands.public.page", { n })}
+            />
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-6 rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          No rules yet — add your first conversion above.
+        </p>
+      )}
     </AppShell>
   );
 }

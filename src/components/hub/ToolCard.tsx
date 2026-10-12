@@ -83,7 +83,7 @@ export function ToolCard({
 
   return (
     <div
-      className={`glass-3d glass-lift relative flex h-full min-h-[18.5rem] flex-col overflow-visible rounded-2xl p-5 text-start transition-[opacity,transform] duration-300 ease-out ${
+      className={`glass-3d glass-lift relative flex h-full flex-col overflow-visible rounded-2xl p-4 text-start transition-[opacity,transform] duration-300 ease-out ${
         removing ? "pointer-events-none scale-95 opacity-0" : "scale-100 opacity-100"
       } ${comingSoon ? "pointer-events-none opacity-60" : ""} ${className ?? ""}`}
       style={style}

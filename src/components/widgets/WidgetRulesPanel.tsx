@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { DarkSelect } from "@/components/ui/dark-select";
@@ -70,6 +70,8 @@ function formatSeconds(seconds: number) {
   return `+${seconds}s`;
 }
 
+const RULES_PAGE_SIZE = 9;
+
 const fieldClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary";
 const labelClass =
@@ -97,6 +99,7 @@ export function WidgetRulesPanel({
   });
   const workspace = useWorkspace(sessionUser.data ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     platform: "TWITCH" as Platform,
@@ -158,6 +161,12 @@ export function WidgetRulesPanel({
       return data as Rule[];
     },
   });
+
+  const pageSize = compact ? 6 : RULES_PAGE_SIZE;
+  const ruleRows = rulesQuery.data ?? [];
+  const pageCount = Math.max(1, Math.ceil(ruleRows.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const visibleRules = ruleRows.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["widget-rules", widgetId] });
 
@@ -426,17 +435,16 @@ export function WidgetRulesPanel({
         </p>
       </details>
 
-      <section className={cn("grid gap-3", !compact && "sm:grid-cols-2 xl:grid-cols-3")}>
-        {rulesQuery.data?.length ? (
-          rulesQuery.data.map((rule) => (
+      <div className="@container min-w-0">
+      {ruleRows.length ? (
+      <>
+      <section className="grid grid-cols-1 gap-4 @min-[768px]:grid-cols-2 @min-[1024px]:grid-cols-3">
+        {visibleRules.map((rule) => (
             <article
               key={rule.id}
-              className={cn(
-                "rounded-2xl border border-border bg-card/70 backdrop-blur transition-colors hover:border-primary/40",
-                compact ? "p-3" : "p-5",
-              )}
+              className="min-w-0 rounded-2xl border border-border bg-card/70 p-3 backdrop-blur transition-colors hover:border-primary/40"
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span
                   className={`rounded-full border px-2.5 py-0.5 text-[0.65rem] font-semibold ${PLATFORM_STYLE[rule.platform]}`}
                 >
@@ -454,12 +462,12 @@ export function WidgetRulesPanel({
                   </span>
                 ) : null}
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="mt-1.5 text-xs text-muted-foreground">
                 every {rule.unit_amount} unit(s)
                 {rule.min_amount != null ? ` · min ${rule.min_amount}` : ""} · priority{" "}
                 {rule.priority}
               </p>
-              <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="mt-2 flex items-center justify-between gap-2">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -482,7 +490,7 @@ export function WidgetRulesPanel({
                     type="button"
                     aria-label="Edit rule"
                     onClick={() => loadIntoForm(rule)}
-                    className="rounded-lg border border-border p-1.5 text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                   >
                     <Pencil className="size-3.5" aria-hidden />
                   </button>
@@ -490,20 +498,111 @@ export function WidgetRulesPanel({
                     type="button"
                     aria-label="Delete rule"
                     onClick={() => deleteRule.mutate(rule.id)}
-                    className="rounded-lg border border-border p-1.5 text-destructive transition-colors hover:bg-destructive/10"
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-border text-destructive transition-colors hover:bg-destructive/10"
                   >
                     <Trash2 className="size-3.5" aria-hidden />
                   </button>
                 </div>
               </div>
             </article>
-          ))
-        ) : (
-          <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
-            No widget rules yet — use a quick preset above.
-          </p>
-        )}
+          ))}
       </section>
+      {pageCount > 1 ? (
+        <RulesPager
+          page={safePage}
+          pageCount={pageCount}
+          onPage={setPage}
+          prevLabel={t("commands.public.prev")}
+          nextLabel={t("commands.public.next")}
+          pageLabel={(n) => t("commands.public.page", { n })}
+        />
+      ) : null}
+      </>
+      ) : (
+        <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          No widget rules yet — use a quick preset above.
+        </p>
+      )}
+      </div>
     </div>
   );
+}
+
+export function RulesPager({
+  page,
+  pageCount,
+  onPage,
+  prevLabel,
+  nextLabel,
+  pageLabel,
+}: {
+  page: number;
+  pageCount: number;
+  onPage: (page: number) => void;
+  prevLabel: string;
+  nextLabel: string;
+  pageLabel: (page: number) => string;
+}) {
+  const current = page + 1;
+  return (
+    <nav
+      className="mt-4 flex w-fit items-center justify-center gap-1.5 rounded-2xl border border-white/5 bg-[#0d0e12] px-3 py-2"
+      dir="ltr"
+      aria-label={pageLabel(current)}
+    >
+      <button
+        type="button"
+        className="grid size-9 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 disabled:opacity-40"
+        onClick={() => onPage(Math.max(0, page - 1))}
+        disabled={page <= 0}
+        aria-label={prevLabel}
+      >
+        <ChevronLeft className="size-4" />
+      </button>
+      {rulePageWindow(pageCount, current).map((entry, index) =>
+        entry === "gap" ? (
+          <span key={`gap-${index}`} className="px-1 text-zinc-500">
+            …
+          </span>
+        ) : (
+          <button
+            key={entry}
+            type="button"
+            onClick={() => onPage(entry - 1)}
+            aria-label={pageLabel(entry)}
+            aria-current={entry === current ? "page" : undefined}
+            className={
+              entry === current
+                ? "grid h-9 min-w-9 place-items-center rounded-xl bg-sky-400 px-2 text-sm font-bold text-zinc-950"
+                : "grid h-9 min-w-9 place-items-center rounded-xl px-2 text-sm text-zinc-400 hover:bg-white/5"
+            }
+          >
+            {entry}
+          </button>
+        ),
+      )}
+      <button
+        type="button"
+        className="grid size-9 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 disabled:opacity-40"
+        onClick={() => onPage(Math.min(pageCount - 1, page + 1))}
+        disabled={page >= pageCount - 1}
+        aria-label={nextLabel}
+      >
+        <ChevronRight className="size-4" />
+      </button>
+    </nav>
+  );
+}
+
+function rulePageWindow(pageCount: number, current: number): Array<number | "gap"> {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1);
+  const pages = new Set<number>([1, pageCount, current - 1, current, current + 1]);
+  const sorted = [...pages].filter((value) => value >= 1 && value <= pageCount).sort((a, b) => a - b);
+  const windowed: Array<number | "gap"> = [];
+  for (const value of sorted) {
+    const previous = windowed[windowed.length - 1];
+    if (typeof previous === "number" && value - previous > 1) windowed.push("gap");
+    windowed.push(value);
+  }
+  return windowed;
 }

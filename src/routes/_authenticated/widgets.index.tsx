@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { DeleteWidgetDialog } from "@/components/widgets/DeleteWidgetDialog";
 import { ToolCard } from "@/components/hub/ToolCard";
+import { isTikTokHubCard } from "@/components/hub/platforms";
 import {
   DonationGoalPreview,
   EventLabelsPreview,
@@ -134,7 +135,16 @@ function WidgetHub() {
       return match ? [match.id] : [];
     }),
   );
-  const otherWidgets = (data?.widgets ?? []).filter((widget) => !featuredIds.has(widget.id));
+  const otherWidgets = (data?.widgets ?? []).filter(
+    (widget) =>
+      !featuredIds.has(widget.id) &&
+      !isTikTokHubCard({
+        id: widget.id,
+        type: widget.type,
+        title: WIDGET_LABEL[widget.type],
+        name: widget.name,
+      }),
+  );
 
   return (
     <AppShell
@@ -148,6 +158,15 @@ function WidgetHub() {
 
       <section className="widget-hub-grid mb-6">
         {[...STANDALONE_TOOLS]
+          .filter(
+            (tool) =>
+              !isTikTokHubCard({
+                id: tool.slug,
+                type: tool.type,
+                title: tool.name,
+                name: tool.name,
+              }),
+          )
           .sort((a, b) => {
             const aRank = WIDGET_GOAL_RANK.get(a.slug);
             const bRank = WIDGET_GOAL_RANK.get(b.slug);
@@ -240,7 +259,7 @@ function WidgetHub() {
           otherWidgets.map((widget) => {
             const goal = (data?.goals ?? []).find((entry) => entry.widget_id === widget.id);
             return (
-              <article key={widget.id} className="rounded-2xl border border-border bg-card p-5">
+              <article key={widget.id} className="h-full rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{widget.name}</p>
@@ -306,7 +325,7 @@ function WidgetHub() {
             );
           })
         ) : (
-          <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
             No extra widgets yet.
           </p>
         )}
