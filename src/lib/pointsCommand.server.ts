@@ -1,25 +1,11 @@
 import { sendKickChatMessage } from "@/lib/kickChat.server";
+import { canManageLoyaltyPoints, parsePointsCommand } from "@/lib/pointsCommand";
 import { recentChatterNames } from "@/lib/recentChatters";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
-type PointsAction =
-  | { kind: "balance" }
-  | { kind: "add" | "remove"; target: "all" | string; amount: number };
+const POINTS_DENIED = "أنت لا تملك صلاحية استخدام هذا الأمر";
 
-export function parsePointsCommand(text: string): PointsAction | null {
-  const trimmed = text.trim();
-  if (!/^!points\b/i.test(trimmed)) return null;
-  const rest = trimmed.replace(/^!points\b/i, "").trim();
-  if (!rest) return { kind: "balance" };
-  const match = rest.match(/^(add|remove)\s+(all|@?\S+)\s+(\d+)$/i);
-  if (!match) return null;
-  const amount = Number(match[3]);
-  if (!Number.isFinite(amount) || amount < 1 || amount > 1_000_000) return null;
-  const rawTarget = match[2] ?? "";
-  const target = /^all$/i.test(rawTarget) ? "all" : rawTarget.replace(/^@+/, "");
-  if (!target) return null;
-  return { kind: match[1]!.toLowerCase() === "remove" ? "remove" : "add", target, amount };
-}
+export { parsePointsCommand };
 
 async function members(userId: string) {
   const { data } = await supabaseAdmin
@@ -39,9 +25,24 @@ export async function handlePointsCommand(input: {
   broadcasterUserId: string;
   text: string;
   sender: string;
+  senderPlatformId?: string | null;
+  identityBadges?: readonly string[];
 }): Promise<{ status: string; reason?: string; command?: string }> {
   const action = parsePointsCommand(input.text);
   if (!action) return { status: "ignored", reason: "no_match" };
+
+  if (
+    action.kind !== "balance" &&
+    !canManageLoyaltyPoints({
+      identityBadges: input.identityBadges ?? [],
+      senderPlatformId: input.senderPlatformId,
+      broadcasterUserId: input.broadcasterUserId,
+    })
+  ) {
+    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, POINTS_DENIED);
+    if (!sent) return { status: "error", reason: "not_permitted", command: "!points" };
+    return { status: "replied", reason: "not_permitted", command: "!points" };
+  }
 
   const rows = await members(input.userId);
   let reply = "";

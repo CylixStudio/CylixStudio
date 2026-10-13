@@ -48,6 +48,8 @@ type KickChatFields = {
   username: string;
   broadcasterId: string | null;
   senderId: string | null;
+  /** `sender.user_id` / `sender.id` only. Top-level `user_id` is not the chatter. */
+  senderUserId: string | null;
   identityBadges: string[];
 };
 
@@ -98,6 +100,7 @@ function extractKickChat(body: KickPayload): KickChatFields {
   let username = "";
   let broadcasterId: string | null = null;
   let senderId: string | null = null;
+  let senderUserId: string | null = null;
   let identityBadges: string[] = [];
 
   for (const source of sources) {
@@ -120,6 +123,11 @@ function extractKickChat(body: KickPayload): KickChatFields {
       ["user", "user_id"],
       ["user_id"],
     ]);
+    senderUserId ||= firstString(source, [
+      ["sender", "user_id"],
+      ["sender", "id"],
+      ["message", "sender", "user_id"],
+    ]);
     if (!identityBadges.length) identityBadges = readIdentityBadges(source);
   }
 
@@ -134,6 +142,7 @@ function extractKickChat(body: KickPayload): KickChatFields {
     username: username || "Kick viewer",
     broadcasterId,
     senderId,
+    senderUserId,
     identityBadges,
   };
 }
@@ -408,7 +417,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
         }
 
         if (isKickChatEvent(type, chat)) {
-          const { broadcasterId, text, username, senderId, identityBadges } = chat;
+          const { broadcasterId, text, username, senderId, senderUserId, identityBadges } = chat;
           if (!broadcasterId) {
             console.warn("[kick-webhook] chat ignored — no broadcaster id", { messageId, eventType: type });
             return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
@@ -468,6 +477,8 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   broadcasterUserId: broadcasterId,
                   text,
                   sender: username,
+                  senderPlatformId: senderUserId,
+                  identityBadges,
                 });
               } else if (/^!?(?:shop|store|متجر)$/i.test(text.trim())) {
                 const { handleShopDirectoryCommand } = await import("@/lib/shopDirectory.server");
