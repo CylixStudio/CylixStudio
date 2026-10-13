@@ -6,9 +6,9 @@
 
 .wrap {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1550px;
   margin: 0 auto;
-  padding: 28px 24px 48px;
+  padding: 44px 24px 40px;
 }
 
 .channel {
@@ -193,7 +193,7 @@
 .card {
   position: relative;
   box-sizing: border-box;
-  height: 94px;
+  height: 100px;
   padding: 12px 30px 12px 12px;
   overflow: hidden;
   background: #12151a;
