@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ListFilter, MessageSquareCode, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ChatTextAlertsPanel } from "@/components/commands/ChatTextAlertsPanel";
 import { CommandVariablesSidebar } from "@/components/commands/CommandVariables";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -37,6 +38,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { COMMAND_MIN_ROLES, type CommandMinRole } from "@/lib/commandAccess";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
@@ -68,9 +71,12 @@ import {
   upsertCustomCommand,
 } from "@/lib/customCommands.functions";
 import {
+  catalogDefaultCommands,
+  isDefaultCommandId,
   loadTestDefaultCommands,
   mergeDefaultCommands,
   setTestDefaultCommandEnabled,
+  setTestDefaultCommandRole,
   upsertTestDefaultCommand,
   type DefaultCommand,
   type DefaultCommandInput,
@@ -78,6 +84,7 @@ import {
 import {
   listDefaultCommands,
   setDefaultCommandEnabled,
+  setDefaultCommandRole,
   upsertDefaultCommand,
 } from "@/lib/defaultCommands.functions";
 import {
@@ -184,7 +191,10 @@ function buildCommandsCopy(t: ReturnType<typeof useLanguage>["t"]) {
     loadMore: t("common.loadMore"),
     tabDefaults: t("commands.tabDefaults"),
     tabCommands: t("commands.tabCommands"),
+    tabAlerts: t("commands.tabAlerts"),
     tabTimers: t("commands.tabTimers"),
+    alertsSubtitle: t("commands.alertsSubtitle"),
+    rankLabel: t("commands.rankLabel"),
     defaultSubtitle: t("commands.defaultSubtitle"),
     defaultHint: t("commands.defaultHint"),
     defaultVars: t("commands.defaultVars"),
@@ -341,6 +351,7 @@ function CustomCommandsPage() {
   const loadDefaults = useServerFn(listDefaultCommands);
   const persistDefault = useServerFn(upsertDefaultCommand);
   const persistDefaultEnabled = useServerFn(setDefaultCommandEnabled);
+  const persistDefaultRole = useServerFn(setDefaultCommandRole);
 
   const state = useQuery({
     queryKey: ["custom-commands", user.id],
@@ -359,7 +370,7 @@ function CustomCommandsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
-  const [pageTab, setPageTab] = useState<"defaults" | "commands" | "timers">("defaults");
+  const [pageTab, setPageTab] = useState<"defaults" | "commands" | "alerts" | "timers">("defaults");
   const [timerEditor, setTimerEditor] = useState<MessageTimerInput | null>(null);
   const [timerDeleteId, setTimerDeleteId] = useState<string | null>(null);
   const [defaultEditor, setDefaultEditor] = useState<DefaultCommandInput | null>(null);
@@ -557,8 +568,19 @@ function CustomCommandsPage() {
 
   const defaultEnabledMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: DefaultCommand["id"]; enabled: boolean }) => {
+      if (!isDefaultCommandId(id)) return null;
       if (test) return setTestDefaultCommandEnabled(id, enabled, lang);
       return persistDefaultEnabled({ data: { id, enabled } });
+    },
+    onSuccess: () => void invalidateDefaults(),
+    onError: (error: Error) => toast.error(error.message || c.errSave),
+  });
+
+  const defaultRoleMutation = useMutation({
+    mutationFn: async ({ id, minRole }: { id: DefaultCommand["id"]; minRole: CommandMinRole }) => {
+      if (!isDefaultCommandId(id)) return null;
+      if (test) return setTestDefaultCommandRole(id, minRole, lang);
+      return persistDefaultRole({ data: { id, minRole } });
     },
     onSuccess: () => void invalidateDefaults(),
     onError: (error: Error) => toast.error(error.message || c.errSave),
@@ -594,9 +616,23 @@ function CustomCommandsPage() {
     <AppShell
       user={user}
       profile={data?.profile}
-      title={pageTab === "defaults" ? c.tabDefaults : pageTab === "timers" ? c.tabTimers : c.title}
+      title={
+        pageTab === "defaults"
+          ? c.tabDefaults
+          : pageTab === "alerts"
+            ? c.tabAlerts
+            : pageTab === "timers"
+              ? c.tabTimers
+              : c.title
+      }
       subtitle={
-        pageTab === "defaults" ? c.defaultSubtitle : pageTab === "timers" ? c.timerSubtitle : c.subtitle
+        pageTab === "defaults"
+          ? c.defaultSubtitle
+          : pageTab === "alerts"
+            ? c.alertsSubtitle
+            : pageTab === "timers"
+              ? c.timerSubtitle
+              : c.subtitle
       }
     >
       <StudioPageTabs
@@ -605,6 +641,7 @@ function CustomCommandsPage() {
         items={[
           { id: "defaults", label: c.tabDefaults },
           { id: "commands", label: c.tabCommands },
+          { id: "alerts", label: c.tabAlerts },
           { id: "timers", label: c.tabTimers },
         ]}
       />
@@ -613,7 +650,8 @@ function CustomCommandsPage() {
         <DefaultCommandsPanel
           copy={c}
           commands={defaultRows}
-          onEdit={(command) =>
+          onEdit={(command) => {
+            if (!isDefaultCommandId(command.id)) return;
             setDefaultEditor({
               id: command.id,
               enabled: command.enabled,
@@ -621,10 +659,14 @@ function CustomCommandsPage() {
               fallbackResponse: command.fallbackResponse,
               platforms: command.platforms,
               cooldownSeconds: command.cooldownSeconds,
-            })
-          }
+              minRole: command.minRole,
+            });
+          }}
           onToggle={(id, enabled) => defaultEnabledMutation.mutate({ id, enabled })}
+          onRole={(id, minRole) => defaultRoleMutation.mutate({ id, minRole })}
         />
+      ) : pageTab === "alerts" ? (
+        <ChatTextAlertsPanel userId={user.id} />
       ) : pageTab === "timers" ? (
         <MessageTimersPanel
           copy={c}
@@ -945,41 +987,99 @@ function EnableSwitch({
   );
 }
 
+function catalogTrigger(id: string): string {
+  return catalogDefaultCommands("ar").find((item) => item.id === id)?.trigger ?? `!${id}`;
+}
+
+const RANK_LABEL_KEY = {
+  everyone: "commands.rank.everyone",
+  subscriber: "commands.rank.subscriber",
+  vip: "commands.rank.vip",
+  og: "commands.rank.og",
+  moderator: "commands.rank.moderator",
+  broadcaster: "commands.rank.broadcaster",
+} as const satisfies Record<CommandMinRole, TranslationKey>;
+
 function DefaultCommandsPanel({
   copy,
   commands,
   onEdit,
   onToggle,
+  onRole,
 }: {
   copy: CommandsCopy;
   commands: DefaultCommand[];
   onEdit: (command: DefaultCommand) => void;
   onToggle: (id: DefaultCommand["id"], enabled: boolean) => void;
+  onRole: (id: DefaultCommand["id"], minRole: CommandMinRole) => void;
 }) {
-  const page = useFaceLoadMore(commands.length);
+  const { t } = useLanguage();
+  const rows = commands.filter((command) => command.id !== "lurk" && command.id !== "so" && command.id !== "welcome");
   return (
-    <div className="space-y-8">
-      <HowItWorks title={copy.defaultHowTitle} steps={copy.defaultHow} />
-      <div>
-        <div className={FACE_ROW}>
-          {commands.slice(0, page.limit).map((command) => (
-            <StudioFaceCard
-              key={command.id}
-              enabled={command.enabled}
-              onToggle={() => onToggle(command.id, !command.enabled)}
-              onLabel={copy.on}
-              offLabel={copy.off}
-              onEdit={() => onEdit(command)}
-              editLabel={copy.edit}
+    <div>
+      {rows.map((command) => (
+        <article
+          key={command.id}
+          className="bg-[#121318] border border-white/5 rounded-xl p-4 flex items-center justify-between mb-2"
+        >
+          <div className="min-w-0 pe-4">
+            <h3 className="font-mono text-sm font-semibold text-zinc-100" dir="ltr">
+              {command.trigger}
+            </h3>
+            <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs text-zinc-400" dir="auto">
+              {command.response}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[0.68rem] text-zinc-400">{copy.rankLabel}</span>
+              <Select value={command.minRole} onValueChange={(value) => onRole(command.id, value as CommandMinRole)}>
+                <SelectTrigger className="h-8 w-36 border-white/10 bg-[#0d0e12] text-xs focus:border-emerald-500/80">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMMAND_MIN_ROLES.map((role) => (
+                    <SelectItem
+                      key={role}
+                      value={role}
+                      className="focus:bg-emerald-600 focus:text-white data-[state=checked]:bg-emerald-600 data-[state=checked]:text-white"
+                    >
+                      {t(RANK_LABEL_KEY[role])}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={command.enabled}
+              aria-label={command.enabled ? copy.on : copy.off}
+              onClick={() => onToggle(command.id, !command.enabled)}
+              className={cn(
+                "relative mb-1 h-5 w-9 shrink-0 rounded-full transition-colors",
+                command.enabled ? "bg-emerald-500" : "bg-zinc-700",
+              )}
             >
-              <h3 className="max-w-full font-mono text-sm font-semibold tracking-tight text-zinc-100" dir="auto">
-                {command.trigger}
-              </h3>
-            </StudioFaceCard>
-          ))}
-        </div>
-        {page.canLoadMore ? <LoadMoreButton label={copy.loadMore} onClick={page.loadMore} /> : null}
-      </div>
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute top-0.5 size-4 rounded-full bg-white transition-[inset-inline-start]",
+                  command.enabled ? "start-4" : "start-0.5",
+                )}
+              />
+            </button>
+            <button
+              type="button"
+              aria-label={copy.edit}
+              onClick={() => onEdit(command)}
+              className="mb-1 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
+            >
+              <Pencil className="size-4" aria-hidden />
+            </button>
+          </div>
+        </article>
+      ))}
     </div>
   );
 }
@@ -1000,8 +1100,8 @@ function DefaultCommandEditor({
   onSave: () => void;
 }) {
   if (!draft) return null;
-  const showFallback = draft.id === "followage" || draft.id === "so";
-  const trigger = `!${draft.id}`;
+  const showFallback = draft.id === "followage";
+  const trigger = catalogTrigger(draft.id);
 
   const togglePlatform = (platform: ChatCommandPlatform) => {
     const has = draft.platforms.includes(platform);

@@ -169,18 +169,38 @@ export const Route = createFileRoute("/api/public/webhooks/twitch")({
           return jsonResponse({ status: "accepted", widgets: ids.length });
         }
 
+        const { classifyTwitchChatAlert } = await import("@/lib/chatTextAlerts");
+        const signal = classifyTwitchChatAlert(type, ev);
         const normalized = normalize(type, messageId, ev);
-        if (!normalized) return jsonResponse({ status: "ignored", reason: "unsupported_type" });
+        if (!normalized && !signal) return jsonResponse({ status: "ignored", reason: "unsupported_type" });
 
         const broadcasterId =
           typeof ev["broadcaster_user_id"] === "string" ? (ev["broadcaster_user_id"] as string) : null;
-        if (!broadcasterId) return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+        const alertBroadcasterId =
+          broadcasterId ??
+          (typeof ev["to_broadcaster_user_id"] === "string" ? (ev["to_broadcaster_user_id"] as string) : null);
+        if (!broadcasterId && !alertBroadcasterId) {
+          return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+        }
 
         const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-        const userId = await resolveUserByPlatformUser(supabaseAdmin, "TWITCH", broadcasterId);
-        if (!userId) return jsonResponse({ status: "ignored", reason: "no_connection" });
-
-        const result = await receivePlatformEvent(supabaseAdmin, userId, normalized);
+        let result: { status: string; reason?: string } = { status: "ignored", reason: "unsupported_type" };
+        if (normalized && broadcasterId) {
+          const userId = await resolveUserByPlatformUser(supabaseAdmin, "TWITCH", broadcasterId);
+          if (!userId) return jsonResponse({ status: "ignored", reason: "no_connection" });
+          result = await receivePlatformEvent(supabaseAdmin, userId, normalized);
+        }
+        if (signal && messageId && alertBroadcasterId) {
+          const userId = await resolveUserByPlatformUser(supabaseAdmin, "TWITCH", alertBroadcasterId);
+          if (userId) {
+            const { deliverChatTextAlert } = await import("@/lib/chatTextAlerts.server");
+            await deliverChatTextAlert({
+              userId,
+              providerEventId: messageId,
+              signal,
+            }).catch((error) => console.error("[twitch-webhook] chat alert failed", error));
+          }
+        }
         return jsonResponse(result);
       },
     },

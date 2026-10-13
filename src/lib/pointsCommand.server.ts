@@ -1,11 +1,28 @@
+import { COMMAND_PERMISSION_DENIED, isCommandMinRole, type CommandMinRole } from "@/lib/commandAccess";
+import { catalogDefaultCommand } from "@/lib/defaultCommands";
 import { sendKickChatMessage } from "@/lib/kickChat.server";
-import { canManageLoyaltyPoints, parsePointsCommand } from "@/lib/pointsCommand";
+import { parsePointsCommand, pointsCommandPermitted } from "@/lib/pointsCommand";
 import { recentChatterNames } from "@/lib/recentChatters";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
-const POINTS_DENIED = "أنت لا تملك صلاحية استخدام هذا الأمر";
+const POINTS_DENIED = COMMAND_PERMISSION_DENIED;
 
 export { parsePointsCommand };
+
+async function loadPointsGate(userId: string, commandId: "points" | "points_add") {
+  const fallback: CommandMinRole = catalogDefaultCommand(commandId)?.minRole ?? "everyone";
+  const { data, error } = await supabaseAdmin
+    .from("default_chat_commands")
+    .select("enabled, min_role")
+    .eq("user_id", userId)
+    .eq("command_id", commandId)
+    .maybeSingle();
+  if (error || !data) return { enabled: true, minRole: fallback };
+  return {
+    enabled: data.enabled,
+    minRole: isCommandMinRole(data.min_role) ? data.min_role : fallback,
+  };
+}
 
 async function members(userId: string) {
   const { data } = await supabaseAdmin
@@ -31,12 +48,19 @@ export async function handlePointsCommand(input: {
   const action = parsePointsCommand(input.text);
   if (!action) return { status: "ignored", reason: "no_match" };
 
+  const lookup = await loadPointsGate(input.userId, "points");
+  const add = await loadPointsGate(input.userId, "points_add");
+  if (action.kind === "balance" && !lookup.enabled) return { status: "ignored", reason: "disabled" };
+  if (action.kind === "add" && !add.enabled) return { status: "ignored", reason: "disabled" };
+
   if (
-    action.kind !== "balance" &&
-    !canManageLoyaltyPoints({
+    !pointsCommandPermitted({
+      kind: action.kind,
       identityBadges: input.identityBadges ?? [],
       senderPlatformId: input.senderPlatformId,
       broadcasterUserId: input.broadcasterUserId,
+      lookupMinRole: lookup.minRole,
+      addMinRole: add.minRole,
     })
   ) {
     const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, POINTS_DENIED);

@@ -433,6 +433,16 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           if (username) {
             const { noteRecentChatter } = await import("@/lib/recentChatters");
             noteRecentChatter(connection.user_id, username);
+            if (text.trim()) {
+              const { maybeWelcomeChatter } = await import("@/lib/chatTextAlerts.server");
+              await maybeWelcomeChatter({
+                userId: connection.user_id,
+                kickBroadcasterUserId: broadcasterId,
+                platform: "KICK",
+                username,
+                platformUserId: senderUserId,
+              }).catch((error) => console.error("[kick-webhook] welcome alert failed", error));
+            }
           }
 
           const { deferRequestWork } = await import("@/lib/requestContext.server");
@@ -486,6 +496,8 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   userId: connection.user_id,
                   broadcasterUserId: broadcasterId,
                   text,
+                  senderPlatformId: senderUserId,
+                  identityBadges,
                 });
               } else if (/^!buy\b/i.test(text.trim())) {
                 const { handleShopBuyCommand } = await import("@/lib/shopBuy.server");
@@ -514,7 +526,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   broadcasterUserId: broadcasterId,
                   platform: "KICK",
                   text,
-                  sender: { username },
+                  sender: { username, identityBadges, senderPlatformId: senderUserId },
                   origin,
                   replyToMessageId: viewerChatMessageId(body),
                 });
@@ -599,6 +611,17 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
         if (!userId) return jsonResponse({ status: "ignored", reason: "no_connection" });
 
         const result = await receivePlatformEvent(supabaseAdmin, userId, normalized);
+        const { classifyKickChatAlert } = await import("@/lib/chatTextAlerts");
+        const signal = classifyKickChatAlert(type, eventBody);
+        if (signal && messageId) {
+          const { deliverChatTextAlert } = await import("@/lib/chatTextAlerts.server");
+          await deliverChatTextAlert({
+            userId,
+            kickBroadcasterUserId: broadcasterId,
+            providerEventId: messageId,
+            signal,
+          }).catch((error) => console.error("[kick-webhook] chat alert failed", error));
+        }
         return jsonResponse(result);
         } catch (error) {
           console.error("[kick-webhook] unhandled failure", error);

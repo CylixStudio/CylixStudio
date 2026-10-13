@@ -1,3 +1,5 @@
+import { COMMAND_PERMISSION_DENIED, isCommandMinRole, senderMayRun } from "@/lib/commandAccess";
+import { catalogDefaultCommand } from "@/lib/defaultCommands";
 import { sendKickChatMessage } from "@/lib/kickChat.server";
 import { publishedSlugForUser } from "@/lib/publicChannel.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
@@ -21,8 +23,33 @@ export async function handleShopDirectoryCommand(input: {
   userId: string;
   broadcasterUserId: string;
   text: string;
+  senderPlatformId?: string | null;
+  identityBadges?: readonly string[];
 }): Promise<{ status: string; reason?: string; command?: string }> {
   if (!parseShopDirectoryCommand(input.text)) return { status: "ignored", reason: "no_match" };
+  const fallback = catalogDefaultCommand("shop")?.minRole ?? "everyone";
+  const { data: gate, error } = await supabaseAdmin
+    .from("default_chat_commands")
+    .select("enabled, min_role")
+    .eq("user_id", input.userId)
+    .eq("command_id", "shop")
+    .maybeSingle();
+  const enabled = error || !gate ? true : gate.enabled;
+  const minRole = !error && gate && isCommandMinRole(gate.min_role) ? gate.min_role : fallback;
+  if (!enabled) return { status: "ignored", reason: "disabled", command: "!shop" };
+  if (
+    !senderMayRun({
+      minRole,
+      identityBadges: input.identityBadges ?? [],
+      senderPlatformId: input.senderPlatformId,
+      broadcasterUserId: input.broadcasterUserId,
+    })
+  ) {
+    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, COMMAND_PERMISSION_DENIED);
+    return sent
+      ? { status: "replied", reason: "not_permitted", command: "!shop" }
+      : { status: "error", reason: "not_permitted", command: "!shop" };
+  }
   const slug = await publishedSlugForUser(input.userId);
   if (!slug) {
     const sent = await sendKickChatMessage(

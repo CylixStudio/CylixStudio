@@ -1,21 +1,54 @@
 import { blankCommandTemplate, renderCommandTemplate } from "@/lib/commandTemplate";
+import { type CommandMinRole, isCommandMinRole } from "@/lib/commandAccess";
 import type { ChatCommandPlatform } from "@/lib/customCommands";
 
-export const DEFAULT_COMMAND_IDS = ["commands", "followage", "lurk", "so", "welcome"] as const;
+export const DEFAULT_COMMAND_IDS = [
+  "addcom",
+  "commands",
+  "delcom",
+  "editcom",
+  "followage",
+  "level",
+  "points",
+  "points_add",
+  "promo",
+  "shop",
+] as const;
 export type DefaultCommandId = (typeof DEFAULT_COMMAND_IDS)[number];
 
-export const RESERVED_COMMAND_NAMES: readonly string[] = DEFAULT_COMMAND_IDS;
+/** Still executed, but not shown in the default-command settings list. */
+export const LEGACY_COMMAND_IDS = ["lurk", "so", "welcome"] as const;
+export type LegacyCommandId = (typeof LEGACY_COMMAND_IDS)[number];
+export type RuntimeCommandId = DefaultCommandId | LegacyCommandId;
+
+export const RESERVED_COMMAND_NAMES: readonly string[] = [
+  "addcom",
+  "commands",
+  "delcom",
+  "editcom",
+  "followage",
+  "level",
+  "points",
+  "promo",
+  "shop",
+  "lurk",
+  "so",
+  "welcome",
+];
 
 const TEST_KEY = "creovix:default-commands";
 
 export type DefaultCommand = {
-  id: DefaultCommandId;
+  id: RuntimeCommandId;
   trigger: string;
   enabled: boolean;
   response: string;
   fallbackResponse: string;
   platforms: ChatCommandPlatform[];
   cooldownSeconds: number;
+  minRole: CommandMinRole;
+  /** False for settings-only rows that do not have a chat handler yet. */
+  runsInChat: boolean;
   updatedAt: string;
 };
 
@@ -26,37 +59,113 @@ export type DefaultCommandInput = {
   fallbackResponse: string;
   platforms: ChatCommandPlatform[];
   cooldownSeconds: number;
+  minRole: CommandMinRole;
 };
 
 type CatalogEntry = {
-  id: DefaultCommandId;
+  id: RuntimeCommandId;
   trigger: string;
   response: { en: string; ar: string };
   fallbackResponse: { en: string; ar: string };
+  minRole: CommandMinRole;
+  runsInChat: boolean;
 };
+
+const FOLLOWAGE_RESPONSE =
+  "$(username) لا يتابع هذه القناة حتى الآن.\n$(username) يتابع هذه القناة لـ $(time) !";
+const POINTS_RESPONSE =
+  "$(username) ليس لديك ما يكفي من النقاط للقيام بذلك.\n$(username) لديه نقاط $(points) .";
 
 const CATALOG: CatalogEntry[] = [
   {
+    id: "addcom",
+    trigger: "!addcom",
+    response: { en: "يتيح لك إنشاء أمر مباشرة من الدردشة", ar: "يتيح لك إنشاء أمر مباشرة من الدردشة" },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "moderator",
+    runsInChat: false,
+  },
+  {
     id: "commands",
     trigger: "!commands",
-    response: {
-      en: "Commands: {list}",
-      ar: "الأوامر: {list}",
-    },
+    response: { en: "$(url) :قائمة الأوامر", ar: "$(url) :قائمة الأوامر" },
     fallbackResponse: { en: "", ar: "" },
+    minRole: "everyone",
+    runsInChat: true,
+  },
+  {
+    id: "delcom",
+    trigger: "!delcom",
+    response: { en: "يتيح لك حذف أمر مباشرة من الدردشة", ar: "يتيح لك حذف أمر مباشرة من الدردشة" },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "moderator",
+    runsInChat: false,
+  },
+  {
+    id: "editcom",
+    trigger: "!editcom",
+    response: { en: "يتيح لك تعديل أمر مباشرة من الدردشة", ar: "يتيح لك تعديل أمر مباشرة من الدردشة" },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "moderator",
+    runsInChat: false,
   },
   {
     id: "followage",
     trigger: "!followage",
-    response: {
-      en: "{user} has followed for {followage}.",
-      ar: "{user} يتابع منذ {followage}.",
-    },
-    fallbackResponse: {
-      en: "Kick does not share how long {user} has followed this channel.",
-      ar: "كيك لا يشارك منذ متى يتابع {user} هذه القناة.",
-    },
+    response: { en: FOLLOWAGE_RESPONSE, ar: FOLLOWAGE_RESPONSE },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "everyone",
+    runsInChat: true,
   },
+  {
+    id: "level",
+    trigger: "!level",
+    response: {
+      en: "$(username) ليس لديه مستوى حتى الآن.\n$(username) في المستوى $(level) .",
+      ar: "$(username) ليس لديه مستوى حتى الآن.\n$(username) في المستوى $(level) .",
+    },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "everyone",
+    runsInChat: false,
+  },
+  {
+    id: "points",
+    trigger: "!points",
+    response: { en: POINTS_RESPONSE, ar: POINTS_RESPONSE },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "everyone",
+    runsInChat: false,
+  },
+  {
+    id: "points_add",
+    trigger: "!points add",
+    response: { en: "(إضافة نقاط)", ar: "(إضافة نقاط)" },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "broadcaster",
+    runsInChat: false,
+  },
+  {
+    id: "promo",
+    trigger: "!promo",
+    response: { en: "$(url) على $(name) إتبع قناة", ar: "$(url) على $(name) إتبع قناة" },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "moderator",
+    runsInChat: false,
+  },
+  {
+    id: "shop",
+    trigger: "!shop",
+    response: {
+      en: "$(url) يمكنك رؤية متجر القناة في $(username)",
+      ar: "$(url) يمكنك رؤية متجر القناة في $(username)",
+    },
+    fallbackResponse: { en: "", ar: "" },
+    minRole: "everyone",
+    runsInChat: false,
+  },
+];
+
+const LEGACY_CATALOG: CatalogEntry[] = [
   {
     id: "lurk",
     trigger: "!lurk",
@@ -65,6 +174,8 @@ const CATALOG: CatalogEntry[] = [
       ar: "{user} يختبئ في الخلفية. استمتع بالبث!",
     },
     fallbackResponse: { en: "", ar: "" },
+    minRole: "everyone",
+    runsInChat: true,
   },
   {
     id: "so",
@@ -77,6 +188,8 @@ const CATALOG: CatalogEntry[] = [
       en: "Usage: !so <user>",
       ar: "الاستخدام: !so <user>",
     },
+    minRole: "everyone",
+    runsInChat: true,
   },
   {
     id: "welcome",
@@ -86,6 +199,8 @@ const CATALOG: CatalogEntry[] = [
       ar: "أهلاً بك في البث، {user}!",
     },
     fallbackResponse: { en: "", ar: "" },
+    minRole: "everyone",
+    runsInChat: true,
   },
 ];
 
@@ -93,12 +208,16 @@ export function isDefaultCommandId(value: string): value is DefaultCommandId {
   return (DEFAULT_COMMAND_IDS as readonly string[]).includes(value);
 }
 
+export function isRuntimeCommandId(value: string): value is RuntimeCommandId {
+  return isDefaultCommandId(value) || (LEGACY_COMMAND_IDS as readonly string[]).includes(value);
+}
+
 export function isReservedCommandName(name: string): boolean {
   return RESERVED_COMMAND_NAMES.includes(name.trim().toLowerCase());
 }
 
-export function catalogDefaultCommands(lang: "en" | "ar" = "en"): DefaultCommand[] {
-  return CATALOG.map((entry) => ({
+function materialize(entries: CatalogEntry[], lang: "en" | "ar"): DefaultCommand[] {
+  return entries.map((entry) => ({
     id: entry.id,
     trigger: entry.trigger,
     enabled: true,
@@ -106,28 +225,37 @@ export function catalogDefaultCommands(lang: "en" | "ar" = "en"): DefaultCommand
     fallbackResponse: entry.fallbackResponse[lang],
     platforms: ["KICK", "TWITCH"],
     cooldownSeconds: 5,
+    minRole: entry.minRole,
+    runsInChat: entry.runsInChat,
     updatedAt: "",
   }));
 }
 
-export function mergeDefaultCommands(
+export function catalogDefaultCommands(lang: "en" | "ar" = "en"): DefaultCommand[] {
+  return materialize(CATALOG, lang);
+}
+
+export function catalogDefaultCommand(id: string, lang: "en" | "ar" = "en"): DefaultCommand | null {
+  return catalogDefaultCommands(lang).find((item) => item.id === id) ?? null;
+}
+
+function mergeCatalog(
+  catalog: DefaultCommand[],
+  english: DefaultCommand[],
   saved: Array<Partial<DefaultCommand> & { id: string }>,
-  lang: "en" | "ar" = "en",
 ): DefaultCommand[] {
-  const catalog = catalogDefaultCommands(lang);
-  const en = catalogDefaultCommands("en");
   const byId = new Map(saved.map((row) => [row.id, row]));
   return catalog.map((item) => {
     const row = byId.get(item.id);
     if (!row) return item;
-    const english = en.find((entry) => entry.id === item.id);
+    const englishRow = english.find((entry) => entry.id === item.id);
     const response = row.response?.trim()
-      ? english && row.response === english.response
+      ? englishRow && row.response === englishRow.response
         ? item.response
         : row.response
       : item.response;
     const fallbackResponse = row.fallbackResponse?.trim()
-      ? english && row.fallbackResponse === english.fallbackResponse
+      ? englishRow && row.fallbackResponse === englishRow.fallbackResponse
         ? item.fallbackResponse
         : row.fallbackResponse
       : item.fallbackResponse;
@@ -138,9 +266,29 @@ export function mergeDefaultCommands(
       fallbackResponse: fallbackResponse.slice(0, 480),
       platforms: row.platforms?.length ? row.platforms : item.platforms,
       cooldownSeconds: sanitizeCooldown(row.cooldownSeconds ?? item.cooldownSeconds),
+      minRole: isCommandMinRole(row.minRole) ? row.minRole : item.minRole,
+      runsInChat: item.runsInChat,
       updatedAt: row.updatedAt ?? "",
     };
   });
+}
+
+export function mergeDefaultCommands(
+  saved: Array<Partial<DefaultCommand> & { id: string }>,
+  lang: "en" | "ar" = "en",
+): DefaultCommand[] {
+  return mergeCatalog(catalogDefaultCommands(lang), catalogDefaultCommands("en"), saved);
+}
+
+/** Settings rows plus lurk / so / welcome, which already reply in chat. */
+export function mergeRuntimeDefaultCommands(
+  saved: Array<Partial<DefaultCommand> & { id: string }>,
+  lang: "en" | "ar" = "en",
+): DefaultCommand[] {
+  return [
+    ...mergeDefaultCommands(saved, lang),
+    ...mergeCatalog(materialize(LEGACY_CATALOG, lang), materialize(LEGACY_CATALOG, "en"), saved),
+  ];
 }
 
 export function sanitizeCooldown(raw: number | undefined): number {
@@ -161,7 +309,7 @@ export function matchDefaultCommand(
     return { command, argument: "" };
   }
   for (const command of commands) {
-    if (!command.enabled || !command.platforms.includes(platform)) continue;
+    if (!command.runsInChat || !command.enabled || !command.platforms.includes(platform)) continue;
     const match = trimmed.match(new RegExp(`^${escapeRegExp(command.trigger)}(?:\\s+|$)(.*)`, "i"));
     if (match) return { command, argument: (match[1] ?? "").trim() };
   }
@@ -218,6 +366,26 @@ export function formatFollowDuration(ms: number, arabic: boolean): string {
   return parts.join(", ") || "less than a minute";
 }
 
+export function applyDollarPlaceholders(
+  template: string,
+  vars: {
+    username?: string;
+    time?: string;
+    url?: string;
+    points?: string;
+    level?: string;
+    name?: string;
+  },
+): string {
+  return template
+    .replaceAll("$(username)", vars.username ?? "")
+    .replaceAll("$(time)", vars.time ?? "")
+    .replaceAll("$(url)", vars.url ?? "")
+    .replaceAll("$(points)", vars.points ?? "")
+    .replaceAll("$(level)", vars.level ?? "")
+    .replaceAll("$(name)", vars.name ?? "");
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -256,8 +424,9 @@ export function upsertTestDefaultCommand(
           enabled: Boolean(input.enabled),
           response: input.response.trim().slice(0, 480) || command.response,
           fallbackResponse: input.fallbackResponse.trim().slice(0, 480),
-          platforms: input.platforms.length ? input.platforms : ["KICK"],
+          platforms: input.platforms.length ? input.platforms : (["KICK"] as ChatCommandPlatform[]),
           cooldownSeconds: sanitizeCooldown(input.cooldownSeconds),
+          minRole: isCommandMinRole(input.minRole) ? input.minRole : command.minRole,
           updatedAt: now,
         }
       : command,
@@ -274,6 +443,20 @@ export function setTestDefaultCommandEnabled(
   const current = loadTestDefaultCommands(lang);
   const next = current.map((command) =>
     command.id === id ? { ...command, enabled, updatedAt: new Date().toISOString() } : command,
+  );
+  persistTestDefaults(next);
+  return next;
+}
+
+export function setTestDefaultCommandRole(
+  id: DefaultCommandId,
+  minRole: CommandMinRole,
+  lang: "en" | "ar" = "en",
+): DefaultCommand[] {
+  if (!isCommandMinRole(minRole)) return loadTestDefaultCommands(lang);
+  const current = loadTestDefaultCommands(lang);
+  const next = current.map((command) =>
+    command.id === id ? { ...command, minRole, updatedAt: new Date().toISOString() } : command,
   );
   persistTestDefaults(next);
   return next;

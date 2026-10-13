@@ -1,3 +1,5 @@
+import { senderMayRun, type CommandMinRole } from "@/lib/commandAccess";
+
 type PointsAction =
   | { kind: "balance" }
   | { kind: "add" | "remove"; target: "all" | string; amount: number };
@@ -32,8 +34,8 @@ export function pointsCommandChangesBalance(text: string): boolean {
  */
 export function canManageLoyaltyPoints(input: {
   identityBadges: readonly string[];
-  senderPlatformId?: string | null;
-  broadcasterUserId?: string | null;
+  senderPlatformId?: string | null | undefined;
+  broadcasterUserId?: string | null | undefined;
 }): boolean {
   const senderId = input.senderPlatformId?.trim() ?? "";
   const ownerId = input.broadcasterUserId?.trim() ?? "";
@@ -41,5 +43,28 @@ export function canManageLoyaltyPoints(input: {
   return input.identityBadges.some((badge) => {
     const type = badge.toLowerCase().replace(/[_\s]+/g, "-");
     return CHANNEL_STAFF_BADGES.has(type);
+  });
+}
+
+/**
+ * Lookup uses the saved !points minimum (default everyone).
+ * Add uses the saved !points add minimum (default broadcaster).
+ * Remove stays on the moderator/broadcaster gate and ignores a looser setting.
+ */
+export function pointsCommandPermitted(input: {
+  kind: "balance" | "add" | "remove";
+  identityBadges: readonly string[];
+  senderPlatformId?: string | null | undefined;
+  broadcasterUserId?: string | null | undefined;
+  lookupMinRole?: CommandMinRole;
+  addMinRole?: CommandMinRole;
+}): boolean {
+  if (input.kind === "remove") return canManageLoyaltyPoints(input);
+  const minRole = input.kind === "add" ? (input.addMinRole ?? "broadcaster") : (input.lookupMinRole ?? "everyone");
+  return senderMayRun({
+    minRole,
+    identityBadges: input.identityBadges,
+    senderPlatformId: input.senderPlatformId,
+    broadcasterUserId: input.broadcasterUserId,
   });
 }

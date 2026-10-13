@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Check, ChevronLeft, ChevronRight, Copy, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { PublicChannelShell } from "@/components/public/PublicChannelShell";
 import { useLanguage } from "@/lib/i18n";
@@ -60,7 +60,14 @@ type CardItem = {
   body: string;
 };
 
-const PAGE_SIZE = 18;
+const MIN_ROW_PX = 132;
+
+function columnCount(width: number) {
+  if (width >= 1024) return 6;
+  if (width >= 768) return 3;
+  if (width >= 640) return 2;
+  return 1;
+}
 
 function PublicCommandsRoute() {
   const { slug } = Route.useParams();
@@ -70,6 +77,9 @@ function PublicCommandsRoute() {
   const [tab, setTab] = useState<Tab>("custom");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [columns, setColumns] = useState(6);
+  const [rows, setRows] = useState(3);
+  const gridRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     let stopped = false;
@@ -127,9 +137,36 @@ function PublicCommandsRoute() {
     );
   }, [items, query]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageSize = Math.max(1, columns * rows);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useLayoutEffect(() => {
+    const applyColumns = () => setColumns(columnCount(window.innerWidth));
+    applyColumns();
+    window.addEventListener("resize", applyColumns);
+    return () => window.removeEventListener("resize", applyColumns);
+  }, []);
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    const applyRows = () => {
+      const available = grid.clientHeight;
+      if (available < 40) return;
+      const gap = Number.parseFloat(getComputedStyle(grid).rowGap) || 0;
+      const heightFor = (count: number) => (available - gap * (count - 1)) / count;
+      const next = heightFor(3) >= MIN_ROW_PX ? 3 : heightFor(2) >= MIN_ROW_PX ? 2 : 1;
+      setRows(next);
+    };
+
+    applyRows();
+    const observer = new ResizeObserver(applyRows);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [found, filtered.length]);
 
   useEffect(() => {
     setPage(1);
@@ -202,7 +239,12 @@ function PublicCommandsRoute() {
         {filtered.length === 0 ? (
           <p className={styles.empty}>{query.trim() ? t("commands.public.noResults") : emptyLabel}</p>
         ) : (
-          <ul className={styles.grid} dir="ltr">
+          <ul
+            ref={gridRef}
+            className={styles.grid}
+            dir="ltr"
+            style={{ "--rows": rows } as CSSProperties}
+          >
             {visible.map((item) => (
               <li key={item.key}>
                 <CommandCard item={item} copyLabel={t("commands.public.copy")} />

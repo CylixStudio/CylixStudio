@@ -95,7 +95,20 @@ export function sanitizeCommandName(raw: string): string {
   return [...cleaned].slice(0, 32).join("");
 }
 
-const RESERVED_CUSTOM_NAMES = new Set(["commands", "followage", "lurk", "so", "welcome"]);
+const RESERVED_CUSTOM_NAMES = new Set([
+  "addcom",
+  "commands",
+  "delcom",
+  "editcom",
+  "followage",
+  "level",
+  "points",
+  "promo",
+  "shop",
+  "lurk",
+  "so",
+  "welcome",
+]);
 
 export function isReservedCustomCommandName(name: string): boolean {
   return RESERVED_CUSTOM_NAMES.has(name.trim().toLowerCase());

@@ -349,6 +349,7 @@ export type Database = {
           cooldown_seconds: number
           enabled: boolean
           fallback_response: string
+          min_role: string
           platforms: string[]
           response: string
           updated_at: string
@@ -359,6 +360,7 @@ export type Database = {
           cooldown_seconds?: number
           enabled?: boolean
           fallback_response?: string
+          min_role?: string
           platforms?: string[]
           response: string
           updated_at?: string
@@ -369,10 +371,80 @@ export type Database = {
           cooldown_seconds?: number
           enabled?: boolean
           fallback_response?: string
+          min_role?: string
           platforms?: string[]
           response?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      chat_text_alerts: {
+        Row: {
+          alert_id: string
+          enabled: boolean
+          minimum: number
+          template: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_id: string
+          enabled?: boolean
+          minimum?: number
+          template: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_id?: string
+          enabled?: boolean
+          minimum?: number
+          template?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      chat_text_alert_sends: {
+        Row: {
+          alert_id: string
+          created_at: string
+          provider_event_id: string
+          user_id: string
+        }
+        Insert: {
+          alert_id: string
+          created_at?: string
+          provider_event_id: string
+          user_id: string
+        }
+        Update: {
+          alert_id?: string
+          created_at?: string
+          provider_event_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      chat_text_alert_welcomes: {
+        Row: {
+          chatter_key: string
+          platform: string
+          user_id: string
+          welcomed_on: string
+        }
+        Insert: {
+          chatter_key: string
+          platform: string
+          user_id: string
+          welcomed_on: string
+        }
+        Update: {
+          chatter_key?: string
+          platform?: string
+          user_id?: string
+          welcomed_on?: string
         }
         Relationships: []
       }
