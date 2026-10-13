@@ -6,6 +6,12 @@ import { ListFilter, MessageSquareCode, Pencil, Plus, Search, Trash2 } from "luc
 import { toast } from "sonner";
 
 import { ChatTextAlertsPanel } from "@/components/commands/ChatTextAlertsPanel";
+import {
+  COMMAND_CARD_GRID,
+  CommandGridPager,
+  scrollCommandGrid,
+  useCommandPage,
+} from "@/components/commands/CommandGridPager";
 import { CommandVariablesSidebar } from "@/components/commands/CommandVariables";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -188,7 +194,6 @@ function buildCommandsCopy(t: ReturnType<typeof useLanguage>["t"]) {
     filterRoles: t("commands.filterRoles"),
     filterDisabled: t("commands.filterDisabled"),
     filterNone: t("commands.filterNone"),
-    loadMore: t("common.loadMore"),
     tabDefaults: t("commands.tabDefaults"),
     tabCommands: t("commands.tabCommands"),
     tabAlerts: t("commands.tabAlerts"),
@@ -292,37 +297,6 @@ const PLATFORMS: { id: ChatCommandPlatform; label: string }[] = [
 ];
 
 const ROLE_FILTER_IDS: CommandRole[] = ["Everyone", "Subs", "VIPs", "Mods"];
-
-const FACE_GRID = "grid grid-cols-[repeat(auto-fill,190px)] justify-start gap-3";
-const FACE_ROW = "flex flex-wrap justify-start gap-3";
-const FACE_PAGE_INITIAL = 12;
-const FACE_PAGE_STEP = 8;
-
-function useFaceLoadMore(itemCount: number) {
-  const [limit, setLimit] = useState(FACE_PAGE_INITIAL);
-  useEffect(() => {
-    setLimit(FACE_PAGE_INITIAL);
-  }, [itemCount]);
-  return {
-    limit,
-    canLoadMore: limit < itemCount,
-    loadMore: () => setLimit((current) => current + FACE_PAGE_STEP),
-  };
-}
-
-function LoadMoreButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <div className="mt-4 flex justify-center">
-      <button
-        type="button"
-        onClick={onClick}
-        className="rounded-lg px-3 py-1.5 text-[0.82rem] font-medium text-muted-foreground transition-colors hover:bg-zinc-800 hover:text-foreground"
-      >
-        {label}
-      </button>
-    </div>
-  );
-}
 
 type StatusFilter = "all" | "enabled" | "disabled";
 type PlatformFilter = "all" | ChatCommandPlatform;
@@ -1015,71 +989,84 @@ function DefaultCommandsPanel({
 }) {
   const { t } = useLanguage();
   const rows = commands.filter((command) => command.id !== "lurk" && command.id !== "so" && command.id !== "welcome");
+  const gridRef = useRef<HTMLDivElement>(null);
+  const paging = useCommandPage(rows);
+  const changePage = (next: number) => {
+    paging.setPage(next);
+    scrollCommandGrid(gridRef.current);
+  };
   return (
     <div>
-      {rows.map((command) => (
-        <article
-          key={command.id}
-          className="bg-[#121318] border border-white/5 rounded-xl p-4 flex items-center justify-between mb-2"
-        >
-          <div className="min-w-0 pe-4">
-            <h3 className="font-mono text-sm font-semibold text-zinc-100" dir="ltr">
-              {command.trigger}
-            </h3>
-            <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs text-zinc-400" dir="auto">
-              {command.response}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-end gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-[0.68rem] text-zinc-400">{copy.rankLabel}</span>
-              <Select value={command.minRole} onValueChange={(value) => onRole(command.id, value as CommandMinRole)}>
-                <SelectTrigger className="h-8 w-36 border-white/10 bg-[#0d0e12] text-xs focus:border-emerald-500/80">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {COMMAND_MIN_ROLES.map((role) => (
-                    <SelectItem
-                      key={role}
-                      value={role}
-                      className="focus:bg-emerald-600 focus:text-white data-[state=checked]:bg-emerald-600 data-[state=checked]:text-white"
-                    >
-                      {t(RANK_LABEL_KEY[role])}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={command.enabled}
-              aria-label={command.enabled ? copy.on : copy.off}
-              onClick={() => onToggle(command.id, !command.enabled)}
-              className={cn(
-                "relative mb-1 h-5 w-9 shrink-0 rounded-full transition-colors",
-                command.enabled ? "bg-emerald-500" : "bg-zinc-700",
-              )}
-            >
-              <span
-                aria-hidden
+      <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
+        {paging.slice.map((command) => (
+          <article
+            key={command.id}
+            className="bg-[#121318] border border-white/5 rounded-xl p-4 flex flex-col justify-between min-h-[130px]"
+          >
+            <div className="min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="font-mono text-sm font-semibold text-zinc-100" dir="ltr">
+                  {command.trigger}
+                </h3>
+                <button
+                  type="button"
+                  aria-label={copy.edit}
+                  onClick={() => onEdit(command)}
+                  className="rounded-lg p-1 text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
+                >
+                  <Pencil className="size-4" aria-hidden />
+                </button>
+              </div>
+              <p className="mt-1 line-clamp-3 whitespace-pre-line text-xs text-zinc-400" dir="auto">
+                {command.response}
+              </p>
+            </div>
+            <div className="mt-3 flex items-end justify-between gap-2">
+              <label className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="text-[0.68rem] text-zinc-400">{copy.rankLabel}</span>
+                <Select value={command.minRole} onValueChange={(value) => onRole(command.id, value as CommandMinRole)}>
+                  <SelectTrigger className="h-8 w-full border-white/10 bg-[#0d0e12] text-xs focus:border-emerald-500/80">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMAND_MIN_ROLES.map((role) => (
+                      <SelectItem
+                        key={role}
+                        value={role}
+                        className="focus:bg-emerald-600 focus:text-white data-[state=checked]:bg-emerald-600 data-[state=checked]:text-white"
+                      >
+                        {t(RANK_LABEL_KEY[role])}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={command.enabled}
+                aria-label={command.enabled ? copy.on : copy.off}
+                onClick={() => onToggle(command.id, !command.enabled)}
                 className={cn(
-                  "absolute top-0.5 size-4 rounded-full bg-white transition-[inset-inline-start]",
-                  command.enabled ? "start-4" : "start-0.5",
+                  "relative mb-1 h-5 w-9 shrink-0 rounded-full transition-colors",
+                  command.enabled ? "bg-emerald-500" : "bg-zinc-700",
                 )}
-              />
-            </button>
-            <button
-              type="button"
-              aria-label={copy.edit}
-              onClick={() => onEdit(command)}
-              className="mb-1 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
-            >
-              <Pencil className="size-4" aria-hidden />
-            </button>
-          </div>
-        </article>
-      ))}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-0.5 size-4 rounded-full bg-white transition-[inset-inline-start]",
+                    command.enabled ? "start-4" : "start-0.5",
+                  )}
+                />
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      {paging.showPager ? (
+        <CommandGridPager page={paging.page} pageCount={paging.pageCount} onPage={changePage} />
+      ) : null}
     </div>
   );
 }
@@ -1250,7 +1237,12 @@ function MessageTimersPanel({
   onDelete: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
 }) {
-  const page = useFaceLoadMore(timers.length);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const paging = useCommandPage(timers);
+  const changePage = (next: number) => {
+    paging.setPage(next);
+    scrollCommandGrid(gridRef.current);
+  };
   return (
     <div className="space-y-8">
       <HowItWorks title={copy.timerHowTitle} steps={copy.timerHow} />
@@ -1269,8 +1261,8 @@ function MessageTimersPanel({
         <p className="text-start text-[0.82rem] text-muted-foreground">{copy.timerEmpty}</p>
       ) : (
         <div>
-        <div className={FACE_GRID}>
-          {timers.slice(0, page.limit).map((timer) => (
+        <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
+          {paging.slice.map((timer) => (
             <StudioFaceCard
               key={timer.id}
               enabled={timer.enabled}
@@ -1294,7 +1286,9 @@ function MessageTimersPanel({
             </StudioFaceCard>
           ))}
         </div>
-        {page.canLoadMore ? <LoadMoreButton label={copy.loadMore} onClick={page.loadMore} /> : null}
+        {paging.showPager ? (
+          <CommandGridPager page={paging.page} pageCount={paging.pageCount} onPage={changePage} />
+        ) : null}
         </div>
       )}
     </div>
@@ -1415,7 +1409,7 @@ function StudioFaceCard({
 }) {
   return (
     <article
-      className="group relative h-[95px] w-[190px] shrink-0 overflow-hidden rounded-[20px] border border-white/[0.06]"
+      className="group relative h-[95px] w-full min-w-0 overflow-hidden rounded-[20px] border border-white/[0.06]"
       style={{ backgroundColor: "#101114" }}
     >
       <span
@@ -1484,11 +1478,16 @@ function PagedCommandGrid({
   onEdit: (command: CustomChatCommand) => void;
   onDelete: (id: string) => void;
 }) {
-  const page = useFaceLoadMore(commands.length);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const paging = useCommandPage(commands);
+  const changePage = (next: number) => {
+    paging.setPage(next);
+    scrollCommandGrid(gridRef.current);
+  };
   return (
     <div className="mt-3">
-      <div className={FACE_GRID}>
-        {commands.slice(0, page.limit).map((command) => (
+      <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
+        {paging.slice.map((command) => (
           <CommandCard
             key={command.id}
             command={command}
@@ -1500,7 +1499,9 @@ function PagedCommandGrid({
           />
         ))}
       </div>
-      {page.canLoadMore ? <LoadMoreButton label={copy.loadMore} onClick={page.loadMore} /> : null}
+      {paging.showPager ? (
+        <CommandGridPager page={paging.page} pageCount={paging.pageCount} onPage={changePage} />
+      ) : null}
     </div>
   );
 }

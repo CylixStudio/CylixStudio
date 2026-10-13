@@ -547,6 +547,7 @@ const DICT = {
   "commands.alert.welcome": "ترحيب",
   "commands.alert.minAmount": "الحد الأدنى للمبلغ",
   "commands.alert.minViewers": "الحد الأدنى للمشاهدين",
+  "commands.alert.minimum": "الحد الأدنى",
   "commands.alert.minHint": "يتم إرسال التنبيه فقط إذا وصلت قيمة الحدث إلى هذا الحد الأدنى.",
   "commands.alert.welcomeInfo":
     "يرسل رسالة ترحيب عندما يكتب المستخدم في الدردشة لأول مرة خلال البث المباشر (مرة واحدة يومياً). في القنوات الكبيرة قد يكون ذلك مزعجاً.",

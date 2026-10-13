@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   BadgeCheck,
@@ -21,6 +21,12 @@ import {
   saveTestChatAlert,
 } from "@/lib/chatTextAlerts.functions";
 import type { ChatAlertId, ChatTextAlert } from "@/lib/chatTextAlerts";
+import {
+  COMMAND_CARD_GRID,
+  CommandGridPager,
+  scrollCommandGrid,
+  useCommandPage,
+} from "@/components/commands/CommandGridPager";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isTestMode } from "@/lib/testMode";
 import { cn } from "@/lib/utils";
@@ -59,25 +65,36 @@ export function ChatTextAlertsPanel({ userId }: { userId: string }) {
   });
 
   const rows = alerts.data ?? [];
+  const cards = ALERTS.flatMap((item) => {
+    const alert = rows.find((row) => row.id === item.id);
+    return alert ? [{ ...item, alert }] : [];
+  });
+  const gridRef = useRef<HTMLDivElement>(null);
+  const paging = useCommandPage(cards);
+  const changePage = (next: number) => {
+    paging.setPage(next);
+    scrollCommandGrid(gridRef.current);
+  };
   return (
     <div dir="rtl">
-      {ALERTS.map((item) => {
-        const alert = rows.find((row) => row.id === item.id);
-        if (!alert) return null;
-        return (
+      <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
+        {paging.slice.map((item) => (
           <AlertCard
             key={item.id}
-            alert={alert}
+            alert={item.alert}
             icon={item.icon}
             title={t(item.titleKey)}
             info={item.infoKey ? t(item.infoKey) : undefined}
-            minLabel={item.id === "kicks" ? t("commands.alert.minAmount") : t("commands.alert.minViewers")}
+            minLabel={t("commands.alert.minimum")}
             minHint={t("commands.alert.minHint")}
             showMinimum={item.id === "kicks" || item.id === "raid"}
             onSave={(next) => save.mutate(next)}
           />
-        );
-      })}
+        ))}
+      </div>
+      {paging.showPager ? (
+        <CommandGridPager page={paging.page} pageCount={paging.pageCount} onPage={changePage} />
+      ) : null}
     </div>
   );
 }
@@ -105,7 +122,7 @@ function AlertCard({
   const [minimum, setMinimum] = useState(String(alert.minimum));
   const shownTemplate = template === alert.template ? alert.template : template;
   return (
-    <article className="bg-[#121318] border border-white/5 rounded-2xl p-5 mb-4 flex flex-col gap-4">
+    <article className="bg-[#121318] border border-white/5 rounded-xl p-3 flex flex-col justify-between gap-2 min-h-[130px]">
       <header className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Icon className="size-4 shrink-0 text-zinc-300" aria-hidden />
@@ -134,12 +151,12 @@ function AlertCard({
       </header>
       <textarea
         value={shownTemplate}
-        rows={3}
+        rows={2}
         onChange={(event) => setTemplate(event.target.value.slice(0, 480))}
         onBlur={() => {
           if (shownTemplate !== alert.template) onSave({ ...alert, template: shownTemplate });
         }}
-        className="bg-[#0d0e12] border border-white/10 rounded-xl p-3 text-white text-sm w-full resize-none focus:outline-none focus:border-emerald-500/80"
+        className="bg-[#0d0e12] border border-white/10 rounded-xl p-2.5 text-xs text-white resize-none w-full focus:outline-none focus:border-emerald-500/80"
         dir="auto"
       />
       {showMinimum ? (
