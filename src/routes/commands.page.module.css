@@ -316,9 +316,10 @@
 }
 
 .pageActive {
-  background: #a9dcff;
-  color: #111419;
+  background: #a5f3fc;
+  color: #000;
   font-weight: 700;
+  border-radius: 12px;
 }
 
 .chevron {

@@ -62,7 +62,11 @@ export function CommandGridPager({
             type="button"
             aria-current={active ? "page" : undefined}
             onClick={() => onPage(number)}
-            className={active ? "bg-[#a5f3fc] text-black font-bold rounded-xl px-3.5 py-1.5 text-sm" : idle}
+            className={
+              active
+                ? "bg-[#a5f3fc] text-black font-bold rounded-[12px] px-3.5 py-1.5 text-sm leading-none"
+                : idle
+            }
           >
             {number}
           </button>
