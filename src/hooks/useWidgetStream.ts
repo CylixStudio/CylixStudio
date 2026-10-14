@@ -3,6 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTimerSession } from "@/hooks/useTimerSession";
 import { useWidgetRealtime } from "@/hooks/useWidgetRealtime";
 import type { ChatMessage, ChatSources } from "@/hooks/useLiveChat";
+import {
+  readChatLine,
+  reconcileChatLines,
+  type ChatLinkStatus,
+  type OverlayChatLine,
+} from "@/lib/overlayChat";
 import { readReplyMeta } from "@/lib/replyAlert";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
 import type { PollRuntime, PredictionRuntime } from "@/lib/interactiveWidgets";
@@ -46,7 +52,7 @@ function previewFromAlert(payload: Record<string, unknown>): OverlayEvent | null
   };
 }
 
-export type StreamStatus = "connecting" | "live" | "error";
+export type StreamStatus = ChatLinkStatus;
 
 export type StreamWidget = {
   id: string;
@@ -68,6 +74,7 @@ type Snapshot = {
   tappers?: TapperEntry[];
   tapGoal?: { taps: number } | null;
   chat?: ChatSources | null;
+  chatMessages?: OverlayChatLine[];
 };
 
 /**
@@ -91,9 +98,11 @@ export function useWidgetStream(publicToken: string | null) {
   const [tappers, setTappers] = useState<TapperEntry[]>([]);
   const [tapGoal, setTapGoal] = useState(0);
   const [chat, setChat] = useState<ChatSources | null>(null);
+  const [chatMessages, setChatMessages] = useState<OverlayChatLine[]>([]);
   const [testMessages, setTestMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const previewTests = useRef<OverlayEvent[]>([]);
+  const sawLive = useRef(false);
 
   const adoptServerEvents = (server: OverlayEvent[]) => {
     const merged = mergePreviewTests(previewTests.current, server);
@@ -119,6 +128,7 @@ export function useWidgetStream(publicToken: string | null) {
 
       source.addEventListener("init", (event) => {
         attempts = 0;
+        sawLive.current = true;
         const payload = JSON.parse((event as MessageEvent).data) as Snapshot;
         setWidget(payload.widget);
         setGoal(payload.goal);
@@ -131,8 +141,16 @@ export function useWidgetStream(publicToken: string | null) {
         setTappers(payload.tappers ?? []);
         setTapGoal(payload.tapGoal?.taps ?? 0);
         setChat(payload.chat ?? null);
+        if (Array.isArray(payload.chatMessages)) {
+          setChatMessages((prev) => reconcileChatLines(prev, payload.chatMessages ?? []));
+        }
         if (payload.frame) onFrame(payload.frame);
         setStatus("live");
+      });
+
+      source.addEventListener("chatlines", (event) => {
+        const next = JSON.parse((event as MessageEvent).data) as OverlayChatLine[];
+        setChatMessages((prev) => reconcileChatLines(prev, Array.isArray(next) ? next : []));
       });
 
       source.addEventListener("state", (event) => {
@@ -202,16 +220,13 @@ export function useWidgetStream(publicToken: string | null) {
       });
 
       source.onerror = () => {
-        setStatus("error");
         source?.close();
         source = null;
         if (cancelled) return;
         attempts += 1;
+        setStatus(attempts >= 4 ? "error" : sawLive.current ? "reconnecting" : "connecting");
         const delay = Math.min(15_000, 1000 * 2 ** Math.min(attempts, 4));
-        retry = setTimeout(() => {
-          setStatus("connecting");
-          connect();
-        }, delay);
+        retry = setTimeout(connect, delay);
       };
     };
 
@@ -230,7 +245,14 @@ export function useWidgetStream(publicToken: string | null) {
       const response = await fetch(`/api/public/overlay/${publicToken}/live`, {
         cache: "no-store",
       });
-      if (!response.ok) return;
+      if (response.status === 404) {
+        setStatus("error");
+        return;
+      }
+      if (!response.ok) {
+        setStatus((current) => (current === "live" ? "reconnecting" : current));
+        return;
+      }
       const payload = (await response.json()) as Snapshot;
       setWidget(payload.widget);
       setGoal(payload.goal);
@@ -243,13 +265,17 @@ export function useWidgetStream(publicToken: string | null) {
       setTappers(payload.tappers ?? []);
       setTapGoal(payload.tapGoal?.taps ?? 0);
       if (payload.chat) setChat(payload.chat);
+      if (Array.isArray(payload.chatMessages)) {
+        setChatMessages((prev) => reconcileChatLines(prev, payload.chatMessages ?? []));
+      }
       if (payload.frame) {
         countdown.adopt(payload.frame, "sync");
         setFrame(payload.frame);
       }
+      sawLive.current = true;
       setStatus("live");
     } catch {
-      /* the SSE reconnect loop reports connection problems */
+      setStatus((current) => (current === "live" ? "reconnecting" : current));
     }
   }, [publicToken, countdown.adopt]);
 
@@ -272,7 +298,9 @@ export function useWidgetStream(publicToken: string | null) {
       }
     }
     if (message.event === "chat") {
-      const payload = message.payload as Partial<ChatMessage>;
+      const payload = message.payload as Partial<ChatMessage> & Record<string, unknown>;
+      const liveLine = readChatLine(payload);
+      if (liveLine) setChatMessages((prev) => reconcileChatLines(prev, [liveLine]));
       const reply = readReplyMeta(payload);
       setTestMessages((prev) =>
         [
@@ -317,6 +345,7 @@ export function useWidgetStream(publicToken: string | null) {
     tappers,
     tapGoal,
     chat,
+    chatMessages,
     testMessages,
     status,
   };

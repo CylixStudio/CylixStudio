@@ -169,6 +169,25 @@ export const Route = createFileRoute("/api/public/webhooks/twitch")({
           return jsonResponse({ status: "accepted", widgets: ids.length });
         }
 
+        if (type === "channel.chat.message") {
+          const { viewerLineFromTwitch } = await import("@/lib/overlayChat");
+          const { publishOverlayChat } = await import("@/lib/overlayChat.server");
+          const line = viewerLineFromTwitch(ev, messageId);
+          const broadcaster =
+            typeof ev["broadcaster_user_id"] === "string" ? (ev["broadcaster_user_id"] as string) : null;
+          if (!line) return jsonResponse({ status: "ignored", reason: "empty_text" });
+          if (!broadcaster) return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+          const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+          const userId = await resolveUserByPlatformUser(supabaseAdmin, "TWITCH", broadcaster);
+          if (!userId) return jsonResponse({ status: "ignored", reason: "no_connection" });
+          const published = await publishOverlayChat(supabaseAdmin, userId, line);
+          if (!published.ok) return jsonResponse({ status: "failed", reason: published.reason }, 503);
+          return jsonResponse({
+            status: published.stored ? "processed" : "ignored",
+            reason: published.reason,
+          });
+        }
+
         const { classifyTwitchChatAlert } = await import("@/lib/chatTextAlerts");
         const signal = classifyTwitchChatAlert(type, ev);
         const normalized = normalize(type, messageId, ev);

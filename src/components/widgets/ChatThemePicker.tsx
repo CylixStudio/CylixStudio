@@ -63,9 +63,11 @@ export function ChatThemePicker({
 }) {
   const { t } = useLanguage();
   const card =
-    "overflow-hidden rounded-xl border bg-zinc-950/40 text-start transition-colors hover:border-primary/50";
+    "flex h-full min-w-0 flex-col overflow-hidden rounded-xl border bg-zinc-950/40 text-start transition-colors hover:border-primary/50";
+  const nameClass =
+    "flex min-h-11 flex-wrap items-center gap-1.5 px-2 py-1.5 text-xs font-semibold leading-snug break-words";
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 items-stretch gap-2">
       {CHAT_LAYOUTS.map((entry) => {
         const selected = !royalSelected && layout === entry.value;
         return (
@@ -79,7 +81,7 @@ export function ChatThemePicker({
             <div className="bg-[repeating-conic-gradient(#1c1d24_0%_25%,#121318_0%_50%)] bg-[length:12px_12px]">
               <LayoutMini id={entry.value} />
             </div>
-            <span className="block px-2 py-1.5 text-xs font-semibold">{entry.label}</span>
+            <span className={nameClass}>{entry.label}</span>
           </button>
         );
       })}
@@ -93,9 +95,9 @@ export function ChatThemePicker({
         <div className="bg-[repeating-conic-gradient(#1c1d24_0%_25%,#121318_0%_50%)] bg-[length:12px_12px]">
           <RoyalMini />
         </div>
-        <span className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold">
-          {t("chat.theme.royal")}
-          <span className="rounded bg-primary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary-foreground">
+        <span className={nameClass}>
+          <span className="min-w-0 break-words">{t("chat.theme.royal")}</span>
+          <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary-foreground">
             Pro
           </span>
         </span>

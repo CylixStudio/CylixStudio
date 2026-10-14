@@ -13,10 +13,10 @@ export async function broadcastToWidgets(
   widgetIds: string[],
   event: WidgetBroadcastEvent,
   payload: Record<string, unknown> = {},
-): Promise<void> {
+): Promise<boolean> {
   const url = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_SERVICE_ROLE_KEY"];
-  if (!url || !key || widgetIds.length === 0) return;
+  if (!url || !key || widgetIds.length === 0) return false;
 
   const messages = widgetIds.map((id) => ({
     topic: `widget_${id}`,
@@ -26,7 +26,7 @@ export async function broadcastToWidgets(
   }));
 
   try {
-    await fetch(`${url}/realtime/v1/api/broadcast`, {
+    const response = await fetch(`${url}/realtime/v1/api/broadcast`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -35,8 +35,9 @@ export async function broadcastToWidgets(
       },
       body: JSON.stringify({ messages }),
     });
+    return response.ok;
   } catch {
-    /* the overlay's polling loop still converges if a broadcast is dropped */
+    return false;
   }
 }
 

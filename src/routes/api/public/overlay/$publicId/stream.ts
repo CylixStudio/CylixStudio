@@ -13,6 +13,7 @@ import {
   parseTappersConfig,
 } from "@/lib/widgets";
 import { parsePollRuntime, parsePredictionRuntime } from "@/lib/interactiveWidgets";
+import { parseOverlayChat } from "@/lib/overlayChat";
 
 const TICK_MS = 1000;
 const DB_POLL_MS = 2000;
@@ -96,6 +97,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
             let lastTapGoalPayload = "";
             let lastTappersPayload = "";
             let lastTimerEventsPayload = "";
+            let lastChatPayload = "";
             let lastFetch = 0;
             let lastBeat = Date.now();
             const startedAt = Date.now();
@@ -322,6 +324,16 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
                   lastBeat = Date.now();
                   send("events", events);
                 }
+                if (type === "CHAT_BOX") {
+                  const current = await fetchWidgetState();
+                  const chatMessages = parseOverlayChat(current?.state ?? null);
+                  const chatPayload = JSON.stringify(chatMessages);
+                  if (chatPayload !== lastChatPayload) {
+                    lastChatPayload = chatPayload;
+                    lastBeat = Date.now();
+                    send("chatlines", chatMessages);
+                  }
+                }
                 return;
               }
               if (type === "SPIN_WHEEL") {
@@ -399,6 +411,8 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               const { resolveChatSources } = await import("@/lib/chatSources.server");
               chat = await resolveChatSources(supabase, widget.user_id);
             }
+            const chatMessages = type === "CHAT_BOX" ? parseOverlayChat(widget.state) : [];
+            lastChatPayload = JSON.stringify(chatMessages);
             const tapGoal = type === "TIKTOK_TAP_GOAL" ? await fetchTapGoal() : null;
             const tappers =
               type === "TIKTOK_TAPPERS"
@@ -439,6 +453,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
               tappers,
               tapGoal,
               chat,
+              chatMessages,
             });
 
 

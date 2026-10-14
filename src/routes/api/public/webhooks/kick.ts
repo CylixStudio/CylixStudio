@@ -198,6 +198,21 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             }
             const userId = resolved.userId;
 
+            if (text.trim()) {
+              const { publishOverlayChat } = await import("@/lib/overlayChat.server");
+              const { viewerLineFromKick } = await import("@/lib/overlayChat");
+              const viewerLine = viewerLineFromKick(body, messageId ?? "");
+              if (!viewerLine) {
+                logOutcome({ messageId, outcome: "failed", reason: "chat_line_unreadable", eventType: type });
+                return jsonResponse({ status: "failed", reason: "chat_line_unreadable" }, 503);
+              }
+              const published = await publishOverlayChat(supabaseAdmin, userId, viewerLine);
+              if (!published.ok) {
+                logOutcome({ messageId, outcome: "failed", reason: published.reason, eventType: type });
+                return jsonResponse({ status: "failed", reason: published.reason }, 503);
+              }
+            }
+
             if (username && text.trim()) {
               const { maybeWelcomeChatter } = await import("@/lib/chatTextAlerts.server");
               await maybeWelcomeChatter({

@@ -74,8 +74,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@100;200;300;400;500;600;700&family=Press+Start+2P&display=swap",
       },
-      // Single ICO so browsers do not prefer the black-plate SVG/PNG marks.
-      { rel: "icon", href: "/favicon.ico", sizes: "any" },
+      { rel: "icon", href: "/favicon.svg?v=2", type: "image/svg+xml" },
+      { rel: "icon", href: "/favicon.ico?v=2", sizes: "any" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png?v=2" },
     ],
   }),
   shellComponent: RootShell,

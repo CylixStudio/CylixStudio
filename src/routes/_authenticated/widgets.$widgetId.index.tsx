@@ -167,6 +167,7 @@ function WidgetBuilder() {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [goalDraft, setGoalDraft] = useState({ title: "", unit: "USD", target: 0, current: 0 });
   const [goalPane, setGoalPane] = useState<"setup" | "control">("setup");
+  const [chatPane, setChatPane] = useState<"display" | "layout">("display");
   const [goalBump, setGoalBump] = useState("");
   const subathonSeeded = useRef<string | null>(null);
 
@@ -683,167 +684,217 @@ function WidgetBuilder() {
             ) : null}
 
             {widget.type === "CHAT_BOX" ? (
-              <div className="space-y-4 rounded-xl border border-border bg-background p-4">
-                <div className="block">
-                  <span className={labelClass}>{"Message layout style"}</span>
-                  <div className="mt-2">
-                    <ChatThemePicker
-                      layout={parseChatConfig(config).chatLayout}
-                      royalSelected={isRoyalCompactTheme(readChatThemeId(config))}
-                      onSelectLayout={(next) =>
-                        setConfig((prev) => ({ ...prev, chatLayout: next, themeId: "dark-glass" }))
-                      }
-                      onSelectRoyal={() => {
-                        if (!proActive) {
-                          requestUpgrade();
-                          return;
-                        }
-                        set("themeId", ROYAL_COMPACT_THEME_ID);
-                      }}
-                    />
-                  </div>
-                  <span className="mt-1 block text-[10px] text-muted-foreground">
-                    {isRoyalCompactTheme(readChatThemeId(config))
-                      ? t("chat.theme.royalHint")
-                      : CHAT_LAYOUTS.find((e) => e.value === parseChatConfig(config).chatLayout)?.hint}
-                  </span>
+              <div className="space-y-3">
+                <div
+                  role="tablist"
+                  aria-label="Chat settings"
+                  className="flex gap-1 rounded-xl border border-white/8 bg-black/20 p-1"
+                >
+                  {(
+                    [
+                      ["display", "Display"],
+                      ["layout", "Layout"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={chatPane === id}
+                      onClick={() => setChatPane(id)}
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-[0.72rem] font-semibold ${
+                        chatPane === id
+                          ? "bg-primary/15 text-primary"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
-                <label className="block">
-                  <span className={`${labelClass} inline-flex items-center gap-1.5`}>
-                    Messages shown ({parseChatConfig(config).maxMessages})
-                    <InfoTip text={t("tooltips.widget.chatMax")} />
-                  </span>
-                  <input
-                    type="range"
-                    min={3}
-                    max={25}
-                    className="mt-3 w-full accent-primary"
-                    value={parseChatConfig(config).maxMessages}
-                    onChange={(event) => set("maxMessages", Number(event.target.value))}
-                  />
-                </label>
+                {chatPane === "layout" ? (
+                  <div className="space-y-4 rounded-xl border border-border bg-background p-4">
+                    <div className="block">
+                      <h3 className="text-sm font-semibold">Message Layout</h3>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Choose how each chat message is drawn on the overlay.
+                      </p>
+                      <div className="mt-3">
+                        <ChatThemePicker
+                          layout={parseChatConfig(config).chatLayout}
+                          royalSelected={isRoyalCompactTheme(readChatThemeId(config))}
+                          onSelectLayout={(next) =>
+                            setConfig((prev) => ({ ...prev, chatLayout: next, themeId: "dark-glass" }))
+                          }
+                          onSelectRoyal={() => {
+                            if (!proActive) {
+                              requestUpgrade();
+                              return;
+                            }
+                            set("themeId", ROYAL_COMPACT_THEME_ID);
+                          }}
+                        />
+                      </div>
+                      <span className="mt-2 block text-[10px] text-muted-foreground">
+                        {isRoyalCompactTheme(readChatThemeId(config))
+                          ? t("chat.theme.royalHint")
+                          : CHAT_LAYOUTS.find((e) => e.value === parseChatConfig(config).chatLayout)?.hint}
+                      </span>
+                    </div>
 
-                <label className="block">
-                  <span className={`${labelClass} inline-flex items-center gap-1.5`}>
-                    {"Message spacing"} (
-                    {isRoyalCompactTheme(readChatThemeId(config))
-                      ? parseRoyalCompactSettings(config).messageGap
-                      : parseChatConfig(config).messageGap}
-                    px)
-                    <InfoTip text={t("tooltips.widget.chatGap")} />
-                  </span>
-                  <input
-                    type="range"
-                    min={4}
-                    max={20}
-                    className="mt-3 w-full accent-primary"
-                    value={
-                      isRoyalCompactTheme(readChatThemeId(config))
-                        ? parseRoyalCompactSettings(config).messageGap
-                        : parseChatConfig(config).messageGap
-                    }
-                    onChange={(event) => {
-                      const next = Number(event.target.value);
-                      if (isRoyalCompactTheme(readChatThemeId(config))) patchRoyal({ messageGap: next });
-                      else set("messageGap", next);
-                    }}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className={labelClass}>
-                    {"Text size"} (
-                    {isRoyalCompactTheme(readChatThemeId(config))
-                      ? parseRoyalCompactSettings(config).fontSize
-                      : Math.min(28, Math.max(12, parseChatConfig(config).fontSize))}
-                    px)
-                  </span>
-                  <input
-                    type="range"
-                    min={12}
-                    max={28}
-                    className="mt-3 w-full accent-primary"
-                    value={
-                      isRoyalCompactTheme(readChatThemeId(config))
-                        ? parseRoyalCompactSettings(config).fontSize
-                        : Math.min(28, Math.max(12, parseChatConfig(config).fontSize))
-                    }
-                    onChange={(event) => {
-                      const next = Number(event.target.value);
-                      if (isRoyalCompactTheme(readChatThemeId(config))) patchRoyal({ fontSize: next });
-                      else set("fontSize", next);
-                    }}
-                  />
-                </label>
-
-                <ToggleField
-                  label={"Show platform badge"}
-                  hint={
-                    "Hides the Twitch / Kick / TikTok tag next to the username"
-                  }
-                  checked={parseChatConfig(config).showPlatform}
-                  onChange={(next) => set("showPlatform", next)}
-                />
-
-                <ToggleField
-                  label={"Show account badges"}
-                  hint="👑 Broadcaster · 🛡️ Moderator · 💎 Sub/VIP · 🎵 TikTok gifter"
-                  checked={parseChatConfig(config).showBadges}
-                  onChange={(next) => set("showBadges", next)}
-                />
-
-                {isRoyalCompactTheme(readChatThemeId(config)) ? (
-                  <>
-                    <ToggleField
-                      label={t("chat.theme.showAvatar")}
-                      checked={parseRoyalCompactSettings(config).showAvatar}
-                      onChange={(next) => patchRoyal({ showAvatar: next })}
-                    />
+                    {isRoyalCompactTheme(readChatThemeId(config)) ? (
+                      <>
+                        <ToggleField
+                          label={t("chat.theme.showAvatar")}
+                          checked={parseRoyalCompactSettings(config).showAvatar}
+                          onChange={(next) => patchRoyal({ showAvatar: next })}
+                        />
+                        <ToggleField
+                          label={"Show account badges"}
+                          hint="👑 Broadcaster · 🛡️ Moderator · 💎 Sub/VIP · 🎵 TikTok gifter"
+                          checked={parseChatConfig(config).showBadges}
+                          onChange={(next) => set("showBadges", next)}
+                        />
+                        <label className="block">
+                          <span className={labelClass}>{t("chat.theme.density")}</span>
+                          <DarkSelect
+                            className="mt-2"
+                            value={parseRoyalCompactSettings(config).density}
+                            onValueChange={(next) =>
+                              patchRoyal({ density: next === "normal" ? "normal" : "compact" })
+                            }
+                            options={[
+                              { value: "compact", label: t("chat.theme.density.compact") },
+                              { value: "normal", label: t("chat.theme.density.normal") },
+                            ]}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelClass}>
+                            {"Text size"} ({parseRoyalCompactSettings(config).fontSize}px)
+                          </span>
+                          <input
+                            type="range"
+                            min={12}
+                            max={28}
+                            className="mt-3 w-full accent-primary"
+                            value={parseRoyalCompactSettings(config).fontSize}
+                            onChange={(event) => patchRoyal({ fontSize: Number(event.target.value) })}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelClass}>
+                            {t("chat.theme.opacity")} ({parseRoyalCompactSettings(config).bubbleOpacity}%)
+                          </span>
+                          <input
+                            type="range"
+                            min={40}
+                            max={100}
+                            className="mt-3 w-full accent-primary"
+                            value={parseRoyalCompactSettings(config).bubbleOpacity}
+                            onChange={(event) => patchRoyal({ bubbleOpacity: Number(event.target.value) })}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+                            {"Message spacing"} ({parseRoyalCompactSettings(config).messageGap}px)
+                            <InfoTip text={t("tooltips.widget.chatGap")} />
+                          </span>
+                          <input
+                            type="range"
+                            min={4}
+                            max={20}
+                            className="mt-3 w-full accent-primary"
+                            value={parseRoyalCompactSettings(config).messageGap}
+                            onChange={(event) => patchRoyal({ messageGap: Number(event.target.value) })}
+                          />
+                        </label>
+                        {parseRoyalCompactSettings(config).showAvatar ? (
+                          <label className="block">
+                            <span className={labelClass}>
+                              {t("chat.theme.avatarSize")} ({parseRoyalCompactSettings(config).avatarSize}px)
+                            </span>
+                            <input
+                              type="range"
+                              min={24}
+                              max={64}
+                              className="mt-3 w-full accent-primary"
+                              value={parseRoyalCompactSettings(config).avatarSize}
+                              onChange={(event) => patchRoyal({ avatarSize: Number(event.target.value) })}
+                            />
+                          </label>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="space-y-4 rounded-xl border border-border bg-background p-4">
                     <label className="block">
-                      <span className={labelClass}>{t("chat.theme.density")}</span>
-                      <DarkSelect
-                        className="mt-2"
-                        value={parseRoyalCompactSettings(config).density}
-                        onValueChange={(next) =>
-                          patchRoyal({ density: next === "normal" ? "normal" : "compact" })
-                        }
-                        options={[
-                          { value: "compact", label: t("chat.theme.density.compact") },
-                          { value: "normal", label: t("chat.theme.density.normal") },
-                        ]}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className={labelClass}>
-                        {t("chat.theme.opacity")} ({parseRoyalCompactSettings(config).bubbleOpacity}%)
+                      <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+                        Messages shown ({parseChatConfig(config).maxMessages})
+                        <InfoTip text={t("tooltips.widget.chatMax")} />
                       </span>
                       <input
                         type="range"
-                        min={40}
-                        max={100}
+                        min={3}
+                        max={25}
                         className="mt-3 w-full accent-primary"
-                        value={parseRoyalCompactSettings(config).bubbleOpacity}
-                        onChange={(event) => patchRoyal({ bubbleOpacity: Number(event.target.value) })}
+                        value={parseChatConfig(config).maxMessages}
+                        onChange={(event) => set("maxMessages", Number(event.target.value))}
                       />
                     </label>
-                    {parseRoyalCompactSettings(config).showAvatar ? (
-                      <label className="block">
-                        <span className={labelClass}>
-                          {t("chat.theme.avatarSize")} ({parseRoyalCompactSettings(config).avatarSize}px)
-                        </span>
-                        <input
-                          type="range"
-                          min={24}
-                          max={64}
-                          className="mt-3 w-full accent-primary"
-                          value={parseRoyalCompactSettings(config).avatarSize}
-                          onChange={(event) => patchRoyal({ avatarSize: Number(event.target.value) })}
+
+                    {isRoyalCompactTheme(readChatThemeId(config)) ? null : (
+                      <>
+                        <label className="block">
+                          <span className={`${labelClass} inline-flex items-center gap-1.5`}>
+                            {"Message spacing"} ({parseChatConfig(config).messageGap}px)
+                            <InfoTip text={t("tooltips.widget.chatGap")} />
+                          </span>
+                          <input
+                            type="range"
+                            min={4}
+                            max={20}
+                            className="mt-3 w-full accent-primary"
+                            value={parseChatConfig(config).messageGap}
+                            onChange={(event) => set("messageGap", Number(event.target.value))}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className={labelClass}>
+                            {"Text size"} (
+                            {Math.min(28, Math.max(12, parseChatConfig(config).fontSize))}
+                            px)
+                          </span>
+                          <input
+                            type="range"
+                            min={12}
+                            max={28}
+                            className="mt-3 w-full accent-primary"
+                            value={Math.min(28, Math.max(12, parseChatConfig(config).fontSize))}
+                            onChange={(event) => set("fontSize", Number(event.target.value))}
+                          />
+                        </label>
+
+                        <ToggleField
+                          label={"Show account badges"}
+                          hint="👑 Broadcaster · 🛡️ Moderator · 💎 Sub/VIP · 🎵 TikTok gifter"
+                          checked={parseChatConfig(config).showBadges}
+                          onChange={(next) => set("showBadges", next)}
                         />
-                      </label>
-                    ) : null}
-                  </>
-                ) : null}
+                      </>
+                    )}
+
+                    <ToggleField
+                      label={"Show platform badge"}
+                      hint={"Hides the Twitch / Kick / TikTok tag next to the username"}
+                      checked={parseChatConfig(config).showPlatform}
+                      onChange={(next) => set("showPlatform", next)}
+                    />
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -1195,6 +1246,9 @@ function WidgetBuilder() {
 
               chat={stream.chat}
               testMessages={stream.testMessages}
+              storedMessages={stream.chatMessages}
+              linkStatus={stream.status}
+              linkSurface="studio"
               demo
               publicToken={widget.public_token}
               spinning={wheelTurning || spin.isPending}

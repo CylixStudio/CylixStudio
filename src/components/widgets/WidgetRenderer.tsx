@@ -12,6 +12,14 @@ import { PredictionOverlay } from "@/components/widgets/PredictionOverlay";
 import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKickBadges";
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
+import {
+  chatStatusLabel,
+  dedupeChatById,
+  sameChatSource,
+  type ChatLinkStatus,
+  type ChatLinkSurface,
+  type OverlayChatLine,
+} from "@/lib/overlayChat";
 import { useReplyAlertExpiry } from "@/hooks/useReplyAlertExpiry";
 import { EVENT_LABEL_I18N, resolveEventLabelLines, type EventLabelOption } from "@/lib/eventLabels";
 import { t as translate, useLanguage } from "@/lib/i18n";
@@ -900,10 +908,27 @@ function RoyalAvatar({
  * cheers, raids, gifts) is deliberately never rendered here — those payloads
  * belong to the timer/goal logic, not to the chat feed.
  */
+function storedChatMessage(line: OverlayChatLine): ChatMessage {
+  const message: ChatMessage = {
+    id: line.id,
+    platform: line.platform,
+    author: line.author,
+    color: line.color,
+    badges: line.badges,
+    text: line.text,
+    at: line.at,
+  };
+  if (line.avatarUrl) message.avatarUrl = line.avatarUrl;
+  return message;
+}
+
 export function ChatBoxView({
   config,
   chat = null,
   testMessages = [],
+  storedMessages = [],
+  linkStatus = "connecting",
+  linkSurface = "overlay",
   demo = false,
 }: {
   config: unknown;
@@ -911,6 +936,12 @@ export function ChatBoxView({
   chat?: ChatSources | null;
   /** Chat lines pushed by the dashboard test-event control. */
   testMessages?: ChatMessage[];
+  /** Viewer lines stored from Kick/Twitch webhooks and delivered over SSE. */
+  storedMessages?: OverlayChatLine[];
+  /** Overlay stream handshake. Empty chat is "waiting" only while this is live. */
+  linkStatus?: ChatLinkStatus;
+  /** OBS stays visually clean when the link fails. The studio preview shows the error. */
+  linkSurface?: ChatLinkSurface;
   /** Empty customize preview shows sample rows instead of a blank line. */
   demo?: boolean;
 }) {
@@ -929,10 +960,14 @@ export function ChatBoxView({
 
   // Live viewer messages only. Anything without visible text (system/event
   // payloads) is filtered out before rendering.
-  const chatFeed = [
-    ...(Array.isArray(testMessages) ? testMessages : []),
-    ...(Array.isArray(messages) ? messages : []),
-  ]
+  const chatFeed = sameChatSource(
+    readChatThemeId(config),
+    dedupeChatById([
+      (Array.isArray(storedMessages) ? storedMessages : []).map(storedChatMessage),
+      Array.isArray(testMessages) ? testMessages : [],
+      Array.isArray(messages) ? messages : [],
+    ]),
+  )
     .map((message, index) => readableChatMessage(message, index))
     .filter((message): message is ChatMessage => message != null)
     .sort((a, b) => b.at - a.at)
@@ -1369,6 +1404,11 @@ export function ChatBoxView({
   };
 
   const quiet = shownChat.length === 0 && leavingChat.length === 0;
+  const linkLabel = chatStatusLabel({
+    status: linkStatus,
+    count: shownChat.length + leavingChat.length,
+    surface: linkSurface,
+  });
 
   return (
     <div
@@ -1386,7 +1426,11 @@ export function ChatBoxView({
     >
       {shownChat.map((message) => renderMessage(message, false))}
       {leavingChat.map((message) => renderMessage(message, true))}
-      {quiet ? <span style={{ opacity: 0.6 }}>Waiting for chat…</span> : null}
+      {linkLabel && (quiet || linkSurface === "studio") ? (
+        <span role="status" style={{ opacity: linkSurface === "overlay" ? 0.6 : 1 }}>
+          {linkLabel}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -2576,6 +2620,9 @@ export function WidgetRenderer({
   tapGoal = 0,
   chat = null,
   testMessages = [],
+  storedMessages = [],
+  linkStatus = "connecting",
+  linkSurface = "overlay",
   demo = false,
   publicToken = null,
   onSpin,
@@ -2597,6 +2644,9 @@ export function WidgetRenderer({
   tapGoal?: number;
   chat?: ChatSources | null;
   testMessages?: ChatMessage[];
+  storedMessages?: OverlayChatLine[];
+  linkStatus?: ChatLinkStatus;
+  linkSurface?: ChatLinkSurface;
   demo?: boolean;
   publicToken?: string | null;
   onSpin?: (() => void) | undefined;
@@ -2638,7 +2688,15 @@ export function WidgetRenderer({
       return <EventLabelsView config={config} events={events} />;
     case "CHAT_BOX":
       return (
-        <ChatBoxView config={config} chat={chat} testMessages={testMessages} demo={demo} />
+        <ChatBoxView
+          config={config}
+          chat={chat}
+          testMessages={testMessages}
+          storedMessages={storedMessages}
+          linkStatus={linkStatus}
+          linkSurface={linkSurface}
+          demo={demo}
+        />
       );
     case "SPIN_WHEEL":
       return (

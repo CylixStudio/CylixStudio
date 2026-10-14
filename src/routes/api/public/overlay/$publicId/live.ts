@@ -12,6 +12,7 @@ import {
   type OverlayEvent,
 } from "@/lib/widgets";
 import { parsePollRuntime, parsePredictionRuntime } from "@/lib/interactiveWidgets";
+import { parseOverlayChat } from "@/lib/overlayChat";
 
 /**
  * Token-gated snapshot of everything an overlay renders. The SSE stream keeps
@@ -144,6 +145,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
           const { resolveChatSources } = await import("@/lib/chatSources.server");
           chat = await resolveChatSources(supabase, widget.user_id);
         }
+        const chatMessages = type === "CHAT_BOX" ? parseOverlayChat(widget.state) : [];
 
         return Response.json(
           {
@@ -159,6 +161,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/live")({
             tappers,
             tapGoal,
             chat,
+            chatMessages,
           },
           { headers: { "cache-control": "no-store" } },
         );
