@@ -6,6 +6,7 @@ import {
   BadgeCheck,
   Gift,
   Info,
+  Pencil,
   RefreshCw,
   Sparkles,
   UserPlus,
@@ -22,11 +23,22 @@ import {
 } from "@/lib/chatTextAlerts.functions";
 import type { ChatAlertId, ChatTextAlert } from "@/lib/chatTextAlerts";
 import {
-  COMMAND_CARD_GRID,
   CommandGridPager,
   scrollCommandGrid,
   useCommandPage,
 } from "@/components/commands/CommandGridPager";
+import {
+  ALERT_CARD_GRID,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  commandBodyClass,
+  commandCardClass,
+  commandCardOffClass,
+  commandIconButtonClass,
+  EnableSwitch,
+  StatusDot,
+} from "@/components/commands/commandCardChrome";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isTestMode } from "@/lib/testMode";
 import { cn } from "@/lib/utils";
@@ -77,7 +89,7 @@ export function ChatTextAlertsPanel({ userId }: { userId: string }) {
   };
   return (
     <div dir="rtl">
-      <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
+      <div ref={gridRef} className={`${ALERT_CARD_GRID} scroll-mt-4`}>
         {paging.slice.map((item) => (
           <AlertCard
             key={item.id}
@@ -86,6 +98,7 @@ export function ChatTextAlertsPanel({ userId }: { userId: string }) {
             title={t(item.titleKey)}
             info={item.infoKey ? t(item.infoKey) : undefined}
             minLabel={t("commands.alert.minimum")}
+            messageLabel={t("commands.alert.messageLabel")}
             minHint={t("commands.alert.minHint")}
             showMinimum={item.id === "kicks" || item.id === "raid"}
             onSave={(next) => save.mutate(next)}
@@ -105,6 +118,7 @@ function AlertCard({
   title,
   info,
   minLabel,
+  messageLabel,
   minHint,
   showMinimum,
   onSave,
@@ -114,69 +128,84 @@ function AlertCard({
   title: string;
   info?: string | undefined;
   minLabel: string;
+  messageLabel: string;
   minHint: string;
   showMinimum: boolean;
   onSave: (next: ChatTextAlert) => void;
 }) {
   const [template, setTemplate] = useState(alert.template);
   const [minimum, setMinimum] = useState(String(alert.minimum));
+  const [editing, setEditing] = useState(false);
   const shownTemplate = template === alert.template ? alert.template : template;
+  const saveTemplate = (nextTemplate: string) => {
+    if (nextTemplate !== alert.template) onSave({ ...alert, template: nextTemplate });
+  };
   return (
-    <article className="bg-[#121318] border border-white/5 rounded-xl p-3 flex flex-col justify-between gap-2 min-h-[130px]">
-      <header className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Icon className="size-4 shrink-0 text-zinc-300" aria-hidden />
-          <h3 className="truncate text-sm font-semibold text-zinc-100">{title}</h3>
+    <article className={cn(commandCardClass, "h-auto", !alert.enabled && commandCardOffClass)}>
+      <CardHeader>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Icon className="size-4 shrink-0 text-zinc-400" aria-hidden />
+          <h3 className={cn("min-w-0 truncate text-sm font-semibold text-zinc-100", !alert.enabled && "text-zinc-300")}>
+            {title}
+          </h3>
           {info ? <InfoTip text={info} /> : null}
+          <StatusDot enabled={alert.enabled} />
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={alert.enabled}
-          aria-label={title}
-          onClick={() => onSave({ ...alert, template: shownTemplate, enabled: !alert.enabled })}
-          className={cn(
-            "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-            alert.enabled ? "bg-emerald-500" : "bg-zinc-700",
-          )}
-        >
-          <span
-            aria-hidden
-            className={cn(
-              "absolute top-0.5 size-4 rounded-full bg-white transition-[inset-inline-start]",
-              alert.enabled ? "start-4" : "start-0.5",
-            )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            aria-label={messageLabel}
+            aria-pressed={editing}
+            onClick={() => setEditing((current) => !current)}
+            className={commandIconButtonClass}
+          >
+            <Pencil className="size-3.5" aria-hidden />
+          </button>
+          <EnableSwitch
+            enabled={alert.enabled}
+            onLabel={title}
+            offLabel={title}
+            onToggle={() => onSave({ ...alert, template: shownTemplate, enabled: !alert.enabled })}
           />
-        </button>
-      </header>
-      <textarea
-        value={shownTemplate}
-        rows={2}
-        onChange={(event) => setTemplate(event.target.value.slice(0, 480))}
-        onBlur={() => {
-          if (shownTemplate !== alert.template) onSave({ ...alert, template: shownTemplate });
-        }}
-        className="bg-[#0d0e12] border border-white/10 rounded-xl p-2.5 text-xs text-white resize-none w-full focus:outline-none focus:border-emerald-500/80"
-        dir="auto"
-      />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <span className="mb-1 block text-[0.68rem] text-zinc-500">{messageLabel}</span>
+        {editing ? (
+          <textarea
+            value={shownTemplate}
+            rows={3}
+            onChange={(event) => setTemplate(event.target.value.slice(0, 480))}
+            onBlur={() => saveTemplate(shownTemplate)}
+            className="w-full resize-none rounded-xl border border-white/10 bg-[#0d0e12] p-2.5 text-xs text-zinc-100 focus:border-white/20 focus:outline-none"
+            dir="auto"
+          />
+        ) : (
+          <p className={commandBodyClass} dir="auto">
+            {shownTemplate}
+          </p>
+        )}
+      </CardContent>
       {showMinimum ? (
-        <label className="block">
-          <span className="mb-1.5 block text-xs text-zinc-300">{minLabel}</span>
-          <input
-            type="number"
-            min={0}
-            value={minimum}
-            onChange={(event) => setMinimum(event.target.value)}
-            onBlur={() => {
-              const next = Math.max(0, Math.round(Number(minimum) || 0));
-              setMinimum(String(next));
-              if (next !== alert.minimum) onSave({ ...alert, template: shownTemplate, minimum: next });
-            }}
-            className="w-28 rounded-xl border border-white/10 bg-[#0d0e12] px-3 py-2 text-sm text-white focus:border-emerald-500/80 focus:outline-none"
-            dir="ltr"
-          />
-          <span className="mt-1.5 block text-xs text-zinc-500">{minHint}</span>
-        </label>
+        <CardFooter>
+          <label className="block min-w-0 flex-1">
+            <span className="mb-1 block text-[0.68rem] text-zinc-500">{minLabel}</span>
+            <input
+              type="number"
+              min={0}
+              value={minimum}
+              onChange={(event) => setMinimum(event.target.value)}
+              onBlur={() => {
+                const next = Math.max(0, Math.round(Number(minimum) || 0));
+                setMinimum(String(next));
+                if (next !== alert.minimum) onSave({ ...alert, template: shownTemplate, minimum: next });
+              }}
+              className="h-8 w-28 rounded-xl border border-white/10 bg-[#0d0e12] px-3 text-xs text-zinc-100 focus:border-white/20 focus:outline-none"
+              dir="ltr"
+            />
+            <span className="mt-1 block text-[0.68rem] leading-snug text-zinc-500">{minHint}</span>
+          </label>
+        </CardFooter>
       ) : null}
     </article>
   );

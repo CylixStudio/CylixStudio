@@ -60,7 +60,8 @@ type CardItem = {
   body: string;
 };
 
-const MIN_ROW_PX = 132;
+const MAX_ROWS = 3;
+const DESKTOP_LOCK = 1024;
 
 function columnCount(width: number) {
   if (width >= 1024) return 6;
@@ -78,7 +79,7 @@ function PublicCommandsRoute() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [columns, setColumns] = useState(6);
-  const [rows, setRows] = useState(3);
+  const [rows, setRows] = useState(MAX_ROWS);
   const gridRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
@@ -154,18 +155,33 @@ function PublicCommandsRoute() {
     if (!grid) return;
 
     const applyRows = () => {
-      const available = grid.clientHeight;
-      if (available < 40) return;
-      const gap = Number.parseFloat(getComputedStyle(grid).rowGap) || 0;
-      const heightFor = (count: number) => (available - gap * (count - 1)) / count;
-      const next = heightFor(3) >= MIN_ROW_PX ? 3 : heightFor(2) >= MIN_ROW_PX ? 2 : 1;
+      if (window.innerWidth < DESKTOP_LOCK) {
+        setRows(MAX_ROWS);
+        return;
+      }
+      const page = grid.closest("main");
+      const pager = page?.querySelector("nav");
+      if (!page || !pager) return;
+      const cardH = Number.parseFloat(getComputedStyle(grid).getPropertyValue("--card-h")) || 120;
+      const rowGap = Number.parseFloat(getComputedStyle(grid).rowGap) || 0;
+      const wrap = grid.parentElement;
+      const wrapGap = wrap ? Number.parseFloat(getComputedStyle(wrap).rowGap) || 0 : 0;
+      const padBottom = wrap ? Number.parseFloat(getComputedStyle(wrap).paddingBottom) || 0 : 0;
+      const gridTop = grid.getBoundingClientRect().top;
+      const available = window.innerHeight - gridTop - pager.getBoundingClientRect().height - wrapGap - padBottom;
+      const fits = (count: number) => count * cardH + Math.max(0, count - 1) * rowGap <= available + 1;
+      const next = fits(3) ? 3 : fits(2) ? 2 : 1;
       setRows(next);
     };
 
     applyRows();
     const observer = new ResizeObserver(applyRows);
     observer.observe(grid);
-    return () => observer.disconnect();
+    window.addEventListener("resize", applyRows);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", applyRows);
+    };
   }, [found, filtered.length]);
 
   useEffect(() => {
@@ -243,7 +259,11 @@ function PublicCommandsRoute() {
             ref={gridRef}
             className={styles.grid}
             dir="ltr"
-            style={{ "--rows": rows } as CSSProperties}
+            style={
+              {
+                "--rows": Math.min(rows, Math.max(1, Math.ceil(visible.length / columns))),
+              } as CSSProperties
+            }
           >
             {visible.map((item) => (
               <li key={item.key}>

@@ -547,6 +547,7 @@ const DICT = {
   "commands.alert.welcome": "ترحيب",
   "commands.alert.minAmount": "الحد الأدنى للمبلغ",
   "commands.alert.minViewers": "الحد الأدنى للمشاهدين",
+  "commands.alert.messageLabel": "نص الرسالة",
   "commands.alert.minimum": "الحد الأدنى",
   "commands.alert.minHint": "يتم إرسال التنبيه فقط إذا وصلت قيمة الحدث إلى هذا الحد الأدنى.",
   "commands.alert.welcomeInfo":

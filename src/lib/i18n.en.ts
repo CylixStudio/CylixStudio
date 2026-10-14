@@ -505,6 +505,7 @@ export const EN = {
   "commands.alert.welcome": "Welcome",
   "commands.alert.minAmount": "Minimum amount",
   "commands.alert.minViewers": "Minimum viewers",
+  "commands.alert.messageLabel": "Message",
   "commands.alert.minimum": "Minimum",
   "commands.alert.minHint": "The alert is sent only when the event reaches this minimum.",
   "commands.alert.welcomeInfo": "Sends a welcome when someone chats for the first time during the live stream (once a day). On large channels that can get noisy.",

@@ -1,4 +1,14 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
+
+import pageStyles from "../../routes/commands.page.module.css";
+
+const publicPager = pageStyles as {
+  pager: string;
+  pageBtn: string;
+  pageActive: string;
+  chevron: string;
+};
 
 export const COMMAND_CARD_GRID =
   "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3.5";
@@ -27,16 +37,63 @@ export function scrollCommandGrid(anchor: HTMLElement | null) {
   anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function pageWindow(pageCount: number, current: number): number[] {
+  const width = Math.min(5, pageCount);
+  let start = current - Math.floor((width - 1) / 2);
+  if (start < 1) start = 1;
+  if (start + width - 1 > pageCount) start = Math.max(1, pageCount - width + 1);
+  return Array.from({ length: width }, (_, index) => start + index);
+}
+
 export function CommandGridPager({
   page,
   pageCount,
   onPage,
+  variant = "studio",
 }: {
   page: number;
   pageCount: number;
   onPage: (page: number) => void;
+  variant?: "studio" | "public";
 }) {
   if (pageCount <= 1) return null;
+  if (variant === "public") {
+    return (
+      <nav className={publicPager.pager} dir="ltr" aria-label="pagination">
+        <button
+          type="button"
+          className={publicPager.pageBtn}
+          onClick={() => onPage(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          aria-label="<"
+        >
+          <ChevronLeft className={publicPager.chevron} />
+        </button>
+        {pageWindow(pageCount, page).map((entry) => (
+          <button
+            key={entry}
+            type="button"
+            onClick={() => onPage(entry)}
+            aria-current={entry === page ? "page" : undefined}
+            className={
+              entry === page ? `${publicPager.pageBtn} ${publicPager.pageActive}` : publicPager.pageBtn
+            }
+          >
+            {entry}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={publicPager.pageBtn}
+          onClick={() => onPage(Math.min(pageCount, page + 1))}
+          disabled={page >= pageCount}
+          aria-label=">"
+        >
+          <ChevronRight className={publicPager.chevron} />
+        </button>
+      </nav>
+    );
+  }
   const idle = "text-zinc-400 hover:text-white transition-colors";
   return (
     <nav

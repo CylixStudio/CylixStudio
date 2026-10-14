@@ -7,6 +7,19 @@ import { toast } from "sonner";
 
 import { ChatTextAlertsPanel } from "@/components/commands/ChatTextAlertsPanel";
 import {
+  CardContent,
+  CardFooter,
+  CardHeader,
+  commandBodyClass,
+  commandCardClass,
+  commandCardOffClass,
+  commandIconButtonClass,
+  commandTitleClass,
+  EnableSwitch,
+  StatusDot,
+  timerIntervalPhrase,
+} from "@/components/commands/commandCardChrome";
+import {
   COMMAND_CARD_GRID,
   CommandGridPager,
   scrollCommandGrid,
@@ -927,40 +940,6 @@ function CommandFilterMenu({
   );
 }
 
-function EnableSwitch({
-  enabled,
-  onLabel,
-  offLabel,
-  onToggle,
-}: {
-  enabled: boolean;
-  onLabel: string;
-  offLabel: string;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      aria-label={enabled ? onLabel : offLabel}
-      onClick={onToggle}
-      className={cn(
-        "relative h-3.5 w-6 shrink-0 rounded-full transition-colors duration-200",
-        enabled ? "bg-emerald-400/25" : "bg-zinc-700/80",
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "absolute top-[2px] size-2.5 rounded-full transition-[inset-inline-start,background-color] duration-200 ease-out",
-          enabled ? "start-[0.7rem] bg-white" : "start-[2px] bg-zinc-400",
-        )}
-      />
-    </button>
-  );
-}
-
 function catalogTrigger(id: string): string {
   return catalogDefaultCommands("ar").find((item) => item.id === id)?.trigger ?? `!${id}`;
 }
@@ -1001,66 +980,50 @@ function DefaultCommandsPanel({
         {paging.slice.map((command) => (
           <article
             key={command.id}
-            className="bg-[#121318] border border-white/5 rounded-xl p-4 flex flex-col justify-between min-h-[130px]"
+            className={cn(commandCardClass, !command.enabled && commandCardOffClass)}
           >
-            <div className="min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-mono text-sm font-semibold text-zinc-100" dir="ltr">
-                  {command.trigger}
-                </h3>
-                <button
-                  type="button"
-                  aria-label={copy.edit}
-                  onClick={() => onEdit(command)}
-                  className="rounded-lg p-1 text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
-                >
-                  <Pencil className="size-4" aria-hidden />
-                </button>
-              </div>
-              <p className="mt-1 line-clamp-3 whitespace-pre-line text-xs text-zinc-400" dir="auto">
+            <CardHeader>
+              <StatusDot enabled={command.enabled} />
+              <h3 className={cn(commandTitleClass, !command.enabled && "text-zinc-300")} dir="ltr">
+                {command.trigger}
+              </h3>
+              <button
+                type="button"
+                aria-label={copy.edit}
+                onClick={() => onEdit(command)}
+                className={commandIconButtonClass}
+              >
+                <Pencil className="size-3.5" aria-hidden />
+              </button>
+            </CardHeader>
+            <CardContent>
+              <p className={commandBodyClass} dir="auto">
                 {command.response}
               </p>
-            </div>
-            <div className="mt-3 flex items-end justify-between gap-2">
+            </CardContent>
+            <CardFooter className="items-end">
               <label className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="text-[0.68rem] text-zinc-400">{copy.rankLabel}</span>
+                <span className="text-[0.68rem] text-zinc-500">{copy.rankLabel}</span>
                 <Select value={command.minRole} onValueChange={(value) => onRole(command.id, value as CommandMinRole)}>
-                  <SelectTrigger className="h-8 w-full border-white/10 bg-[#0d0e12] text-xs focus:border-emerald-500/80">
+                  <SelectTrigger className="h-8 w-full border-white/10 bg-[#0d0e12] text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {COMMAND_MIN_ROLES.map((role) => (
-                      <SelectItem
-                        key={role}
-                        value={role}
-                        className="focus:bg-emerald-600 focus:text-white data-[state=checked]:bg-emerald-600 data-[state=checked]:text-white"
-                      >
+                      <SelectItem key={role} value={role}>
                         {t(RANK_LABEL_KEY[role])}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </label>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={command.enabled}
-                aria-label={command.enabled ? copy.on : copy.off}
-                onClick={() => onToggle(command.id, !command.enabled)}
-                className={cn(
-                  "relative mb-1 h-5 w-9 shrink-0 rounded-full transition-colors",
-                  command.enabled ? "bg-emerald-500" : "bg-zinc-700",
-                )}
-              >
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute top-0.5 size-4 rounded-full bg-white transition-[inset-inline-start]",
-                    command.enabled ? "start-4" : "start-0.5",
-                  )}
-                />
-              </button>
-            </div>
+              <EnableSwitch
+                enabled={command.enabled}
+                onLabel={copy.on}
+                offLabel={copy.off}
+                onToggle={() => onToggle(command.id, !command.enabled)}
+              />
+            </CardFooter>
           </article>
         ))}
       </div>
@@ -1237,6 +1200,7 @@ function MessageTimersPanel({
   onDelete: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
 }) {
+  const { lang } = useLanguage();
   const gridRef = useRef<HTMLDivElement>(null);
   const paging = useCommandPage(timers);
   const changePage = (next: number) => {
@@ -1263,27 +1227,49 @@ function MessageTimersPanel({
         <div>
         <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
           {paging.slice.map((timer) => (
-            <StudioFaceCard
+            <article
               key={timer.id}
-              enabled={timer.enabled}
-              onToggle={() => onToggle(timer.id, !timer.enabled)}
-              onLabel={copy.on}
-              offLabel={copy.off}
-              onEdit={() => onEdit(timer)}
-              onDelete={() => onDelete(timer.id)}
-              editLabel={copy.edit}
-              deleteLabel={copy.delete}
+              className={cn(commandCardClass, !timer.enabled && commandCardOffClass)}
             >
-              <p
-                className="line-clamp-2 max-w-full text-[0.78rem] font-medium leading-snug text-zinc-100"
-                dir="auto"
-              >
-                {timer.message}
-              </p>
-              <p className="mt-1 text-[0.68rem] text-zinc-500">
-                {copy.timerEveryPrefix} {timer.intervalMinutes} {copy.timerMinutesUnit}
-              </p>
-            </StudioFaceCard>
+              <CardHeader>
+                <StatusDot enabled={timer.enabled} />
+                <h3 className={cn(commandTitleClass, !timer.enabled && "text-zinc-300")} dir="auto">
+                  {timer.message.split("\n")[0]}
+                </h3>
+                <button
+                  type="button"
+                  aria-label={copy.edit}
+                  onClick={() => onEdit(timer)}
+                  className={commandIconButtonClass}
+                >
+                  <Pencil className="size-3.5" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  aria-label={copy.delete}
+                  onClick={() => onDelete(timer.id)}
+                  className={commandIconButtonClass}
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                </button>
+              </CardHeader>
+              <CardContent>
+                <p className={commandBodyClass} dir="auto">
+                  {timer.message}
+                </p>
+              </CardContent>
+              <CardFooter>
+                <span className="min-w-0 truncate text-xs text-zinc-400">
+                  {timerIntervalPhrase(timer.intervalMinutes, lang)}
+                </span>
+                <EnableSwitch
+                  enabled={timer.enabled}
+                  onLabel={copy.on}
+                  offLabel={copy.off}
+                  onToggle={() => onToggle(timer.id, !timer.enabled)}
+                />
+              </CardFooter>
+            </article>
           ))}
         </div>
         {paging.showPager ? (
@@ -1500,7 +1486,12 @@ function PagedCommandGrid({
         ))}
       </div>
       {paging.showPager ? (
-        <CommandGridPager page={paging.page} pageCount={paging.pageCount} onPage={changePage} />
+        <CommandGridPager
+          variant="public"
+          page={paging.page}
+          pageCount={paging.pageCount}
+          onPage={changePage}
+        />
       ) : null}
     </div>
   );
