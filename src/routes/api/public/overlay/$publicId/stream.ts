@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import type { Database } from "@/lib/supabase/types";
-import { snapshotFromRow, toFrame } from "@/lib/timer";
+import { rowAuthorityKey, snapshotFromRow, toFrame } from "@/lib/timer";
 import type { OverlayEvent } from "@/lib/widgets";
 import {
   dynamicGoalSnapshot,
@@ -344,13 +344,11 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
                 if (now - lastFetch >= DB_POLL_MS) await refresh();
 
                 if (type === "SUBATHON_TIMER" && row) {
-                  const frame = toFrame(snapshotFromRow(row, maxTimeSeconds), Date.now());
-                  const { serverTime: _ignored, ...comparable } = frame;
-                  const payload = JSON.stringify(comparable);
+                  const payload = rowAuthorityKey(row);
                   if (payload !== lastTimerPayload) {
                     lastTimerPayload = payload;
                     lastBeat = now;
-                    send("state", frame);
+                    send("state", toFrame(snapshotFromRow(row, maxTimeSeconds), Date.now()));
                   }
                 }
 
@@ -444,12 +442,7 @@ export const Route = createFileRoute("/api/public/overlay/$publicId/stream")({
             });
 
 
-            if (row) {
-              const { serverTime: _init, ...comparable } = toFrame(
-                snapshotFromRow(row, maxTimeSeconds),
-              );
-              lastTimerPayload = JSON.stringify(comparable);
-            }
+            if (row) lastTimerPayload = rowAuthorityKey(row);
           },
           cancel() {
             stopStream();

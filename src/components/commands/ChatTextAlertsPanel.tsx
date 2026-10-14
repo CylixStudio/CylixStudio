@@ -30,7 +30,6 @@ import {
 import {
   ALERT_CARD_GRID,
   CardContent,
-  CardFooter,
   CardHeader,
   commandBodyClass,
   commandCardClass,
@@ -39,6 +38,14 @@ import {
   EnableSwitch,
   StatusDot,
 } from "@/components/commands/commandCardChrome";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { isTestMode } from "@/lib/testMode";
 import { cn } from "@/lib/utils";
@@ -87,6 +94,8 @@ export function ChatTextAlertsPanel({ userId }: { userId: string }) {
     paging.setPage(next);
     scrollCommandGrid(gridRef.current);
   };
+  const [draft, setDraft] = useState<ChatTextAlert | null>(null);
+  const editing = cards.find((item) => item.alert.id === draft?.id);
   return (
     <div dir="rtl">
       <div ref={gridRef} className={`${ALERT_CARD_GRID} scroll-mt-4`}>
@@ -97,17 +106,43 @@ export function ChatTextAlertsPanel({ userId }: { userId: string }) {
             icon={item.icon}
             title={t(item.titleKey)}
             info={item.infoKey ? t(item.infoKey) : undefined}
-            minLabel={t("commands.alert.minimum")}
-            messageLabel={t("commands.alert.messageLabel")}
-            minHint={t("commands.alert.minHint")}
-            showMinimum={item.id === "kicks" || item.id === "raid"}
-            onSave={(next) => save.mutate(next)}
+            editLabel={t("common.edit")}
+            onEdit={() => setDraft({ ...item.alert })}
+            onToggle={() => save.mutate({ ...item.alert, enabled: !item.alert.enabled })}
           />
         ))}
       </div>
       {paging.showPager ? (
         <CommandGridPager page={paging.page} pageCount={paging.pageCount} onPage={changePage} />
       ) : null}
+      <AlertEditor
+        draft={draft}
+        title={editing ? t(editing.titleKey) : ""}
+        info={editing?.infoKey ? t(editing.infoKey) : undefined}
+        messageLabel={t("commands.alert.messageLabel")}
+        minLabel={
+          draft?.id === "kicks"
+            ? t("commands.alert.minAmount")
+            : draft?.id === "raid"
+              ? t("commands.alert.minViewers")
+              : t("commands.alert.minimum")
+        }
+        minHint={t("commands.alert.minHint")}
+        showMinimum={draft?.id === "kicks" || draft?.id === "raid"}
+        enabledLabel={t("common.enabled")}
+        onLabel={t("common.on")}
+        offLabel={t("common.off")}
+        cancelLabel={t("common.cancel")}
+        saveLabel={t("common.save")}
+        hint={t("commands.alertsSubtitle")}
+        saving={save.isPending}
+        onClose={() => setDraft(null)}
+        onChange={setDraft}
+        onSave={() => {
+          if (!draft) return;
+          save.mutate(draft, { onSuccess: () => setDraft(null) });
+        }}
+      />
     </div>
   );
 }
@@ -117,29 +152,18 @@ function AlertCard({
   icon: Icon,
   title,
   info,
-  minLabel,
-  messageLabel,
-  minHint,
-  showMinimum,
-  onSave,
+  editLabel,
+  onEdit,
+  onToggle,
 }: {
   alert: ChatTextAlert;
   icon: LucideIcon;
   title: string;
   info?: string | undefined;
-  minLabel: string;
-  messageLabel: string;
-  minHint: string;
-  showMinimum: boolean;
-  onSave: (next: ChatTextAlert) => void;
+  editLabel: string;
+  onEdit: () => void;
+  onToggle: () => void;
 }) {
-  const [template, setTemplate] = useState(alert.template);
-  const [minimum, setMinimum] = useState(String(alert.minimum));
-  const [editing, setEditing] = useState(false);
-  const shownTemplate = template === alert.template ? alert.template : template;
-  const saveTemplate = (nextTemplate: string) => {
-    if (nextTemplate !== alert.template) onSave({ ...alert, template: nextTemplate });
-  };
   return (
     <article className={cn(commandCardClass, "h-auto", !alert.enabled && commandCardOffClass)}>
       <CardHeader>
@@ -152,62 +176,138 @@ function AlertCard({
           <StatusDot enabled={alert.enabled} />
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            aria-label={messageLabel}
-            aria-pressed={editing}
-            onClick={() => setEditing((current) => !current)}
-            className={commandIconButtonClass}
-          >
+          <button type="button" aria-label={editLabel} onClick={onEdit} className={commandIconButtonClass}>
             <Pencil className="size-3.5" aria-hidden />
           </button>
-          <EnableSwitch
-            enabled={alert.enabled}
-            onLabel={title}
-            offLabel={title}
-            onToggle={() => onSave({ ...alert, template: shownTemplate, enabled: !alert.enabled })}
-          />
+          <EnableSwitch enabled={alert.enabled} onLabel={title} offLabel={title} onToggle={onToggle} />
         </div>
       </CardHeader>
       <CardContent>
-        <span className="mb-1 block text-[0.68rem] text-zinc-500">{messageLabel}</span>
-        {editing ? (
-          <textarea
-            value={shownTemplate}
-            rows={3}
-            onChange={(event) => setTemplate(event.target.value.slice(0, 480))}
-            onBlur={() => saveTemplate(shownTemplate)}
-            className="w-full resize-none rounded-xl border border-white/10 bg-[#0d0e12] p-2.5 text-xs text-zinc-100 focus:border-white/20 focus:outline-none"
-            dir="auto"
-          />
-        ) : (
-          <p className={commandBodyClass} dir="auto">
-            {shownTemplate}
-          </p>
-        )}
+        <p className={commandBodyClass} dir="auto">
+          {alert.template}
+        </p>
       </CardContent>
-      {showMinimum ? (
-        <CardFooter>
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block text-[0.68rem] text-zinc-500">{minLabel}</span>
-            <input
-              type="number"
-              min={0}
-              value={minimum}
-              onChange={(event) => setMinimum(event.target.value)}
-              onBlur={() => {
-                const next = Math.max(0, Math.round(Number(minimum) || 0));
-                setMinimum(String(next));
-                if (next !== alert.minimum) onSave({ ...alert, template: shownTemplate, minimum: next });
-              }}
-              className="h-8 w-28 rounded-xl border border-white/10 bg-[#0d0e12] px-3 text-xs text-zinc-100 focus:border-white/20 focus:outline-none"
-              dir="ltr"
-            />
-            <span className="mt-1 block text-[0.68rem] leading-snug text-zinc-500">{minHint}</span>
-          </label>
-        </CardFooter>
-      ) : null}
     </article>
+  );
+}
+
+const alertField =
+  "w-full rounded-xl border border-[oklch(1_0_0/0.1)] bg-[oklch(0.14_0.02_265/0.9)] px-3 py-2.5 text-sm text-foreground outline-none";
+
+function AlertEditor({
+  draft,
+  title,
+  info,
+  messageLabel,
+  minLabel,
+  minHint,
+  showMinimum,
+  enabledLabel,
+  onLabel,
+  offLabel,
+  cancelLabel,
+  saveLabel,
+  hint,
+  saving,
+  onClose,
+  onChange,
+  onSave,
+}: {
+  draft: ChatTextAlert | null;
+  title: string;
+  info?: string | undefined;
+  messageLabel: string;
+  minLabel: string;
+  minHint: string;
+  showMinimum: boolean;
+  enabledLabel: string;
+  onLabel: string;
+  offLabel: string;
+  cancelLabel: string;
+  saveLabel: string;
+  hint: string;
+  saving: boolean;
+  onClose: () => void;
+  onChange: (next: ChatTextAlert) => void;
+  onSave: () => void;
+}) {
+  if (!draft) return null;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="glass-3d max-h-[90vh] overflow-y-auto border-[oklch(1_0_0/0.1)] sm:max-w-lg">
+        <DialogHeader>
+          <div className="flex items-center justify-between gap-3 pe-10">
+            <DialogTitle className="min-w-0">{title}</DialogTitle>
+            <div className="flex shrink-0 items-center gap-2 text-[0.82rem]">
+              <span className="text-muted-foreground">{enabledLabel}</span>
+              <EnableSwitch
+                enabled={draft.enabled}
+                onLabel={onLabel}
+                offLabel={offLabel}
+                onToggle={() => onChange({ ...draft, enabled: !draft.enabled })}
+              />
+            </div>
+          </div>
+          <DialogDescription>{hint}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-1.5 text-[0.72rem] font-medium uppercase tracking-wide text-muted-foreground">
+              {title}
+              {info ? <InfoTip text={info} /> : null}
+            </span>
+            <input value={title} readOnly className={`${alertField} cursor-not-allowed opacity-80`} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[0.72rem] font-medium uppercase tracking-wide text-muted-foreground">
+              {messageLabel}
+            </span>
+            <textarea
+              value={draft.template}
+              onChange={(event) => onChange({ ...draft, template: event.target.value.slice(0, 480) })}
+              rows={4}
+              className={`${alertField} resize-y`}
+              dir="auto"
+            />
+          </label>
+          {showMinimum ? (
+            <label className="block">
+              <span className="mb-1.5 block text-[0.72rem] font-medium uppercase tracking-wide text-muted-foreground">
+                {minLabel}
+              </span>
+              <input
+                type="number"
+                min={0}
+                value={draft.minimum}
+                onChange={(event) =>
+                  onChange({ ...draft, minimum: Math.max(0, Math.round(Number(event.target.value) || 0)) })
+                }
+                className={`${alertField} w-28`}
+                dir="ltr"
+              />
+              <span className="mt-1.5 block text-[0.72rem] text-muted-foreground">{minHint}</span>
+            </label>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-[oklch(1_0_0/0.12)] px-4 py-2 text-[0.82rem]"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-full bg-primary px-4 py-2 text-[0.82rem] font-semibold text-primary-foreground disabled:opacity-60"
+          >
+            {saveLabel}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

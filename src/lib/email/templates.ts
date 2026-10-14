@@ -110,13 +110,13 @@ function planPhrase(
   if (locale === "en") {
     if (resolved === "monthly") return "Monthly Plan";
     if (resolved === "six_months") return "6 months";
-    if (resolved === "yearly") return "Yearly Plan";
+    if (resolved === "yearly") return "14 months";
     if (resolved === "lifetime") return "Lifetime Plan";
     return "Pro Plan";
   }
   if (resolved === "monthly") return "الخطة الشهرية";
   if (resolved === "six_months") return "6 أشهر";
-  if (resolved === "yearly") return "الخطة السنوية";
+  if (resolved === "yearly") return "14 شهرًا";
   if (resolved === "lifetime") return "مدى الحياة";
   return "خطة Pro";
 }

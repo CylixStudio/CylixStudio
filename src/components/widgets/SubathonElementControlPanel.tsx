@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { adjustTimer, pauseTimer, resetTimer, setTimer, startTimer } from "@/lib/timer.functions";
 import { useLanguage } from "@/lib/i18n";
-import { formatDuration, type TimerFrame } from "@/lib/timer";
+import { displayedSeconds, formatDuration, remainingMsAt, type TimerFrame } from "@/lib/timer";
 
 const ADJUSTMENTS = [
   { seconds: 60, label: "+1 min" },
@@ -30,6 +30,8 @@ const ADJUSTMENTS = [
 ] as const;
 
 const channelName = (subathonId: string) => `creovix-timer-${subathonId}`;
+
+const projectSeconds = (next: TimerFrame) => displayedSeconds(remainingMsAt(next, Date.now()));
 
 const twoDigits = (value: number) => String(Math.max(0, Math.floor(value))).padStart(2, "0");
 
@@ -87,7 +89,7 @@ export function SubathonElementControlPanel({
     channel.onmessage = (event: MessageEvent<{ frame?: TimerFrame }>) => {
       if (event.data.frame) {
         setLocalFrame(event.data.frame);
-        setLocalRemaining(event.data.frame.remainingSeconds);
+        setLocalRemaining(projectSeconds(event.data.frame));
       }
     };
     return () => channel.close();
@@ -95,7 +97,7 @@ export function SubathonElementControlPanel({
 
   const publishFrame = (next: TimerFrame) => {
     setLocalFrame(next);
-    setLocalRemaining(next.remainingSeconds);
+    setLocalRemaining(projectSeconds(next));
     if (!subathonId) return;
     const channel = new BroadcastChannel(channelName(subathonId));
     channel.postMessage({ frame: next });

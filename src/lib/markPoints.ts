@@ -176,7 +176,7 @@ export function formatUptime(seconds: number | null): string {
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-/** `!` and `/` only. Prefer `emark` over `mark`. */
+/** `!` and `/` only. Prefer `emark` over `mark`. The note after the command is the parameter. */
 export function matchMarkCommand(text: string): MarkCommandMatch | null {
   const trimmed = text.trim();
   if (!trimmed) return null;

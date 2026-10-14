@@ -51,6 +51,7 @@ function youtubeApiConfigured(): boolean {
 async function previewKickTwitchYoutube(
   platform: "kick" | "twitch" | "youtube",
   value: string,
+  options?: { includeLatest?: boolean },
 ): Promise<PlatformLivePreviewData> {
   const href = urlFromHandle(platform, value);
   const { kickStatus, twitchStatus, youtubeStatus } = await import("@/lib/linkInBio.server");
@@ -103,7 +104,7 @@ async function previewKickTwitchYoutube(
   }
   const target = youtubeTargetFromUrl(href) ?? { handle: sanitizeHandle(value), channelId: null };
   if (!target.handle && !target.channelId) return { kind: "quiet", message: "No video yet" };
-  const hit = await youtubeStatus(target, href || null);
+  const hit = await youtubeStatus(target, href || null, { includeLatest: options?.includeLatest !== false });
   if (hit.live) {
     return {
       kind: "live",
@@ -243,13 +244,17 @@ function previewCustom(value: string): PlatformLivePreviewData {
   return { kind: "favicon", host, faviconUrl: googleFaviconUrl(host), href };
 }
 
-export async function previewPlatformLive(platformRaw: string, valueRaw: string): Promise<PlatformLivePreviewData> {
+export async function previewPlatformLive(
+  platformRaw: string,
+  valueRaw: string,
+  options?: { includeLatest?: boolean },
+): Promise<PlatformLivePreviewData> {
   const platform = sanitizePlatform(platformRaw);
   const value = valueRaw.trim().slice(0, 2048);
   if (!value || platform === "whatsapp" || platform === "snapchat") return { kind: "empty" };
   if (platform === "custom") return previewCustom(value);
   if (platform === "kick" || platform === "twitch" || platform === "youtube") {
-    return previewKickTwitchYoutube(platform, value);
+    return previewKickTwitchYoutube(platform, value, options);
   }
   if (platform === "tiktok") return previewTikTok(value);
   if (platform === "instagram") return previewInstagram(value);

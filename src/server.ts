@@ -73,7 +73,22 @@ if (!isCloudflareWorkersRuntime()) {
     });
 }
 
+type ScheduledController = {
+  scheduledTime: number;
+  cron: string;
+  noRetry: () => void;
+};
+
 export default {
+  async scheduled(controller: ScheduledController, _env: unknown, _ctx: unknown) {
+    try {
+      const { runScheduledMessageTimers } = await import("./lib/messageTimers.server");
+      await runScheduledMessageTimers(new Date(controller.scheduledTime));
+    } catch {
+      console.error("[message_timer] scheduled_failed");
+      throw new Error("message_timer_scheduled_failed");
+    }
+  },
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const unregister = registerRequestContext(request, ctx);
     try {

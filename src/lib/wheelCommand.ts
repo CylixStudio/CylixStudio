@@ -1,6 +1,6 @@
 import { pickWeightedPrize, type SpinPrize } from "@/lib/widgets";
 
-/** `!wheel` / `wheel` / `!spin` / `spin` / `!عجلة`, case-insensitive. */
+/** Exact: `!wheel` / `wheel` / `!spin` / `spin` / `!عجلة`. Extra words do not spin. */
 export function matchWheelCommand(text: string): boolean {
   return /^!?(?:wheel|spin|عجلة)$/i.test(text.trim());
 }

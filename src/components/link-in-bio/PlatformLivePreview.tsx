@@ -17,10 +17,12 @@ export function PlatformLivePreview({
   platform,
   value,
   compact = false,
+  youtubeLatestEnabled,
 }: {
   platform: LinkPlatform;
   value: string;
   compact?: boolean;
+  youtubeLatestEnabled?: boolean;
 }) {
   const load = useServerFn(previewPlatformLive);
   const [debounced, setDebounced] = useState(value.trim());
@@ -31,9 +33,16 @@ export function PlatformLivePreview({
   }, [value]);
 
   const query = useQuery({
-    queryKey: ["link-in-bio-platform-live", platform, debounced],
+    queryKey: ["link-in-bio-platform-live", platform, debounced, youtubeLatestEnabled],
     enabled: Boolean(debounced) && platform !== "whatsapp" && platform !== "snapchat",
-    queryFn: () => load({ data: { platform, value: debounced } }),
+    queryFn: () =>
+      load({
+        data: {
+          platform,
+          value: debounced,
+          ...(youtubeLatestEnabled === undefined ? {} : { youtubeLatest: youtubeLatestEnabled }),
+        },
+      }),
     staleTime: 30_000,
     retry: false,
   });

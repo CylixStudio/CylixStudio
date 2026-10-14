@@ -1,7 +1,7 @@
 import { COMMAND_PERMISSION_DENIED, isCommandMinRole, type CommandMinRole } from "@/lib/commandAccess";
 import { catalogDefaultCommand } from "@/lib/defaultCommands";
 import { sendKickChatMessage } from "@/lib/kickChat.server";
-import { parsePointsCommand, pointsCommandPermitted } from "@/lib/pointsCommand";
+import { isPointsCommandAttempt, parsePointsCommand, pointsCommandPermitted } from "@/lib/pointsCommand";
 import { recentChatterNames } from "@/lib/recentChatters";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
@@ -46,7 +46,12 @@ export async function handlePointsCommand(input: {
   identityBadges?: readonly string[];
 }): Promise<{ status: string; reason?: string; command?: string }> {
   const action = parsePointsCommand(input.text);
-  if (!action) return { status: "ignored", reason: "no_match" };
+  if (!action) {
+    if (isPointsCommandAttempt(input.text)) {
+      return { status: "ignored", reason: "invalid_args", command: "!points" };
+    }
+    return { status: "ignored", reason: "no_match" };
+  }
 
   const lookup = await loadPointsGate(input.userId, "points");
   const add = await loadPointsGate(input.userId, "points_add");

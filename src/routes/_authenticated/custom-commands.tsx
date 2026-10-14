@@ -21,6 +21,7 @@ import {
 } from "@/components/commands/commandCardChrome";
 import {
   COMMAND_CARD_GRID,
+  COMMAND_CARD_GRID_CALM,
   CommandGridPager,
   scrollCommandGrid,
   useCommandPage,
@@ -95,7 +96,6 @@ import {
   loadTestDefaultCommands,
   mergeDefaultCommands,
   setTestDefaultCommandEnabled,
-  setTestDefaultCommandRole,
   upsertTestDefaultCommand,
   type DefaultCommand,
   type DefaultCommandInput,
@@ -103,14 +103,12 @@ import {
 import {
   listDefaultCommands,
   setDefaultCommandEnabled,
-  setDefaultCommandRole,
   upsertDefaultCommand,
 } from "@/lib/defaultCommands.functions";
 import {
   deleteMessageTimer,
   listMessageTimers,
   setMessageTimerEnabled,
-  tickMessageTimers,
   upsertMessageTimer,
 } from "@/lib/messageTimers.functions";
 import {
@@ -334,11 +332,9 @@ function CustomCommandsPage() {
   const persistTimer = useServerFn(upsertMessageTimer);
   const persistTimerEnabled = useServerFn(setMessageTimerEnabled);
   const persistTimerDelete = useServerFn(deleteMessageTimer);
-  const persistTimerTick = useServerFn(tickMessageTimers);
   const loadDefaults = useServerFn(listDefaultCommands);
   const persistDefault = useServerFn(upsertDefaultCommand);
   const persistDefaultEnabled = useServerFn(setDefaultCommandEnabled);
-  const persistDefaultRole = useServerFn(setDefaultCommandRole);
 
   const state = useQuery({
     queryKey: ["custom-commands", user.id],
@@ -384,17 +380,14 @@ function CustomCommandsPage() {
   const invalidateTimers = () => queryClient.invalidateQueries({ queryKey: ["message-timers", user.id] });
 
   useEffect(() => {
+    if (!test) return;
     const run = () => {
-      if (test) {
-        tickTestTimers();
-        return;
-      }
-      void persistTimerTick();
+      tickTestTimers();
     };
     run();
     const id = window.setInterval(run, 30_000);
     return () => window.clearInterval(id);
-  }, [test, persistTimerTick]);
+  }, [test]);
 
   const prefixMutation = useMutation({
     mutationFn: async (value: string) => {
@@ -563,16 +556,6 @@ function CustomCommandsPage() {
     onError: (error: Error) => toast.error(error.message || c.errSave),
   });
 
-  const defaultRoleMutation = useMutation({
-    mutationFn: async ({ id, minRole }: { id: DefaultCommand["id"]; minRole: CommandMinRole }) => {
-      if (!isDefaultCommandId(id)) return null;
-      if (test) return setTestDefaultCommandRole(id, minRole, lang);
-      return persistDefaultRole({ data: { id, minRole } });
-    },
-    onSuccess: () => void invalidateDefaults(),
-    onError: (error: Error) => toast.error(error.message || c.errSave),
-  });
-
   const openCreate = () => {
     if (subscription.isSuccess && !isPro && commands.length >= FREE_PLAN_LIMITS.customCommands) {
       requestUpgrade();
@@ -650,7 +633,6 @@ function CustomCommandsPage() {
             });
           }}
           onToggle={(id, enabled) => defaultEnabledMutation.mutate({ id, enabled })}
-          onRole={(id, minRole) => defaultRoleMutation.mutate({ id, minRole })}
         />
       ) : pageTab === "alerts" ? (
         <ChatTextAlertsPanel userId={user.id} />
@@ -732,7 +714,8 @@ function CustomCommandsPage() {
           )}
         </div>
 
-        <section className="rounded-xl border border-white/[0.06] p-4">
+        <div className="flex w-full justify-start" dir="ltr">
+        <section dir="rtl" className="w-full max-w-xl rounded-xl border border-white/[0.06] p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-[0.95rem] font-semibold">{c.prefixTitle}</h2>
@@ -789,6 +772,7 @@ function CustomCommandsPage() {
           </div>
 
         </section>
+        </div>
       </div>
       )}
 
@@ -958,15 +942,12 @@ function DefaultCommandsPanel({
   commands,
   onEdit,
   onToggle,
-  onRole,
 }: {
   copy: CommandsCopy;
   commands: DefaultCommand[];
   onEdit: (command: DefaultCommand) => void;
   onToggle: (id: DefaultCommand["id"], enabled: boolean) => void;
-  onRole: (id: DefaultCommand["id"], minRole: CommandMinRole) => void;
 }) {
-  const { t } = useLanguage();
   const rows = commands.filter((command) => command.id !== "lurk" && command.id !== "so" && command.id !== "welcome");
   const gridRef = useRef<HTMLDivElement>(null);
   const paging = useCommandPage(rows);
@@ -976,7 +957,7 @@ function DefaultCommandsPanel({
   };
   return (
     <div>
-      <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
+      <div ref={gridRef} className={`${COMMAND_CARD_GRID_CALM} scroll-mt-4`}>
         {paging.slice.map((command) => (
           <article
             key={command.id}
@@ -995,35 +976,18 @@ function DefaultCommandsPanel({
               >
                 <Pencil className="size-3.5" aria-hidden />
               </button>
-            </CardHeader>
-            <CardContent>
-              <p className={commandBodyClass} dir="auto">
-                {command.response}
-              </p>
-            </CardContent>
-            <CardFooter className="items-end">
-              <label className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="text-[0.68rem] text-zinc-500">{copy.rankLabel}</span>
-                <Select value={command.minRole} onValueChange={(value) => onRole(command.id, value as CommandMinRole)}>
-                  <SelectTrigger className="h-8 w-full border-white/10 bg-[#0d0e12] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMMAND_MIN_ROLES.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {t(RANK_LABEL_KEY[role])}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
               <EnableSwitch
                 enabled={command.enabled}
                 onLabel={copy.on}
                 offLabel={copy.off}
                 onToggle={() => onToggle(command.id, !command.enabled)}
               />
-            </CardFooter>
+            </CardHeader>
+            <CardContent>
+              <p className={commandBodyClass} dir="auto">
+                {command.response}
+              </p>
+            </CardContent>
           </article>
         ))}
       </div>
@@ -1049,6 +1013,7 @@ function DefaultCommandEditor({
   onChange: (next: DefaultCommandInput) => void;
   onSave: () => void;
 }) {
+  const { t } = useLanguage();
   if (!draft) return null;
   const showFallback = draft.id === "followage";
   const trigger = catalogTrigger(draft.id);
@@ -1116,6 +1081,27 @@ function DefaultCommandEditor({
               />
             </label>
           ) : null}
+
+          <label className="block">
+            <span className="mb-1.5 block text-[0.72rem] font-medium uppercase tracking-wide text-muted-foreground">
+              {copy.rankLabel}
+            </span>
+            <Select
+              value={draft.minRole}
+              onValueChange={(value) => onChange({ ...draft, minRole: value as CommandMinRole })}
+            >
+              <SelectTrigger className="h-10 w-full border-white/10 bg-[#0d0e12] text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {COMMAND_MIN_ROLES.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {t(RANK_LABEL_KEY[role])}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
 
           <div>
             <span className="mb-1.5 block text-[0.72rem] font-medium uppercase tracking-wide text-muted-foreground">
@@ -1472,7 +1458,7 @@ function PagedCommandGrid({
   };
   return (
     <div className="mt-3">
-      <div ref={gridRef} className={`${COMMAND_CARD_GRID} scroll-mt-4`}>
+      <div ref={gridRef} className={`${COMMAND_CARD_GRID_CALM} scroll-mt-4`}>
         {paging.slice.map((command) => (
           <CommandCard
             key={command.id}
@@ -1486,12 +1472,14 @@ function PagedCommandGrid({
         ))}
       </div>
       {paging.showPager ? (
-        <CommandGridPager
-          variant="public"
-          page={paging.page}
-          pageCount={paging.pageCount}
-          onPage={changePage}
-        />
+        <div className="mb-6 mt-8 flex justify-center">
+          <CommandGridPager
+            variant="public"
+            page={paging.page}
+            pageCount={paging.pageCount}
+            onPage={changePage}
+          />
+        </div>
       ) : null}
     </div>
   );

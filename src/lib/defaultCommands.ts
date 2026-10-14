@@ -1,6 +1,7 @@
 import { blankCommandTemplate, renderCommandTemplate } from "@/lib/commandTemplate";
 import { type CommandMinRole, isCommandMinRole } from "@/lib/commandAccess";
 import type { ChatCommandPlatform } from "@/lib/customCommands";
+import { messageStartsWithTrigger } from "@/lib/messageStartsWithTrigger";
 
 export const DEFAULT_COMMAND_IDS = [
   "addcom",
@@ -295,6 +296,12 @@ export function sanitizeCooldown(raw: number | undefined): number {
   return Math.min(Math.max(Math.round(raw ?? 5) || 0, 0), 3600);
 }
 
+/**
+ * Chat commands that declare a parameter. Everything else is exact-match only.
+ * `so` takes one username: `!so` or `!so name`. Extra words do not run it.
+ */
+const PARAMETERIZED_DEFAULT_COMMANDS = new Set<RuntimeCommandId>(["so"]);
+
 export function matchDefaultCommand(
   text: string,
   commands: DefaultCommand[],
@@ -308,10 +315,17 @@ export function matchDefaultCommand(
     // Reserved even when disabled, so a custom command of the same name cannot also reply.
     return { command, argument: "" };
   }
-  for (const command of commands) {
-    if (!command.runsInChat || !command.enabled || !command.platforms.includes(platform)) continue;
-    const match = trimmed.match(new RegExp(`^${escapeRegExp(command.trigger)}(?:\\s+|$)(.*)`, "i"));
-    if (match) return { command, argument: (match[1] ?? "").trim() };
+  const runnable = commands
+    .filter((command) => command.runsInChat && command.enabled && command.platforms.includes(platform))
+    .sort((a, b) => b.trigger.length - a.trigger.length);
+  for (const command of runnable) {
+    if (PARAMETERIZED_DEFAULT_COMMANDS.has(command.id)) {
+      if (command.id !== "so") continue;
+      const shoutout = /^!so(?:\s+(\S+))?$/i.exec(trimmed);
+      if (!shoutout) continue;
+      return { command, argument: (shoutout[1] ?? "").trim() };
+    }
+    if (messageStartsWithTrigger(trimmed, command.trigger)) return { command, argument: "" };
   }
   return null;
 }
@@ -384,10 +398,6 @@ export function applyDollarPlaceholders(
     .replaceAll("$(points)", vars.points ?? "")
     .replaceAll("$(level)", vars.level ?? "")
     .replaceAll("$(name)", vars.name ?? "");
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 type StoredState = {

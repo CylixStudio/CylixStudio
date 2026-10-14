@@ -1,20 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { computeRemaining, type TimerFrame } from "@/lib/timer";
+import { useTimerSession } from "@/hooks/useTimerSession";
+import type { TimerFrame } from "@/lib/timer";
 
 export type StreamStatus = "connecting" | "live" | "error";
 
 /**
- * Subscribes to the overlay SSE stream and re-derives the countdown locally
- * against the last server frame, so rendering stays smooth between pushes.
+ * Subscribes to the overlay SSE stream. The countdown is the shared end
+ * timestamp minus the monotonic clock. SSE frames update that end only when
+ * the persisted timer actually changes.
  * Reconnects with backoff so an OBS browser source left running overnight
  * recovers from deploys, sleeps and dropped connections on its own.
  */
 export function useTimerStream(publicToken: string | null) {
   const [frame, setFrame] = useState<TimerFrame | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
-  const [remaining, setRemaining] = useState(0);
-  const offsetRef = useRef(0);
+  const countdown = useTimerSession(frame != null, publicToken);
 
   useEffect(() => {
     if (!publicToken) return;
@@ -25,9 +26,8 @@ export function useTimerStream(publicToken: string | null) {
 
     const onFrame = (next: TimerFrame) => {
       attempts = 0;
-      offsetRef.current = next.serverTime - Date.now();
+      countdown.adopt(next, "realtime");
       setFrame(next);
-      setRemaining(next.remainingSeconds);
       setStatus("live");
     };
 
@@ -64,15 +64,12 @@ export function useTimerStream(publicToken: string | null) {
       if (retry) clearTimeout(retry);
       source?.close();
     };
-  }, [publicToken]);
+  }, [publicToken, countdown.adopt]);
 
-  useEffect(() => {
-    if (!frame) return;
-    const id = setInterval(() => {
-      setRemaining(computeRemaining(frame, Date.now() + offsetRef.current));
-    }, 250);
-    return () => clearInterval(id);
-  }, [frame]);
+  const shown =
+    frame && countdown.status === "ENDED" && frame.status === "RUNNING"
+      ? { ...frame, status: "ENDED" as const, remainingSeconds: 0, remainingMs: 0 }
+      : frame;
 
-  return { frame, remaining, status };
+  return { frame: shown, remaining: countdown.remaining, status, serverOffsetMs: countdown.serverOffsetMs };
 }

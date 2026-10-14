@@ -103,9 +103,15 @@ function signatureBuffers(signature: string): Buffer[] {
   return unique;
 }
 
+const publicKeys = new Map<string, ReturnType<typeof createPublicKey>>();
+
 /** SHA256 + PKCS1 v1.5 over the exact `messageId.timestamp.rawBody` bytes. */
 function rsaVerify(publicKeyPem: string, payload: string, signature: Buffer): boolean {
-  const key = createPublicKey(publicKeyPem);
+  let key = publicKeys.get(publicKeyPem);
+  if (!key) {
+    key = createPublicKey(publicKeyPem);
+    publicKeys.set(publicKeyPem, key);
+  }
   return verifySignature("RSA-SHA256", Buffer.from(payload, "utf8"), key, signature);
 }
 

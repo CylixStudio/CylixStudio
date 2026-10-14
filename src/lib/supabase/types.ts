@@ -764,6 +764,7 @@ export type Database = {
           updated_at: string
           user_id: string
           widget_banner_url: string
+          youtube_latest_enabled: boolean
         }
         Insert: {
           ambient_enabled?: boolean
@@ -793,6 +794,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           widget_banner_url?: string
+          youtube_latest_enabled?: boolean
         }
         Update: {
           ambient_enabled?: boolean
@@ -822,6 +824,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           widget_banner_url?: string
+          youtube_latest_enabled?: boolean
         }
         Relationships: []
       }
@@ -1085,6 +1088,7 @@ export type Database = {
           id: string
           interval_minutes: number
           last_sent_at: string | null
+          last_sent_slot: string | null
           message: string
           platforms: string[]
           updated_at: string
@@ -1096,6 +1100,7 @@ export type Database = {
           id?: string
           interval_minutes?: number
           last_sent_at?: string | null
+          last_sent_slot?: string | null
           message: string
           platforms?: string[]
           updated_at?: string
@@ -1107,6 +1112,7 @@ export type Database = {
           id?: string
           interval_minutes?: number
           last_sent_at?: string | null
+          last_sent_slot?: string | null
           message?: string
           platforms?: string[]
           updated_at?: string

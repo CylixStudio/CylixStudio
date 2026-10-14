@@ -67,16 +67,8 @@ export function PlanCompareDialog({ open, onOpenChange }: PlanCompareDialogProps
                   {t("gateway.pro.name")}
                   <span className="mt-0.5 flex flex-wrap items-baseline justify-center gap-1 text-[0.65rem] normal-case tracking-normal text-primary/80">
                     <SaudiRiyalAmount amount={monthly.amount} />
-                    {monthly.listAmount != null ? (
-                      <SaudiRiyalAmount amount={monthly.listAmount} className="text-zinc-500 line-through" />
-                    ) : null}
                     {t("gateway.price.period")}
                   </span>
-                  {monthly.launchOffer ? (
-                    <span className="mt-1 block text-[0.62rem] font-semibold normal-case tracking-normal text-amber-200">
-                      {t("gateway.billing.launchOffer")}
-                    </span>
-                  ) : null}
                 </th>
               </tr>
             </thead>

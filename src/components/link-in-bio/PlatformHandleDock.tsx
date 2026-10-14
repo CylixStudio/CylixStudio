@@ -148,11 +148,13 @@ export function PlatformHandleDock({
   handles,
   onChange,
   tone = "wizard",
+  youtubeLatestEnabled,
 }: {
   platforms: ReadonlyArray<PlatformMeta>;
   handles: HandleMap;
   onChange: (next: HandleMap) => void;
   tone?: "wizard" | "inspector";
+  youtubeLatestEnabled?: boolean;
 }) {
   const { t } = useLanguage();
   const items = useMemo(() => dockItems(platforms, handles, t), [platforms, handles, t]);
@@ -329,7 +331,12 @@ export function PlatformHandleDock({
               {fieldError ?? t("linkInBio.dock.err.whatsapp")}
             </p>
           ) : null}
-          <PlatformLivePreview platform={open.platform} value={value} compact={inspector} />
+          <PlatformLivePreview
+            platform={open.platform}
+            value={value}
+            compact={inspector}
+            youtubeLatestEnabled={youtubeLatestEnabled}
+          />
         </div>
       ) : null}
     </div>

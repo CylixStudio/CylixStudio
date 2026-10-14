@@ -2,8 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendSms, sendTemplateEmail } from "@/lib/email.server";
 import type { ProBillingInterval, ProPurchaseType } from "@/lib/plans";
+import { catalogChargeMatches } from "@/lib/plans";
 import {
+  addUtcCalendarMonths,
   durationDaysForInterval,
+  entitlementMonthsForInterval,
   formatActivationCode,
   intervalLabel,
 } from "@/lib/proPurchase";
@@ -34,6 +37,8 @@ export type FulfillProPurchaseInput = {
    * purchase and emailed to the buyer account address for later redemption.
    */
   emailActivationCode?: boolean;
+  /** Test clock. HTTP handlers must not forward a client-supplied time. */
+  now?: Date;
 };
 
 export type FulfillProPurchaseResult =
@@ -110,7 +115,7 @@ async function insertUniqueCode(
 /** Apply Pro to user_subscriptions (extends active expiry when present). */
 async function activateProDirectly(
   admin: AdminClient,
-  args: { userId: string; durationDays: number; paymentRef: string },
+  args: { userId: string; durationDays: number; paymentRef: string; entitlementMonths?: number; now: Date },
 ): Promise<{ ok: true; expiresAt: string; isLifetime: boolean } | { ok: false; error: string }> {
   const isLifetime = args.durationDays >= 36500;
   const { data: current, error: currentError } = await admin
@@ -124,15 +129,18 @@ async function activateProDirectly(
     return { ok: false, error: "subscription_lookup_failed" };
   }
 
-  const now = Date.now();
+  const now = args.now.getTime();
   const currentExpiry = current?.expires_at ? Date.parse(current.expires_at) : NaN;
   const baseMs =
     Number.isFinite(currentExpiry) && currentExpiry > now ? currentExpiry : now;
 
   const lifetime = isLifetime || Boolean(current?.is_lifetime);
+  const entitlementMonths = args.entitlementMonths;
   const expiresAt = lifetime
     ? new Date(now + 100 * 365.25 * 86_400_000).toISOString()
-    : new Date(baseMs + args.durationDays * 86_400_000).toISOString();
+    : entitlementMonths != null && entitlementMonths > 0
+      ? addUtcCalendarMonths(new Date(baseMs), entitlementMonths).toISOString()
+      : new Date(baseMs + args.durationDays * 86_400_000).toISOString();
 
   const { error: upsertError } = await admin.from("user_subscriptions").upsert(
     {
@@ -519,6 +527,7 @@ async function grantDirectEntitlement(
     siteUrl: string;
     locale: "ar" | "en";
     idempotent: boolean;
+    now: Date;
   },
 ): Promise<FulfillProPurchaseResult> {
   const meta = metadataRecord(args.metadata);
@@ -616,10 +625,13 @@ async function grantDirectEntitlement(
       return { ok: false, error: "activation_in_progress" };
     }
 
+    const entitlementMonths = entitlementMonthsForInterval(args.interval);
     const activated = await activateProDirectly(admin, {
       userId: args.userId,
       durationDays: args.durationDays,
       paymentRef: `${args.provider}:${args.providerPaymentId}`,
+      now: args.now,
+      ...(entitlementMonths != null ? { entitlementMonths } : {}),
     });
     if (!activated.ok) {
       await releaseEntitlementClaim(admin, args.purchaseId, meta);
@@ -669,8 +681,23 @@ export async function fulfillProPurchase(
   const emailActivationCode = input.emailActivationCode === true;
   const giftRecipientEmail = normalizeEmail(input.giftRecipientEmail);
   const giftMessage = input.giftMessage?.trim().slice(0, 500) || null;
-  const durationDays = durationDaysForInterval(input.interval, input.durationDays);
-  const currency = (input.currency || "USD").toUpperCase().slice(0, 8);
+  const now = input.now ?? new Date();
+  const catalogInterval =
+    input.interval === "monthly" || input.interval === "six_months" || input.interval === "yearly"
+      ? input.interval
+      : null;
+  if (catalogInterval) {
+    const amountSar = input.amountCents == null ? Number.NaN : input.amountCents / 100;
+    if (!catalogChargeMatches(catalogInterval, amountSar, input.currency ?? "")) {
+      return { ok: false, error: "amount_mismatch" };
+    }
+  }
+  const durationDays = durationDaysForInterval(
+    input.interval,
+    catalogInterval ? undefined : input.durationDays,
+    now,
+  );
+  const currency = catalogInterval ? "SAR" : (input.currency || "USD").toUpperCase().slice(0, 8);
   const locale = input.locale ?? "ar";
 
   const { data: existing, error: existingError } = await admin
@@ -747,6 +774,7 @@ export async function fulfillProPurchase(
         siteUrl: input.siteUrl,
         locale,
         idempotent: true,
+        now,
       });
     }
 
@@ -926,6 +954,7 @@ export async function fulfillProPurchase(
         siteUrl: input.siteUrl,
         locale,
         idempotent: true,
+        now,
       });
     }
 
@@ -948,6 +977,7 @@ export async function fulfillProPurchase(
       siteUrl: input.siteUrl,
       locale,
       idempotent: false,
+      now,
     });
   }
 

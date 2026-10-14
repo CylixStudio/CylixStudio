@@ -1,7 +1,7 @@
 import { createHmac } from "crypto";
 
 import type { ProBillingInterval, ProPurchaseType } from "@/lib/plans";
-import { buildProCheckoutPayload } from "@/lib/plans";
+import { buildProCheckoutPayload, catalogChargeMatches } from "@/lib/plans";
 import { safeEqual } from "@/lib/webhooks/verify.server";
 
 const API_BASE = "https://stream-app-service.streampay.sa/api/v2";
@@ -250,6 +250,49 @@ async function ensureConsumer(input: {
   return { id: null, message: lastMessage };
 }
 
+/** Invoice line and fallback product used by checkout. No gateway call. */
+export function streamPayOneTimeCharge(interval: ProBillingInterval) {
+  const payload = buildProCheckoutPayload(interval);
+  return {
+    payload,
+    invoiceItem: {
+      name: payload.productName,
+      description: payload.productName,
+      quantity: 1,
+      unit_price: payload.amount,
+      price: payload.amount,
+      amount: payload.amount,
+      currency: "SAR" as const,
+    },
+    oneTimeProduct: {
+      name: payload.productName,
+      description: payload.productName,
+      type: "ONE_OFF" as const,
+      is_active: true,
+      is_one_time: true,
+      currency: "SAR" as const,
+      price: payload.amount,
+      prices: [
+        {
+          currency: "SAR" as const,
+          amount: payload.amount,
+          is_price_inclusive_of_vat: true,
+          is_price_exempt_from_vat: false,
+        },
+      ],
+    },
+    maxNumberOfPayments: 1 as const,
+  };
+}
+
+/**
+ * Creates a one-time StreamPay invoice for 29, 169, or 279 SAR.
+ * The fallback product is ONE_OFF with a single allowed payment.
+ * A 6-month or 14-month recurring price is not created: that cycle is not
+ * available here, and a shorter renewal would charge before the entitlement ends.
+ * Pro access is the expiry written after payment, not a gateway subscription.
+ * This function does not update existing StreamPay products.
+ */
 export async function createStreamPayCheckout(input: {
   userId: string;
   email: string;
@@ -266,17 +309,26 @@ export async function createStreamPayCheckout(input: {
       console.error("[streampay] missing STREAMPAY_API_KEY or STREAMPAY_SECRET_KEY");
       return { ok: false, error: "streampay_not_configured", message: "StreamPay keys are missing" };
     }
+    const charge = streamPayOneTimeCharge(input.interval);
     const payload = buildProCheckoutPayload(input.interval, {
       purchaseType: input.purchaseType,
       userId: input.userId,
       buyerEmail: input.email,
     });
+    if (
+      payload.amount !== charge.invoiceItem.unit_price ||
+      payload.amount !== charge.invoiceItem.amount ||
+      payload.months !== charge.payload.months ||
+      !catalogChargeMatches(input.interval, payload.amount, payload.currency)
+    ) {
+      return { ok: false, error: "invalid_amount", message: "Checkout amount does not match the plan" };
+    }
     const customerName = streamPayCustomerName(input.name);
     console.info("[streampay] create checkout", {
       interval: input.interval,
       amount: payload.amount,
-      listAmount: payload.listAmount,
-      launchOffer: payload.launchOffer,
+      months: payload.months,
+      billingMode: payload.billingMode,
       currency: "SAR",
       name: customerName,
     });
@@ -300,8 +352,8 @@ export async function createStreamPayCheckout(input: {
       interval: input.interval,
       purchase_type: input.purchaseType,
       amount: String(payload.amount),
-      list_amount: payload.listAmount != null ? String(payload.listAmount) : "",
-      launch_offer: payload.launchOffer ? "1" : "0",
+      entitlement_months: String(payload.months),
+      billing_mode: payload.billingMode,
       currency: "SAR",
       buyer_name: customerName,
       locale: input.locale,
@@ -309,15 +361,7 @@ export async function createStreamPayCheckout(input: {
       gift_message:
         input.purchaseType === "gift" ? input.giftMessage?.trim().slice(0, 500) || "" : "",
     };
-    const line = {
-      name: payload.productName,
-      description: payload.productName,
-      quantity: 1,
-      unit_price: payload.amount,
-      price: payload.amount,
-      amount: payload.amount,
-      currency: "SAR",
-    };
+    const line = charge.invoiceItem;
     const created = await streampay("POST", "/invoices", {
       name: payload.productName,
       description: payload.productName,
@@ -333,23 +377,7 @@ export async function createStreamPayCheckout(input: {
     let url = created.status >= 200 && created.status < 300 ? readUrl(created.json) : null;
     if (!url) {
       logStreamPayFailure("create_invoice", created);
-      const product = await streampay("POST", "/products", {
-        name: payload.productName,
-        description: payload.productName,
-        type: "ONE_OFF",
-        is_active: true,
-        is_one_time: true,
-        currency: "SAR",
-        price: payload.amount,
-        prices: [
-          {
-            currency: "SAR",
-            amount: payload.amount,
-            is_price_inclusive_of_vat: true,
-            is_price_exempt_from_vat: false,
-          },
-        ],
-      });
+      const product = await streampay("POST", "/products", charge.oneTimeProduct);
       const productId = readId(product.json) ?? readId(asRecord(product.json)?.["data"]);
       if (product.status < 200 || product.status >= 300 || !productId) {
         logStreamPayFailure("create_inline_product", product);
@@ -365,7 +393,7 @@ export async function createStreamPayCheckout(input: {
         currency: "SAR",
         items: [{ product_id: productId, quantity: 1 }],
         contact_information_type: "EMAIL",
-        max_number_of_payments: 1,
+        max_number_of_payments: charge.maxNumberOfPayments,
         organization_consumer_id: consumerId,
         success_redirect_url: `${origin}/subscription`,
         failure_redirect_url: `${origin}/subscription?streampay=failed`,
@@ -440,7 +468,97 @@ export type ConfirmedStreamPayCheckout = {
   giftMessage: string | null;
 };
 
-export type StreamPayConfirmError = "missing_reference" | "not_paid" | "unconfirmed" | "missing_metadata";
+export type StreamPayConfirmError =
+  | "missing_reference"
+  | "not_paid"
+  | "unconfirmed"
+  | "missing_metadata"
+  | "amount_mismatch";
+
+const BLOCKING_STATUSES = new Set([
+  "FAILED",
+  "CANCELED",
+  "CANCELLED",
+  "DECLINED",
+  "REJECTED",
+  "EXPIRED",
+  "VOID",
+  "VOIDED",
+]);
+
+function isBlockingStatus(value: string | null): boolean {
+  if (!value) return false;
+  return BLOCKING_STATUSES.has(value) || value.startsWith("FAILED_");
+}
+
+function readAmount(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function collectSettlementMoney(
+  record: Json | null,
+  amounts: number[],
+  currencies: string[],
+  statuses: string[],
+) {
+  if (!record) return;
+  const status = statusOf(record);
+  if (status) statuses.push(status);
+  const currency = fieldText(record["currency"]);
+  if (currency) currencies.push(currency);
+  for (const key of ["amount", "unit_price", "price", "total", "total_amount", "paid_amount"]) {
+    const amount = readAmount(record[key]);
+    if (amount != null) amounts.push(amount);
+  }
+  const cents = readAmount(record["amount_cents"]);
+  if (cents != null) amounts.push(cents / 100);
+  for (const key of ["items", "prices", "payments"]) {
+    const list = record[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) collectSettlementMoney(asRecord(item), amounts, currencies, statuses);
+  }
+}
+
+/**
+ * Decides whether a signed, paid StreamPay settlement may grant Pro.
+ * Price and months come from the plan id. Client or metadata money that
+ * disagrees with that price does not activate. Failed, cancelled, and
+ * expired settlements do not activate.
+ */
+export function evaluateStreamPaySettlement(input: {
+  interval: ProBillingInterval | null;
+  paymentId: string | null;
+  userId: string | null;
+  purchaseType: ProPurchaseType;
+  amountsSar: number[];
+  currencies: string[];
+  statuses: string[];
+  signedStatus: string | null;
+}): { ok: true } | { ok: false; error: StreamPayConfirmError } {
+  const signed = normalizeStatus(input.signedStatus);
+  const statuses = input.statuses.map((status) => normalizeStatus(status)).filter((status): status is string => Boolean(status));
+  if (statuses.some((status) => isBlockingStatus(status)) || isBlockingStatus(signed)) {
+    return { ok: false, error: "not_paid" };
+  }
+  const paid = statuses.some((status) => isPaidStatus(status)) || isPaidStatus(signed);
+  if (!paid) return { ok: false, error: "unconfirmed" };
+  if (!input.paymentId || !input.interval) return { ok: false, error: "missing_metadata" };
+  if (input.purchaseType === "direct" && !input.userId) return { ok: false, error: "missing_metadata" };
+  if (input.amountsSar.length === 0) return { ok: false, error: "amount_mismatch" };
+  const currencies = input.currencies.length > 0 ? input.currencies : ["SAR"];
+  const matched = input.amountsSar.every((amount, index) =>
+    catalogChargeMatches(input.interval as ProBillingInterval, amount, currencies[index] ?? currencies[0]),
+  );
+  if (!matched || currencies.some((currency) => currency.trim().toUpperCase() !== "SAR")) {
+    return { ok: false, error: "amount_mismatch" };
+  }
+  return { ok: true };
+}
 
 function fieldText(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -581,9 +699,12 @@ export async function resolveConfirmedStreamPayCheckout(input: {
   );
   const paid = records.some(recordLooksPaid);
   const failed = records.some(recordLooksFailed);
+  const blocking =
+    records.some((record) => isBlockingStatus(statusOf(record))) ||
+    isBlockingStatus(normalizeStatus(signed?.status ?? null));
   const signedPaid = Boolean(signed && isPaidStatus(normalizeStatus(signed.status)));
 
-  if (failed && !paid) return { ok: false, error: "not_paid" };
+  if (blocking || (failed && !paid)) return { ok: false, error: "not_paid" };
   if (!paid && !signedPaid) return { ok: false, error: "unconfirmed" };
 
   const meta =
@@ -607,5 +728,28 @@ export async function resolveConfirmedStreamPayCheckout(input: {
 
   const checkout = checkoutFromMetadata(meta, resolvedPaymentId, resolvedInvoiceId);
   if (!checkout) return { ok: false, error: paid || signedPaid ? "missing_metadata" : "unconfirmed" };
+
+  const amountsSar: number[] = [];
+  const currencies: string[] = [];
+  const statuses: string[] = [];
+  for (const record of records) collectSettlementMoney(record, amountsSar, currencies, statuses);
+  if (meta) collectSettlementMoney(meta, amountsSar, currencies, statuses);
+  if (checkout.amountSar != null) amountsSar.push(checkout.amountSar);
+  if (checkout.currency) currencies.push(checkout.currency);
+
+  const decision = evaluateStreamPaySettlement({
+    interval: checkout.interval,
+    paymentId: checkout.paymentId,
+    userId: checkout.userId,
+    purchaseType: checkout.purchaseType,
+    amountsSar,
+    currencies,
+    statuses,
+    signedStatus: signed?.status ?? null,
+  });
+  if (!decision.ok) return decision;
+  if (signed?.paymentId && signed.paymentId !== checkout.paymentId) {
+    return { ok: false, error: "missing_metadata" };
+  }
   return { ok: true, checkout };
 }

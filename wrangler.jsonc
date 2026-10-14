@@ -8,6 +8,11 @@
   // Custom fetch entry: request context + host waitUntil. The Vite plugin
   // bundles this to dist/server/index.js and attaches client assets from dist/client.
   "main": "src/server.ts",
+  // Cron is not active. Do not add triggers.crons in this file yet.
+  // Later: Workers & Pages → cylixstudio → Settings → Triggers → Cron Triggers
+  // → * * * * *
+  // "triggers": { "crons": ["* * * * *"] }
+  // Free plan: 5 cron triggers per account, 10 ms CPU per cron, 15 min wall time.
   "observability": {
     "enabled": true,
     "redact_query_string": true,

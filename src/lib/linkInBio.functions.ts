@@ -20,6 +20,7 @@ import {
   sanitizeTheme,
   slugError,
   applyUsernameClaim,
+  youtubeLatestColumnMissing,
   type GalleryImage,
   type LinkInBioLink,
   type LinkInBioLinkInput,
@@ -68,6 +69,7 @@ type ThemeRow = {
   bento_color_mode?: string;
   bento_custom_fill?: string;
   bento_custom_accent?: string;
+  youtube_latest_enabled?: boolean;
 };
 
 type LinkRow = {
@@ -129,6 +131,7 @@ function mapTheme(row: ThemeRow): LinkInBioTheme {
     bentoColorMode: row.bento_color_mode as LinkInBioTheme["bentoColorMode"],
     bentoCustomFill: row.bento_custom_fill ?? "",
     bentoCustomAccent: row.bento_custom_accent ?? "",
+    youtubeLatestEnabled: row.youtube_latest_enabled !== false,
   });
 }
 
@@ -175,6 +178,30 @@ async function persistMaybeImage(userId: string, url: string): Promise<string> {
   return persistLinkInBioImageUrl(userId, url);
 }
 
+async function readYoutubeLatestEnabled(supabase: { from: (table: string) => any }, userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("link_in_bio_themes")
+    .select("youtube_latest_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || data == null || typeof data.youtube_latest_enabled !== "boolean") return true;
+  return data.youtube_latest_enabled;
+}
+
+async function writeYoutubeLatestEnabled(
+  supabase: { from: (table: string) => any },
+  userId: string,
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; error: "save_failed" }> {
+  const { error } = await supabase
+    .from("link_in_bio_themes")
+    .update({ youtube_latest_enabled: enabled })
+    .eq("user_id", userId);
+  if (!error) return { ok: true };
+  if (enabled && youtubeLatestColumnMissing(error)) return { ok: true };
+  return { ok: false, error: "save_failed" };
+}
+
 async function ensureRows(
   supabase: any,
   userId: string,
@@ -199,7 +226,8 @@ async function ensureRows(
     ).data as ThemeRow | null;
   }
   if (!profile || !theme) throw new Error("link_in_bio_init");
-  return { profile, theme };
+  const youtubeLatestEnabled = await readYoutubeLatestEnabled(supabase, userId);
+  return { profile, theme: { ...theme, youtube_latest_enabled: youtubeLatestEnabled } };
 }
 
 async function loadState(supabase: Parameters<typeof ensureRows>[0], userId: string): Promise<LinkInBioState> {
@@ -312,6 +340,8 @@ export const saveLinkInBioTheme = createServerFn({ method: "POST" })
       })
       .eq("user_id", context.userId);
     if (error) return { ok: false as const, error: "save_failed" };
+    const latest = await writeYoutubeLatestEnabled(context.supabase, context.userId, theme.youtubeLatestEnabled);
+    if (!latest.ok) return latest;
     return { ok: true as const };
   });
 
@@ -387,18 +417,37 @@ export const deleteLinkInBioLink = createServerFn({ method: "POST" })
 
 export const reorderLinkInBioLinks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { ids: string[] }) => input)
+  .inputValidator((input: { ids: string[]; placements?: { id: string; gridX: number; gridY: number }[] }) => input)
   .handler(async ({ data, context }) => {
     const ids = data.ids.filter((id) => typeof id === "string" && id.length > 0).slice(0, 80);
-    await Promise.all(
-      ids.map((id, index) =>
-        context.supabase
-          .from("link_in_bio_links")
-          .update({ sort_order: index })
-          .eq("id", id)
-          .eq("user_id", context.userId),
-      ),
+    const unique: string[] = [];
+    const seen = new Set<string>();
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      unique.push(id);
+    }
+    const placements = new Map(
+      (data.placements ?? [])
+        .filter((item) => item && typeof item.id === "string")
+        .map((item) => [item.id, item]),
     );
+    const results = await Promise.all(
+      unique.map((id, index) => {
+        const place = placements.get(id);
+        return context.supabase
+          .from("link_in_bio_links")
+          .update({
+            sort_order: index,
+            ...(place
+              ? { grid_x: sanitizeGridX(place.gridX), grid_y: sanitizeGridY(place.gridY) }
+              : {}),
+          })
+          .eq("id", id)
+          .eq("user_id", context.userId);
+      }),
+    );
+    if (results.some((result) => result.error)) return { ok: false as const, error: "save_failed" };
     return { ok: true as const };
   });
 

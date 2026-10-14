@@ -1,8 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import type { EventType, NormalizedEvent } from "@/lib/webhooks/ingest.server";
-
-type KickPayload = Record<string, unknown>;
+import {
+  chatLineNeedsCommandModules,
+  chatTextNeedsHandlers,
+  extractKickChat,
+  isKickChatEvent,
+  kickEventAlreadyHandled,
+  normalizeKickEvent,
+  rememberKickEvent,
+  unwrapKickEvent,
+  viewerChatMessageId,
+  type KickPayload,
+  type KickWebhookOutcome,
+} from "@/lib/kickWebhookParse";
 
 function pickString(obj: unknown, ...path: string[]): string | null {
   let cur: unknown = obj;
@@ -17,273 +27,27 @@ function asRecord(value: unknown): KickPayload | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as KickPayload) : null;
 }
 
-function messageTextFrom(value: unknown, depth = 0): string | null {
-  if (depth > 4) return null;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed || null;
-  }
-  if (typeof value === "number") return String(value);
-  const record = asRecord(value);
-  if (!record) return null;
-  return (
-    messageTextFrom(record["text"], depth + 1) ??
-    messageTextFrom(record["content"], depth + 1) ??
-    messageTextFrom(record["message"], depth + 1) ??
-    messageTextFrom(record["body"], depth + 1)
-  );
-}
+const connectionCache = new Map<string, { userId: string; at: number }>();
+const CONNECTION_TTL_MS = 30_000;
+const directCatalogCache = new Map<
+  string,
+  { catalog: NonNullable<Awaited<ReturnType<typeof loadDirectCommandCatalog>>>; at: number }
+>();
 
-function firstString(source: KickPayload, paths: string[][]): string | null {
-  for (const path of paths) {
-    const value = pickString(source, ...path);
-    if (value) return value;
-  }
-  return null;
-}
-
-type KickChatFields = {
-  text: string;
-  rawText: string;
-  username: string;
-  broadcasterId: string | null;
-  senderId: string | null;
-  /** `sender.user_id` / `sender.id` only. Top-level `user_id` is not the chatter. */
-  senderUserId: string | null;
-  identityBadges: string[];
-};
-
-function readIdentityBadges(source: KickPayload): string[] {
-  const identity = (source["sender"] as KickPayload | undefined)?.["identity"] as KickPayload | undefined;
-  const badges = identity?.["badges"];
-  if (!Array.isArray(badges)) return [];
-  return badges.map((badge) => {
-    const record = asRecord(badge);
-    return String(record?.["type"] ?? record?.["text"] ?? badge ?? "");
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
   });
 }
 
-const SENDER_NAME_PATHS = [
-  ["sender", "username"],
-  ["sender", "name"],
-  ["sender", "slug"],
-  ["chatter", "username"],
-  ["author", "username"],
-  ["message", "sender", "username"],
-] as const;
-
-const BROADCASTER_NAME_PATHS = [
-  ["broadcaster", "username"],
-  ["broadcaster", "name"],
-  ["broadcaster", "channel_slug"],
-  ["channel", "username"],
-  ["channel", "slug"],
-] as const;
-
-/** Prefer the chatter. A nested `user` is only used when it is not the channel account. */
-function senderUsernameFrom(source: KickPayload): string {
-  const sender = firstString(source, SENDER_NAME_PATHS.map((path) => [...path]));
-  if (sender) return sender;
-  const broadcaster = firstString(source, BROADCASTER_NAME_PATHS.map((path) => [...path]));
-  const generic =
-    firstString(source, [["user", "username"], ["user", "name"], ["username"]]) ?? "";
-  if (generic && generic.toLowerCase() !== (broadcaster ?? "").toLowerCase()) return generic;
-  return "";
-}
-
-/** Walks the shapes Kick has used for chat.message.sent, including wrapped `data`. */
-function extractKickChat(body: KickPayload): KickChatFields {
-  const sources = [body, asRecord(body["data"]), asRecord(body["payload"]), asRecord(body["event"])].filter(
-    (source): source is KickPayload => source != null,
-  );
-  let rawText = "";
-  let username = "";
-  let broadcasterId: string | null = null;
-  let senderId: string | null = null;
-  let senderUserId: string | null = null;
-  let identityBadges: string[] = [];
-
-  for (const source of sources) {
-    rawText ||=
-      messageTextFrom(source["content"]) ??
-      messageTextFrom(source["message"]) ??
-      messageTextFrom(source["text"]) ??
-      "";
-    username ||= senderUsernameFrom(source);
-    broadcasterId ||= firstString(source, [
-      ["broadcaster", "user_id"],
-      ["broadcaster", "id"],
-      ["broadcaster_user_id"],
-      ["channel", "user_id"],
-      ["channel_id"],
-    ]);
-    senderId ||= firstString(source, [
-      ["sender", "user_id"],
-      ["sender", "id"],
-      ["user", "user_id"],
-      ["user_id"],
-    ]);
-    senderUserId ||= firstString(source, [
-      ["sender", "user_id"],
-      ["sender", "id"],
-      ["message", "sender", "user_id"],
-    ]);
-    if (!identityBadges.length) identityBadges = readIdentityBadges(source);
-  }
-
-  const plain = rawText
-    .replace(/\[emote:\d+:[^\]]*\]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return {
-    text: plain || rawText.trim(),
-    rawText,
-    username: username || "Kick viewer",
-    broadcasterId,
-    senderId,
-    senderUserId,
-    identityBadges,
-  };
-}
-
-function viewerChatMessageId(body: KickPayload): string | null {
-  const sources = [body, asRecord(body["data"]), asRecord(body["payload"]), asRecord(body["message"])].filter(
-    (source): source is KickPayload => source != null,
-  );
-  for (const source of sources) {
-    const id = firstString(source, [["message_id"], ["id"]]);
-    if (id && id.length >= 8 && id.length <= 80) return id;
-  }
-  return null;
-}
-
-function isKickChatEvent(type: string, chat: KickChatFields): boolean {
-  const normalized = type.toLowerCase().replace(/_/g, ".");
-  if (normalized === "chat.message.sent" || normalized.includes("chat.message")) return true;
-  // Follows, subs, kicks, and raids can carry a message. They are not chat.
-  if (
-    normalized.startsWith("channel.") ||
-    normalized.startsWith("kicks.") ||
-    normalized === "follow" ||
-    normalized === "subscription" ||
-    normalized === "raid" ||
-    normalized.startsWith("gifted.")
-  ) {
-    return false;
-  }
-  return Boolean(chat.rawText && chat.username !== "Kick viewer");
-}
-
-/** Kick sometimes wraps the event in `data` / `payload`. Chat uses the outer body. */
-function unwrapKickEvent(body: KickPayload): KickPayload {
-  const nested = [asRecord(body["data"]), asRecord(body["payload"])].filter(
-    (source): source is KickPayload => source != null,
-  );
-  for (const source of nested) {
-    if (
-      source["follower"] ||
-      source["subscriber"] ||
-      source["gifter"] ||
-      source["broadcaster"] ||
-      source["sender"] ||
-      source["gift"] ||
-      source["raider"]
-    ) {
-      return source;
-    }
-  }
-  return body;
-}
-
-/** Subscription length in months. A seconds-sized value must not become the unit count. */
-function subscriptionMonths(value: unknown): number {
-  const months = Number(value ?? 1);
-  if (!Number.isFinite(months) || months < 1 || months > 36) return 1;
-  return Math.round(months);
-}
-
-function boundedCount(value: number): number {
-  if (!Number.isFinite(value) || value < 1) return 1;
-  return Math.min(Math.round(value), 500);
-}
-
-function normalize(type: string, messageId: string, body: KickPayload): NormalizedEvent | null {
-  const kind = type.toLowerCase().replace(/_/g, ".");
-  const gift = asRecord(body["gift"]);
-  const giftMessage = pickString(gift ?? {}, "message") ?? pickString(body, "message");
-  const base = {
-    platform: "KICK" as const,
-    providerEventId: messageId,
-    rawPayload: giftMessage ? { ...body, message: giftMessage } : body,
-    amount: null as number | null,
-    currency: null as string | null,
-  };
-  const actorName =
-    pickString(body, "follower", "username") ??
-    pickString(body, "subscriber", "username") ??
-    pickString(body, "gifter", "username") ??
-    pickString(body, "sender", "username") ??
-    pickString(body, "raider", "username") ??
-    pickString(body, "user", "username");
-  const actorPlatformId =
-    pickString(body, "follower", "user_id") ??
-    pickString(body, "subscriber", "user_id") ??
-    pickString(body, "gifter", "user_id") ??
-    pickString(body, "sender", "user_id") ??
-    pickString(body, "raider", "user_id");
-
-  switch (kind) {
-    case "channel.followed":
-    case "follow":
-      return { ...base, eventType: "FOLLOW" as EventType, actorName, actorPlatformId, quantity: 1 };
-    case "channel.subscription.new":
-    case "channel.subscription.renewal":
-    case "subscription":
-      return {
-        ...base,
-        eventType: "SUBSCRIPTION" as EventType,
-        actorName,
-        actorPlatformId,
-        quantity: subscriptionMonths(body["duration"]),
-      };
-    case "channel.subscription.gifts":
-    case "gifted.subscriptions":
-      return {
-        ...base,
-        eventType: "GIFT_SUB" as EventType,
-        actorName: actorName ?? "Anonymous",
-        actorPlatformId,
-        quantity: boundedCount(
-          Array.isArray(body["giftees"]) ? (body["giftees"] as unknown[]).length : Number(body["quantity"] ?? 1) || 1,
-        ),
-      };
-    case "kicks.gifted":
-    case "channel.kicks.gifted": {
-      const amount = Number(gift?.["amount"] ?? body["amount"] ?? 0);
-      return {
-        ...base,
-        eventType: "BITS" as EventType,
-        actorName,
-        actorPlatformId,
-        amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
-        quantity: 1,
-      };
-    }
-    case "channel.raid":
-    case "livestream.raid":
-    case "raid":
-      return {
-        ...base,
-        eventType: "RAID" as EventType,
-        actorName,
-        actorPlatformId,
-        amount: null,
-        quantity: 1,
-      };
-    default:
-      return null;
-  }
+function logOutcome(fields: {
+  messageId: string | null;
+  outcome: KickWebhookOutcome;
+  reason?: string;
+  eventType?: string | null;
+}): void {
+  console.log("[kick-webhook] outcome", JSON.stringify(fields));
 }
 
 export const Route = createFileRoute("/api/public/webhooks/kick")({
@@ -295,334 +59,354 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
           headers: { "content-type": "application/json", "cache-control": "no-store" },
         }),
       POST: async ({ request }) => {
-        const { jsonResponse, receivePlatformEvent, resolveUserByPlatformUser } = await import(
-          "@/lib/webhooks/ingest.server"
-        );
         const { verifyKickSignature } = await import("@/lib/webhooks/verify.server");
 
         try {
-        const publicKeyPem = process.env["KICK_WEBHOOK_PUBLIC_KEY"];
-        const hmacSecret = process.env["KICK_WEBHOOK_SECRET"];
-        const rawBody = await request.text();
-        const messageId = request.headers.get("kick-event-message-id");
-        const headerType = request.headers.get("kick-event-type");
-        console.log(
-          "[kick-webhook] incoming",
-          JSON.stringify({
-            messageId,
-            eventType: headerType,
-            body: rawBody.length > 20000 ? `${rawBody.slice(0, 20000)}…truncated` : rawBody,
-          }),
-        );
-        const signature = request.headers.get("kick-event-signature");
-        const timestamp = request.headers.get("kick-event-message-timestamp");
-        const skipVerify = process.env["KICK_WEBHOOK_SKIP_VERIFY"] === "true";
-        const missingEnv = [
-          publicKeyPem?.trim() ? null : "KICK_WEBHOOK_PUBLIC_KEY",
-          hmacSecret?.trim() ? null : "KICK_WEBHOOK_SECRET",
-        ].filter((name): name is string => name != null);
-        const verification = await verifyKickSignature({
-          publicKeyPem,
-          hmacSecret,
-          messageId,
-          timestamp,
-          signature,
-          rawBody,
-        });
-        if (!verification.ok && skipVerify) {
-          console.warn(
-            "[kick-webhook] signature bypassed via KICK_WEBHOOK_SKIP_VERIFY",
-            JSON.stringify({ ...verification, missingEnv }),
-          );
-        } else if (!verification.ok) {
-          console.error(
-            "[kick-webhook] invalid signature",
+          const publicKeyPem = process.env["KICK_WEBHOOK_PUBLIC_KEY"];
+          const hmacSecret = process.env["KICK_WEBHOOK_SECRET"];
+          const rawBody = await request.text();
+          const messageId = request.headers.get("kick-event-message-id");
+          const headerType = request.headers.get("kick-event-type");
+          console.log(
+            "[kick-webhook] incoming",
             JSON.stringify({
-              ...verification,
-              missingEnv,
-              note: "Kick signs with its RSA public key. KICK_WEBHOOK_PUBLIC_KEY and KICK_WEBHOOK_SECRET are optional overrides.",
+              messageId,
+              eventType: headerType,
+              bodyBytes: rawBody.length,
             }),
           );
-          return jsonResponse({ error: "invalid_signature", reason: verification.reason }, 403);
-        }
-
-        let body: KickPayload;
-        try {
-          body = JSON.parse(rawBody) as KickPayload;
-        } catch (error) {
-          console.error("[kick-webhook] invalid json", error);
-          return jsonResponse({ error: "invalid_json" }, 400);
-        }
-
-        const type =
-          headerType ||
-          (typeof body["event"] === "string" ? body["event"] : "") ||
-          (typeof body["type"] === "string" ? body["type"] : "") ||
-          (typeof body["event_type"] === "string" ? body["event_type"] : "");
-        const normalizedType = type.toLowerCase().replace(/_/g, ".");
-        const chat = extractKickChat(body);
-        console.log(
-          "[kick-webhook] parsed",
-          JSON.stringify({
+          const signature = request.headers.get("kick-event-signature");
+          const timestamp = request.headers.get("kick-event-message-timestamp");
+          const skipVerify = process.env["KICK_WEBHOOK_SKIP_VERIFY"] === "true";
+          const verification = await verifyKickSignature({
+            publicKeyPem,
+            hmacSecret,
             messageId,
-            eventType: type || null,
-            normalizedType,
-            username: chat.username,
-            text: chat.text,
-            broadcasterId: chat.broadcasterId,
-            senderId: chat.senderId,
-          }),
-        );
-        const looksLikeRewardRedemption =
-          normalizedType.includes("reward") && normalizedType.includes("redemption");
-        if (looksLikeRewardRedemption) {
-          const { ingestKickMediaRedemption } = await import("@/lib/mediaRequests.server");
-          const result = await ingestKickMediaRedemption({ messageId: messageId ?? "", body });
-          console.log("[kick-webhook] media request pipeline result", JSON.stringify({ type, messageId, result }));
-          return jsonResponse(result);
-        }
-
-        const { classifyKickInteractiveEvent } = await import("@/lib/interactiveWidgets");
-        const interactiveName = [type, pickString(body, "name") ?? "", pickString(body, "event_name") ?? ""].find(
-          (candidate) => classifyKickInteractiveEvent(candidate),
-        );
-        if (interactiveName) {
-          const broadcasterId =
-            pickString(body, "broadcaster", "user_id") ??
-            pickString(body, "broadcaster", "id") ??
-            pickString(body, "broadcaster_user_id") ??
-            pickString(asRecord(body["data"]) ?? {}, "broadcaster", "user_id") ??
-            pickString(asRecord(body["data"]) ?? {}, "broadcaster_user_id") ??
-            pickString(asRecord(body["payload"]) ?? {}, "broadcaster", "user_id") ??
-            pickString(body, "channel", "user_id");
-          if (!broadcasterId) {
-            console.log("[kick-webhook] interactive ignored", JSON.stringify({ messageId, eventType: interactiveName, reason: "no_broadcaster" }));
-            return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
-          }
-          const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-          const userId = await resolveUserByPlatformUser(supabaseAdmin, "KICK", broadcasterId);
-          if (!userId) {
-            console.log("[kick-webhook] interactive ignored", JSON.stringify({ messageId, eventType: interactiveName, reason: "no_connection" }));
-            return jsonResponse({ status: "ignored", reason: "no_connection" });
-          }
-          const { ingestKickInteractiveEvent } = await import("@/lib/interactiveWidgets.server");
-          const result = await ingestKickInteractiveEvent({
-            userId,
-            eventName: interactiveName,
-            messageId: messageId ?? "",
-            body,
+            timestamp,
+            signature,
+            rawBody,
           });
-          console.log("[kick-webhook] interactive", JSON.stringify({ messageId, eventType: interactiveName, result }));
-          return jsonResponse(result);
-        }
+          if (!verification.ok && skipVerify) {
+            console.warn("[kick-webhook] signature bypassed via KICK_WEBHOOK_SKIP_VERIFY", verification.reason);
+          } else if (!verification.ok) {
+            console.error("[kick-webhook] invalid signature", verification.reason);
+            logOutcome({ messageId, outcome: "failed", reason: verification.reason, eventType: headerType });
+            return jsonResponse({ error: "invalid_signature", reason: verification.reason }, 403);
+          }
 
-        if (isKickChatEvent(type, chat)) {
-          const { broadcasterId, text, username, senderId, senderUserId, identityBadges } = chat;
-          if (!broadcasterId) {
-            console.warn("[kick-webhook] chat ignored — no broadcaster id", { messageId, eventType: type });
-            return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+          if (kickEventAlreadyHandled(messageId)) {
+            logOutcome({ messageId, outcome: "duplicate", eventType: headerType });
+            return jsonResponse({ status: "duplicate", messageId });
           }
-          const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-          const { data: connection } = await supabaseAdmin.from("platform_connections")
-            .select("user_id").eq("platform", "KICK").eq("platform_user_id", broadcasterId)
-            .eq("is_active", true).maybeSingle();
-          if (!connection) {
-            console.warn("[kick-webhook] chat ignored — no Kick connection", { messageId, broadcasterId });
-            return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
+
+          let body: KickPayload;
+          try {
+            body = JSON.parse(rawBody) as KickPayload;
+          } catch (error) {
+            console.error("[kick-webhook] invalid json", error);
+            logOutcome({ messageId, outcome: "failed", reason: "invalid_json", eventType: headerType });
+            return jsonResponse({ error: "invalid_json" }, 400);
           }
-          if (username) {
-            const { noteRecentChatter } = await import("@/lib/recentChatters");
-            noteRecentChatter(connection.user_id, username);
-            if (text.trim()) {
+
+          const type =
+            headerType ||
+            (typeof body["event"] === "string" ? body["event"] : "") ||
+            (typeof body["type"] === "string" ? body["type"] : "") ||
+            (typeof body["event_type"] === "string" ? body["event_type"] : "");
+          const normalizedType = type.toLowerCase().replace(/_/g, ".");
+          const chat = extractKickChat(body);
+
+          const looksLikeRewardRedemption =
+            normalizedType.includes("reward") && normalizedType.includes("redemption");
+          if (looksLikeRewardRedemption) {
+            const { ingestKickMediaRedemption } = await import("@/lib/mediaRequests.server");
+            const result = await ingestKickMediaRedemption({ messageId: messageId ?? "", body });
+            rememberKickEvent(messageId);
+            logOutcome({ messageId, outcome: "processed", reason: "media_redemption", eventType: type });
+            return jsonResponse(result);
+          }
+
+          const interactiveHint = `${type} ${pickString(body, "name") ?? ""} ${pickString(body, "event_name") ?? ""}`;
+          let interactiveName: string | undefined;
+          if (/poll|prediction/i.test(interactiveHint)) {
+            const { classifyKickInteractiveEvent } = await import("@/lib/interactiveWidgets");
+            interactiveName = [type, pickString(body, "name") ?? "", pickString(body, "event_name") ?? ""].find(
+              (candidate) => classifyKickInteractiveEvent(candidate),
+            );
+          }
+          if (interactiveName) {
+            const broadcasterId =
+              pickString(body, "broadcaster", "user_id") ??
+              pickString(body, "broadcaster", "id") ??
+              pickString(body, "broadcaster_user_id") ??
+              pickString(asRecord(body["data"]) ?? {}, "broadcaster", "user_id") ??
+              pickString(asRecord(body["data"]) ?? {}, "broadcaster_user_id") ??
+              pickString(asRecord(body["payload"]) ?? {}, "broadcaster", "user_id") ??
+              pickString(body, "channel", "user_id");
+            if (!broadcasterId) {
+              logOutcome({ messageId, outcome: "intentionally_ignored", reason: "no_broadcaster", eventType: interactiveName });
+              return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+            }
+            const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+            const resolved = await findKickConnection(supabaseAdmin, broadcasterId);
+            if (resolved.failed) {
+              logOutcome({ messageId, outcome: "failed", reason: resolved.reason, eventType: interactiveName });
+              return jsonResponse({ status: "failed", reason: resolved.reason }, 503);
+            }
+            if (!resolved.userId) {
+              logOutcome({ messageId, outcome: "intentionally_ignored", reason: "kick_connection_not_found", eventType: interactiveName });
+              return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
+            }
+            const { ingestKickInteractiveEvent } = await import("@/lib/interactiveWidgets.server");
+            const result = await ingestKickInteractiveEvent({
+              userId: resolved.userId,
+              eventName: interactiveName,
+              messageId: messageId ?? "",
+              body,
+            });
+            rememberKickEvent(messageId);
+            logOutcome({ messageId, outcome: "processed", reason: "interactive", eventType: interactiveName });
+            return jsonResponse(result);
+          }
+
+          if (isKickChatEvent(type, chat)) {
+            const { broadcasterId, text, username, senderId, senderUserId, identityBadges } = chat;
+            if (!broadcasterId) {
+              logOutcome({ messageId, outcome: "intentionally_ignored", reason: "no_broadcaster", eventType: type });
+              return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+            }
+            const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+            const resolved = await findKickConnection(supabaseAdmin, broadcasterId);
+            if (resolved.failed) {
+              logOutcome({ messageId, outcome: "failed", reason: resolved.reason, eventType: type });
+              return jsonResponse({ status: "failed", reason: resolved.reason }, 503);
+            }
+            if (!resolved.userId) {
+              logOutcome({
+                messageId,
+                outcome: "intentionally_ignored",
+                reason: "kick_connection_not_found",
+                eventType: type,
+              });
+              return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
+            }
+            const userId = resolved.userId;
+
+            if (username && text.trim()) {
               const { maybeWelcomeChatter } = await import("@/lib/chatTextAlerts.server");
               await maybeWelcomeChatter({
-                userId: connection.user_id,
+                userId,
                 kickBroadcasterUserId: broadcasterId,
                 platform: "KICK",
                 username,
                 platformUserId: senderUserId,
               }).catch((error) => console.error("[kick-webhook] welcome alert failed", error));
             }
-          }
+            if (username) {
+              const { noteRecentChatter } = await import("@/lib/recentChatters");
+              noteRecentChatter(userId, username);
+            }
 
-          const { deferRequestWork } = await import("@/lib/requestContext.server");
+            const { deferRequestWork } = await import("@/lib/requestContext.server");
+            let catalog: Awaited<ReturnType<typeof loadDirectCommandCatalog>> = null;
+            if (!chatTextNeedsHandlers(text) && text.trim()) {
+              catalog = await loadDirectCommandCatalog(supabaseAdmin, userId);
+            }
+            const needsHandlers = await chatLineNeedsCommandModules(text, catalog);
 
-          const { matchMarkCommand } = await import("@/lib/markPoints");
-          const markMatch = matchMarkCommand(text);
-          if (markMatch) {
-            const { handleMarkCommand } = await import("@/lib/markPoints.server");
-            deferRequestWork(
-              request,
-              handleMarkCommand({
-                userId: connection.user_id,
-                broadcasterUserId: broadcasterId,
-                platform: "KICK",
-                text,
-                sender: {
-                  username,
-                  platformId: senderId,
-                  identityBadges,
-                },
-              })
-                .then((result) => {
-                  console.log("[kick-webhook] mark command", { messageId, ...result });
-                })
-                .catch((error) => console.error("[kick-webhook] mark command failed", error)),
-            );
-            return jsonResponse({ status: "accepted", command: markMatch.kind });
-          }
-
-          let commandResult: { status: string; reason?: string; command?: string } = {
-            status: "ignored",
-            reason: "empty_text",
-          };
-          if (text) {
-            try {
-              const { requestPublicOrigin } = await import("@/lib/commandsUrl");
-              const origin = requestPublicOrigin(request);
-              if (/^!points\b/i.test(text.trim())) {
-                const { handlePointsCommand } = await import("@/lib/pointsCommand.server");
-                commandResult = await handlePointsCommand({
-                  userId: connection.user_id,
-                  broadcasterUserId: broadcasterId,
-                  text,
-                  sender: username,
-                  senderPlatformId: senderUserId,
-                  identityBadges,
-                });
-              } else if (/^!?(?:shop|store|متجر)$/i.test(text.trim())) {
-                const { handleShopDirectoryCommand } = await import("@/lib/shopDirectory.server");
-                commandResult = await handleShopDirectoryCommand({
-                  userId: connection.user_id,
-                  broadcasterUserId: broadcasterId,
-                  text,
-                  senderPlatformId: senderUserId,
-                  identityBadges,
-                });
-              } else if (/^!buy\b/i.test(text.trim())) {
-                const { handleShopBuyCommand } = await import("@/lib/shopBuy.server");
-                commandResult = await handleShopBuyCommand({
-                  userId: connection.user_id,
-                  broadcasterUserId: broadcasterId,
-                  platform: "KICK",
-                  text,
-                  sender: { username },
-                  isTest: false,
-                });
-              } else if (/^!?(?:wheel|spin|عجلة)$/i.test(text.trim())) {
-                const { handleWheelChatCommand } = await import("@/lib/wheelCommand.server");
-                commandResult = await handleWheelChatCommand({
-                  userId: connection.user_id,
-                  broadcasterUserId: broadcasterId,
-                  platform: "KICK",
-                  text,
-                  sender: { username },
-                  isTest: false,
-                });
-              } else {
-                const { handleDefaultChatCommand } = await import("@/lib/defaultCommands.server");
-                const defaultResult = await handleDefaultChatCommand({
-                  userId: connection.user_id,
-                  broadcasterUserId: broadcasterId,
-                  platform: "KICK",
-                  text,
-                  sender: { username, identityBadges, senderPlatformId: senderUserId },
-                  origin,
-                  replyToMessageId: viewerChatMessageId(body),
-                });
-                commandResult = defaultResult;
-                if (defaultResult.status === "ignored" && defaultResult.reason === "no_match") {
-                  const { handleCustomChatCommand } = await import("@/lib/customCommands.server");
-                  commandResult = await handleCustomChatCommand({
-                    userId: connection.user_id,
+            if (needsHandlers) {
+              const { matchMarkCommand } = await import("@/lib/markPoints");
+              const markMatch = matchMarkCommand(text);
+              if (markMatch) {
+                const { handleMarkCommand } = await import("@/lib/markPoints.server");
+                deferRequestWork(
+                  request,
+                  handleMarkCommand({
+                    userId,
                     broadcasterUserId: broadcasterId,
                     platform: "KICK",
                     text,
-                    sender: { username, identityBadges },
-                  });
-                }
+                    sender: { username, platformId: senderId, identityBadges },
+                  })
+                    .then(() => {
+                      rememberKickEvent(messageId);
+                      logOutcome({ messageId, outcome: "accepted", reason: markMatch.kind, eventType: type });
+                    })
+                    .catch((error) => console.error("[kick-webhook] mark command failed", error)),
+                );
+                return jsonResponse({ status: "accepted", command: markMatch.kind });
               }
-              console.log("[kick-webhook] chat command", {
-                messageId,
-                username,
-                text: text.slice(0, 80),
-                ...commandResult,
-              });
-            } catch (error) {
-              console.error("[kick-webhook] chat command failed", error);
-              commandResult = { status: "error", reason: "command_threw" };
             }
-          } else {
-            console.warn("[kick-webhook] chat event had no message text", { messageId, eventType: type });
+
+            let commandResult: { status: string; reason?: string; command?: string } = {
+              status: "ignored",
+              reason: text.trim() ? "not_a_command" : "empty_text",
+            };
+            if (text && needsHandlers) {
+              try {
+                const { requestPublicOrigin } = await import("@/lib/commandsUrl");
+                const origin = requestPublicOrigin(request);
+                const { isPointsCommandAttempt } = await import("@/lib/pointsCommand");
+                if (isPointsCommandAttempt(text)) {
+                  const { handlePointsCommand } = await import("@/lib/pointsCommand.server");
+                  commandResult = await handlePointsCommand({
+                    userId,
+                    broadcasterUserId: broadcasterId,
+                    text,
+                    sender: username,
+                    senderPlatformId: senderUserId,
+                    identityBadges,
+                  });
+                } else if (/^!?(?:shop|store|متجر)$/i.test(text.trim())) {
+                  const { handleShopDirectoryCommand } = await import("@/lib/shopDirectory.server");
+                  commandResult = await handleShopDirectoryCommand({
+                    userId,
+                    broadcasterUserId: broadcasterId,
+                    text,
+                    senderPlatformId: senderUserId,
+                    identityBadges,
+                  });
+                } else if (/^!buy(?:\s|$)/i.test(text.trim())) {
+                  const { handleShopBuyCommand } = await import("@/lib/shopBuy.server");
+                  commandResult = await handleShopBuyCommand({
+                    userId,
+                    broadcasterUserId: broadcasterId,
+                    platform: "KICK",
+                    text,
+                    sender: { username },
+                    isTest: false,
+                  });
+                } else if (/^!?(?:wheel|spin|عجلة)$/i.test(text.trim())) {
+                  const { handleWheelChatCommand } = await import("@/lib/wheelCommand.server");
+                  commandResult = await handleWheelChatCommand({
+                    userId,
+                    broadcasterUserId: broadcasterId,
+                    platform: "KICK",
+                    text,
+                    sender: { username },
+                    isTest: false,
+                  });
+                } else {
+                  const { handleDefaultChatCommand } = await import("@/lib/defaultCommands.server");
+                  const defaultResult = await handleDefaultChatCommand({
+                    userId,
+                    broadcasterUserId: broadcasterId,
+                    platform: "KICK",
+                    text,
+                    sender: { username, identityBadges, senderPlatformId: senderUserId },
+                    origin,
+                    replyToMessageId: viewerChatMessageId(body),
+                  });
+                  commandResult = defaultResult;
+                  if (defaultResult.status === "ignored" && defaultResult.reason === "no_match") {
+                    const { handleCustomChatCommand } = await import("@/lib/customCommands.server");
+                    commandResult = await handleCustomChatCommand({
+                      userId,
+                      broadcasterUserId: broadcasterId,
+                      platform: "KICK",
+                      text,
+                      sender: { username, identityBadges },
+                    });
+                  }
+                }
+              } catch (error) {
+                console.error("[kick-webhook] chat command failed", error);
+                commandResult = { status: "error", reason: "command_threw" };
+              }
+            }
+
+            deferRequestWork(
+              request,
+              (async () => {
+                const { captureGiveawayEntry, confirmGiveawayPresence } = await import("@/lib/giveaway.server");
+                const isTest =
+                  (body as { isTest?: unknown }).isTest === true ||
+                  (body as { is_test?: unknown }).is_test === true;
+                await confirmGiveawayPresence(supabaseAdmin, userId, { username, text, isTest });
+                await captureGiveawayEntry(supabaseAdmin, userId, {
+                  platform: "KICK",
+                  username,
+                  text,
+                  isSubscriber: identityBadges.some((badge) => /sub|founder|og|vip/i.test(badge)),
+                });
+              })().catch((error) => console.error("[kick-webhook] giveaway entry failed", error)),
+            );
+
+            let media: { ok: boolean; reason?: string } = { ok: false, reason: "no_media_link" };
+            if (text && /https?:\/\/|spotify:track:/i.test(text)) {
+              const { ingestChatMediaRequest } = await import("@/lib/mediaRequests.server");
+              media = await ingestChatMediaRequest({
+                userId,
+                messageId: pickString(body, "message_id") ?? messageId ?? crypto.randomUUID(),
+                username,
+                text,
+              });
+            }
+
+            if (commandResult.status === "error") {
+              rememberKickEvent(messageId);
+              logOutcome({ messageId, outcome: "failed", reason: commandResult.reason, eventType: type });
+              return jsonResponse({ status: "failed", reason: commandResult.reason, command: commandResult });
+            }
+
+            rememberKickEvent(messageId);
+            const outcome: KickWebhookOutcome =
+              commandResult.status === "ignored" && !media.ok ? "intentionally_ignored" : "processed";
+            logOutcome({
+              messageId,
+              outcome: text && chatTextNeedsHandlers(text) ? outcome : "processed",
+              reason: commandResult.reason ?? commandResult.status,
+              eventType: type,
+            });
+            return jsonResponse({ ...media, command: commandResult, status: "processed" });
           }
 
-          // Giveaway keyword entries are captured server-side so they land
-          // even when nobody has the dashboard open.
-          deferRequestWork(
-            request,
-            (async () => {
-              const { captureGiveawayEntry, confirmGiveawayPresence } = await import("@/lib/giveaway.server");
-              const isTest =
-                (body as { isTest?: unknown }).isTest === true ||
-                (body as { is_test?: unknown }).is_test === true;
-              await confirmGiveawayPresence(supabaseAdmin, connection.user_id, {
-                username,
-                text,
-                isTest,
-              });
-              await captureGiveawayEntry(supabaseAdmin, connection.user_id, {
-                platform: "KICK",
-                username,
-                text,
-                isSubscriber: identityBadges.some((badge) => /sub|founder|og|vip/i.test(badge)),
-              });
-            })().catch((error) => console.error("[kick-webhook] giveaway entry failed", error)),
-          );
+          const eventBody = unwrapKickEvent(body);
+          const normalized = normalizeKickEvent(type, messageId ?? "", eventBody);
+          if (!normalized) {
+            logOutcome({ messageId, outcome: "intentionally_ignored", reason: "unsupported_type", eventType: type || null });
+            return jsonResponse({ status: "ignored", reason: "unsupported_type" });
+          }
 
-          const { ingestChatMediaRequest } = await import("@/lib/mediaRequests.server");
+          const broadcasterId =
+            pickString(eventBody, "broadcaster", "user_id") ??
+            pickString(eventBody, "broadcaster", "channel_id") ??
+            pickString(eventBody, "channel_id") ??
+            pickString(body, "broadcaster", "user_id") ??
+            pickString(body, "broadcaster", "channel_id") ??
+            pickString(body, "channel_id");
+          if (!broadcasterId) {
+            logOutcome({ messageId, outcome: "intentionally_ignored", reason: "no_broadcaster", eventType: type });
+            return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
+          }
 
-          const result = await ingestChatMediaRequest({
-            userId: connection.user_id,
-            messageId: pickString(body, "message_id") ?? messageId ?? crypto.randomUUID(),
-            username,
-            text,
-          });
-          return jsonResponse({ ...result, command: commandResult });
-        }
+          const { supabaseAdmin } = await import("@/lib/supabase/client.server");
+          const { receivePlatformEvent } = await import("@/lib/webhooks/ingest.server");
+          const resolved = await findKickConnection(supabaseAdmin, broadcasterId);
+          if (resolved.failed) {
+            logOutcome({ messageId, outcome: "failed", reason: resolved.reason, eventType: type });
+            return jsonResponse({ status: "failed", reason: resolved.reason }, 503);
+          }
+          if (!resolved.userId) {
+            logOutcome({ messageId, outcome: "intentionally_ignored", reason: "kick_connection_not_found", eventType: type });
+            return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
+          }
 
-        const eventBody = unwrapKickEvent(body);
-        const normalized = normalize(type, messageId ?? "", eventBody);
-        if (!normalized) {
-          console.log("[kick-webhook] ignored unsupported event", { messageId, eventType: type || null });
-          return jsonResponse({ status: "ignored", reason: "unsupported_type" });
-        }
-
-        const broadcasterId =
-          pickString(eventBody, "broadcaster", "user_id") ??
-          pickString(eventBody, "broadcaster", "channel_id") ??
-          pickString(eventBody, "channel_id") ??
-          pickString(body, "broadcaster", "user_id") ??
-          pickString(body, "broadcaster", "channel_id") ??
-          pickString(body, "channel_id");
-        if (!broadcasterId) return jsonResponse({ status: "ignored", reason: "no_broadcaster" });
-
-        const { supabaseAdmin } = await import("@/lib/supabase/client.server");
-        const userId = await resolveUserByPlatformUser(supabaseAdmin, "KICK", broadcasterId);
-        if (!userId) return jsonResponse({ status: "ignored", reason: "no_connection" });
-
-        const result = await receivePlatformEvent(supabaseAdmin, userId, normalized);
-        const { classifyKickChatAlert } = await import("@/lib/chatTextAlerts");
-        const signal = classifyKickChatAlert(type, eventBody);
-        if (signal && messageId) {
-          const { deliverChatTextAlert } = await import("@/lib/chatTextAlerts.server");
-          await deliverChatTextAlert({
-            userId,
-            kickBroadcasterUserId: broadcasterId,
-            providerEventId: messageId,
-            signal,
-          }).catch((error) => console.error("[kick-webhook] chat alert failed", error));
-        }
-        return jsonResponse(result);
+          const result = await receivePlatformEvent(supabaseAdmin, resolved.userId, normalized);
+          const { classifyKickChatAlert } = await import("@/lib/chatTextAlerts");
+          const signal = classifyKickChatAlert(type, eventBody);
+          if (signal && messageId) {
+            const { deliverChatTextAlert } = await import("@/lib/chatTextAlerts.server");
+            await deliverChatTextAlert({
+              userId: resolved.userId,
+              kickBroadcasterUserId: broadcasterId,
+              providerEventId: messageId,
+              signal,
+            }).catch((error) => console.error("[kick-webhook] chat alert failed", error));
+          }
+          rememberKickEvent(messageId);
+          logOutcome({ messageId, outcome: "processed", reason: normalized.eventType, eventType: type });
+          return jsonResponse(result);
         } catch (error) {
           console.error("[kick-webhook] unhandled failure", error);
           return jsonResponse({ error: "webhook_failed" }, 500);
@@ -631,3 +415,95 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
     },
   },
 });
+
+type DirectCatalog = NonNullable<Awaited<ReturnType<typeof loadDirectCommandCatalog>>>;
+
+/** Names of custom commands whose effective prefix is empty. Cached per isolate. */
+async function loadDirectCommandCatalog(
+  admin: typeof import("@/lib/supabase/client.server").supabaseAdmin,
+  userId: string,
+): Promise<{
+  defaultPrefix: string;
+  commands: Array<{
+    id: string;
+    name: string;
+    prefix: string | null;
+    response: string;
+    enabled: boolean;
+    platforms: Array<"KICK" | "TWITCH">;
+    roles: string[];
+    cooldownSeconds: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+} | null> {
+  const cached = directCatalogCache.get(userId);
+  if (cached && Date.now() - cached.at < CONNECTION_TTL_MS) return cached.catalog;
+  const [{ data: settings, error: settingsError }, { data: rows, error: rowsError }] = await Promise.all([
+    admin.from("custom_chat_command_settings").select("default_prefix").eq("user_id", userId).maybeSingle(),
+    admin
+      .from("custom_chat_commands")
+      .select("id, name, prefix, enabled, platforms, roles, cooldown_seconds, created_at, updated_at")
+      .eq("user_id", userId)
+      .eq("enabled", true),
+  ]);
+  if (settingsError || rowsError) {
+    console.warn("[kick-webhook] custom command catalog unavailable");
+    return null;
+  }
+  if (!rows?.length) {
+    const empty: DirectCatalog = { defaultPrefix: "!", commands: [] };
+    directCatalogCache.set(userId, { catalog: empty, at: Date.now() });
+    return empty;
+  }
+  const { normalizeTriggerMarker, sanitizeCommandName } = await import("@/lib/customCommands");
+  const catalog: DirectCatalog = {
+    defaultPrefix: normalizeTriggerMarker(settings?.default_prefix ?? "!"),
+    commands: (rows ?? []).flatMap((row) => {
+      const name = sanitizeCommandName(row.name ?? "");
+      if (!name) return [];
+      const platforms = (row.platforms ?? []).filter(
+        (platform): platform is "KICK" | "TWITCH" => platform === "KICK" || platform === "TWITCH",
+      );
+      return [
+        {
+          id: row.id,
+          name,
+          prefix: row.prefix === null ? null : normalizeTriggerMarker(row.prefix),
+          response: "",
+          enabled: row.enabled,
+          platforms: platforms.length ? platforms : ["KICK"],
+          roles: row.roles?.length ? row.roles : ["Everyone"],
+          cooldownSeconds: row.cooldown_seconds,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        },
+      ];
+    }),
+  };
+  directCatalogCache.set(userId, { catalog, at: Date.now() });
+  return catalog;
+}
+
+async function findKickConnection(
+  admin: typeof import("@/lib/supabase/client.server").supabaseAdmin,
+  broadcasterId: string,
+): Promise<{ userId: string | null; failed: boolean; reason: string }> {
+  const cached = connectionCache.get(broadcasterId);
+  if (cached && Date.now() - cached.at < CONNECTION_TTL_MS) {
+    return { userId: cached.userId, failed: false, reason: "cache" };
+  }
+  const { data, error } = await admin
+    .from("platform_connections")
+    .select("user_id")
+    .eq("platform", "KICK")
+    .eq("platform_user_id", broadcasterId)
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error) return { userId: null, failed: true, reason: "kick_connection_query_failed" };
+  const userId = data?.[0]?.user_id ?? null;
+  if (!userId) return { userId: null, failed: false, reason: "kick_connection_not_found" };
+  connectionCache.set(broadcasterId, { userId, at: Date.now() });
+  return { userId, failed: false, reason: "matched_platform_user_id" };
+}

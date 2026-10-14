@@ -10,11 +10,12 @@ import {
   loadTimerContext,
   pauseUpdate,
   rebase,
+  remainingUpdate,
   resetUpdate,
   startUpdate,
-  currentRemaining,
   TimerError,
 } from "@/lib/timer.server";
+import { remainingMsAt, snapshotFromRow } from "@/lib/timer";
 
 export const getTimer = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -64,8 +65,9 @@ export const adjustTimer = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertActivePro(context.supabase, context.userId);
     const ctx = await loadTimerContext(context.supabase, data.subathonId);
-    const next = currentRemaining(ctx) + data.seconds;
-    const update = rebase(ctx, next);
+    const nowMs = Date.now();
+    const nextMs = remainingMsAt(snapshotFromRow(ctx.row, ctx.maxTimeSeconds), nowMs) + data.seconds * 1000;
+    const update = remainingUpdate(ctx, nextMs, nowMs);
     if (data.seconds > 0) {
       update.total_added_seconds = ctx.row.total_added_seconds + data.seconds;
     }

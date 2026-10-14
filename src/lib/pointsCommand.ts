@@ -7,10 +7,15 @@ type PointsAction =
 /** Kick `sender.identity.badges[].type` (text only when type is absent). */
 const CHANNEL_STAFF_BADGES = new Set(["moderator", "mod", "broadcaster"]);
 
+/** True for `!points` and for `!points …`, so a bad argument list cannot run another command. */
+export function isPointsCommandAttempt(text: string): boolean {
+  return /^!points(?:\s|$)/i.test(text.trim());
+}
+
 export function parsePointsCommand(text: string): PointsAction | null {
   const trimmed = text.trim();
-  if (!/^!points\b/i.test(trimmed)) return null;
-  const rest = trimmed.replace(/^!points\b/i, "").trim();
+  if (!isPointsCommandAttempt(trimmed)) return null;
+  const rest = trimmed.replace(/^!points/i, "").trim();
   if (!rest) return { kind: "balance" };
   const match = rest.match(/^(add|remove)\s+(all|@?\S+)\s+(\d+)$/i);
   if (!match) return null;

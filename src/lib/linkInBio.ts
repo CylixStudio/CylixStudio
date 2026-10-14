@@ -131,6 +131,8 @@ export type LinkInBioTheme = {
   countdownEnabled: boolean;
   countdownLabel: string;
   countdownEndsAt: string | null;
+  /** Per-bio. Off skips the latest-videos request and hides that section. The channel link stays. */
+  youtubeLatestEnabled: boolean;
 };
 
 export type LinkInBioState = {
@@ -464,6 +466,7 @@ export const DEFAULT_THEME: LinkInBioTheme = {
   countdownEnabled: false,
   countdownLabel: "Going live",
   countdownEndsAt: null,
+  youtubeLatestEnabled: true,
 };
 
 /** Free pages may use the paper or dark preset only. Custom fonts, motion, and layouts are Pro. */
@@ -905,6 +908,145 @@ export function applyBentoPlacement(
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+/** Move one item. Other items keep their relative order. Out-of-range moves are ignored. */
+export function moveLinkInList<T>(items: readonly T[], fromIndex: number, toIndex: number): T[] {
+  if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return [...items];
+  if (fromIndex === toIndex) return [...items];
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return [...items];
+  const next = items.slice();
+  const [moved] = next.splice(fromIndex, 1);
+  if (moved === undefined) return [...items];
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
+/** Ids the user asked for, then any links they omitted. Duplicates and unknown ids are skipped. */
+export function orderLinksByIds(links: readonly LinkInBioLink[], ids: readonly string[]): LinkInBioLink[] {
+  const byId = new Map(links.map((link) => [link.id, link]));
+  const seen = new Set<string>();
+  const ordered: LinkInBioLink[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const link = byId.get(id);
+    if (!link) continue;
+    seen.add(id);
+    ordered.push(link);
+  }
+  for (const link of links) {
+    if (!seen.has(link.id)) ordered.push(link);
+  }
+  return ordered;
+}
+
+export function linkIdsInSavedOrder(links: readonly Pick<LinkInBioLink, "id" | "sortOrder">[]): string[] {
+  return [...links].sort((a, b) => a.sortOrder - b.sortOrder).map((link) => link.id);
+}
+
+export function bentoCellsOverlap(
+  links: readonly Pick<LinkInBioLink, "gridX" | "gridY" | "colSpan" | "rowSpan">[],
+): boolean {
+  const occupied = new Set<string>();
+  for (const link of links) {
+    for (let y = link.gridY; y < link.gridY + link.rowSpan; y += 1) {
+      for (let x = link.gridX; x < link.gridX + link.colSpan; x += 1) {
+        const key = `${x}:${y}`;
+        if (occupied.has(key)) return true;
+        occupied.add(key);
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Apply a saved list order to the bento grid.
+ * Spans stay as they are. Cells are packed in that order so wide cards do not overlap.
+ * URLs and other fields are copied through.
+ */
+export function applySavedLinkOrder(links: readonly LinkInBioLink[], ids: readonly string[]): LinkInBioLink[] {
+  const ordered = orderLinksByIds(links, ids);
+  const packed = packBento(ordered.map((link) => ({ ...link, gridX: 0, gridY: 0 })));
+  return packed.map((slot, index) => {
+    const link = ordered[index] ?? slot;
+    return {
+      ...link,
+      gridX: slot.gridX,
+      gridY: slot.gridY,
+      colSpan: link.colSpan,
+      rowSpan: link.rowSpan,
+      sortOrder: index,
+      url: link.url,
+      title: link.title,
+      platform: link.platform,
+    };
+  });
+}
+
+export type LinkOrderSession = {
+  committedIds: string[];
+  draftIds: string[];
+};
+
+export function beginLinkOrder(links: readonly Pick<LinkInBioLink, "id" | "sortOrder">[]): LinkOrderSession {
+  const ids = linkIdsInSavedOrder(links);
+  return { committedIds: ids, draftIds: [...ids] };
+}
+
+export function moveLinkOrderDraft(session: LinkOrderSession, fromIndex: number, toIndex: number): LinkOrderSession {
+  return { ...session, draftIds: moveLinkInList(session.draftIds, fromIndex, toIndex) };
+}
+
+export function cancelLinkOrder(session: LinkOrderSession): LinkOrderSession {
+  return { ...session, draftIds: [...session.committedIds] };
+}
+
+export type YoutubeLatestVideo = { title: string; url: string; thumbnailUrl: string | null };
+
+const YOUTUBE_LATEST_TTL_MS = 60_000;
+const youtubeLatestCache = new Map<string, { at: number; value: YoutubeLatestVideo | null }>();
+
+export function shouldFetchYoutubeLatest(enabled: boolean | undefined): boolean {
+  return enabled !== false;
+}
+
+export function youtubeLatestColumnMissing(error: { message?: string; code?: string } | null | undefined): boolean {
+  const blob = `${error?.code ?? ""} ${error?.message ?? ""}`.toLowerCase();
+  return blob.includes("42703") || blob.includes("pgrst204") || blob.includes("youtube_latest_enabled");
+}
+
+/** Skip the latest-videos fetch when the bio toggle is off. Reuse a fresh cache entry when it is on. */
+export async function cachedYoutubeLatest(
+  key: string,
+  enabled: boolean | undefined,
+  fetchYoutubeLatestVideos: () => Promise<YoutubeLatestVideo | null>,
+  now = Date.now(),
+): Promise<YoutubeLatestVideo | null> {
+  if (!shouldFetchYoutubeLatest(enabled)) return null;
+  const hit = youtubeLatestCache.get(key);
+  if (hit && now - hit.at < YOUTUBE_LATEST_TTL_MS) return hit.value;
+  let value: YoutubeLatestVideo | null = null;
+  try {
+    value = await fetchYoutubeLatestVideos();
+  } catch {
+    value = null;
+  }
+  youtubeLatestCache.set(key, { at: now, value });
+  return value;
+}
+
+export function clearYoutubeLatestCacheForTests(): void {
+  youtubeLatestCache.clear();
+}
+
+export function stripYoutubeLatestWhenDisabled<T extends StreamStatus | null>(
+  stream: T,
+  enabled: boolean | undefined,
+): T {
+  if (shouldFetchYoutubeLatest(enabled)) return stream;
+  if (!stream || stream.kind !== "offline" || stream.platform !== "youtube" || !stream.latest) return stream;
+  return { ...stream, latest: null };
+}
+
 export function sanitizeSurface(raw: string): SurfaceStyle {
   return raw === "flat" ? "flat" : "glass";
 }
@@ -1138,6 +1280,7 @@ export function sanitizeTheme(partial: Partial<LinkInBioTheme> | null | undefine
     countdownEnabled: Boolean(src.countdownEnabled),
     countdownLabel: sanitizeDisplayName(src.countdownLabel ?? DEFAULT_THEME.countdownLabel) || DEFAULT_THEME.countdownLabel,
     countdownEndsAt: sanitizeCountdownEndsAt(src.countdownEndsAt),
+    youtubeLatestEnabled: src.youtubeLatestEnabled !== false,
   };
 }
 
@@ -1388,6 +1531,7 @@ export function publicLinkInBioPayload(
   },
 ): PublicLinkInBio {
   const livePlatforms = extras?.livePlatforms ?? EMPTY_LIVE;
+  const theme = sanitizeTheme(state.theme);
   return {
     profile: {
       slug: state.profile.slug,
@@ -1396,7 +1540,7 @@ export function publicLinkInBioPayload(
       avatarUrl: state.profile.avatarUrl,
       headerUrl: state.profile.headerUrl,
     },
-    theme: sanitizeTheme(state.theme),
+    theme,
     links: state.links
       .filter((link) => link.enabled)
       .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -1415,7 +1559,7 @@ export function publicLinkInBioPayload(
         galleryImages: link.galleryImages,
       })),
     kickLive: livePlatforms.kick,
-    stream: extras?.stream ?? null,
+    stream: stripYoutubeLatestWhenDisabled(extras?.stream ?? null, theme.youtubeLatestEnabled),
     livePlatforms,
     tilePreviews: extras?.tilePreviews ?? {},
     schedule:

@@ -6,3 +6,11 @@ export async function resolve(specifier, context, nextResolve) {
   }
   return nextResolve(specifier, context);
 }
+
+export async function load(url, context, nextLoad) {
+  const text = decodeURIComponent(String(url)).split("?")[0].split("#")[0];
+  if (/\.(png|svg|jpe?g|webp)$/i.test(text)) {
+    return { format: "module", shortCircuit: true, source: "export default 'asset';\n" };
+  }
+  return nextLoad(url, context);
+}

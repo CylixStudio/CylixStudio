@@ -17,6 +17,13 @@ export type EntryResult =
 
 type Admin = SupabaseClient<Database>;
 
+/** The whole message must equal the keyword. A keyword inside a sentence does not enter. */
+export function giveawayKeywordMatches(text: string, keyword: string): boolean {
+  const left = text.trim().toLowerCase();
+  const right = keyword.trim().toLowerCase();
+  return Boolean(right) && left === right;
+}
+
 /**
  * Registers a chat viewer into the creator's live participant list when the
  * message matches the configured keyword. Shared by every chat source
@@ -41,7 +48,7 @@ export async function captureGiveawayEntry(
 
   const keyword = (settings.keyword || "+1").trim().toLowerCase();
   const text = input.text.trim().toLowerCase();
-  if (!keyword || !text.includes(keyword)) return { status: "ignored", reason: "no_keyword" };
+  if (!giveawayKeywordMatches(text, keyword)) return { status: "ignored", reason: "no_keyword" };
   if (settings.subs_only && !input.isSubscriber) {
     return { status: "ignored", reason: "subscribers_only" };
   }

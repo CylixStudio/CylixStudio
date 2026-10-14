@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useTimerSession } from "@/hooks/useTimerSession";
 import { useWidgetRealtime } from "@/hooks/useWidgetRealtime";
 import type { ChatMessage, ChatSources } from "@/hooks/useLiveChat";
 import { readReplyMeta } from "@/lib/replyAlert";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
 import type { PollRuntime, PredictionRuntime } from "@/lib/interactiveWidgets";
-import { computeRemaining, type TimerFrame } from "@/lib/timer";
+import type { TimerFrame } from "@/lib/timer";
 import type {
   GoalSnapshot,
   OverlayEvent,
@@ -72,13 +73,14 @@ type Snapshot = {
 /**
  * Single subscription that powers every public widget renderer. Three layers
  * keep OBS in sync: Supabase Realtime broadcasts (instant), SSE (fast path)
- * and a light poll (guaranteed convergence). The timer is re-derived locally
- * against the last server frame so rendering stays smooth between pushes.
+ * and a light poll (guaranteed convergence). The subathon countdown reads
+ * one absolute end time. Repeated snapshots do not move that end, and the
+ * 250ms interval only refreshes the displayed second.
  */
 export function useWidgetStream(publicToken: string | null) {
   const [widget, setWidget] = useState<StreamWidget | null>(null);
   const [frame, setFrame] = useState<TimerFrame | null>(null);
-  const [remaining, setRemaining] = useState(0);
+  const countdown = useTimerSession(frame != null, publicToken);
   const [goal, setGoal] = useState<GoalSnapshot | null>(null);
   const [events, setEvents] = useState<OverlayEvent[]>([]);
   const [spin, setSpin] = useState<SpinState | null>(null);
@@ -91,7 +93,6 @@ export function useWidgetStream(publicToken: string | null) {
   const [chat, setChat] = useState<ChatSources | null>(null);
   const [testMessages, setTestMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<StreamStatus>("connecting");
-  const offsetRef = useRef(0);
   const previewTests = useRef<OverlayEvent[]>([]);
 
   const adoptServerEvents = (server: OverlayEvent[]) => {
@@ -108,9 +109,8 @@ export function useWidgetStream(publicToken: string | null) {
     let cancelled = false;
 
     const onFrame = (next: TimerFrame) => {
-      offsetRef.current = next.serverTime - Date.now();
+      countdown.adopt(next, "realtime");
       setFrame(next);
-      setRemaining(next.remainingSeconds);
     };
 
     const connect = () => {
@@ -222,7 +222,7 @@ export function useWidgetStream(publicToken: string | null) {
       if (retry) clearTimeout(retry);
       source?.close();
     };
-  }, [publicToken]);
+  }, [publicToken, countdown.adopt]);
 
   const poll = useCallback(async () => {
     if (!publicToken) return;
@@ -244,15 +244,14 @@ export function useWidgetStream(publicToken: string | null) {
       setTapGoal(payload.tapGoal?.taps ?? 0);
       if (payload.chat) setChat(payload.chat);
       if (payload.frame) {
-        offsetRef.current = payload.frame.serverTime - Date.now();
+        countdown.adopt(payload.frame, "sync");
         setFrame(payload.frame);
-        setRemaining(payload.frame.remainingSeconds);
       }
       setStatus("live");
     } catch {
       /* the SSE reconnect loop reports connection problems */
     }
-  }, [publicToken]);
+  }, [publicToken, countdown.adopt]);
 
   useEffect(() => {
     if (!publicToken) return;
@@ -299,18 +298,15 @@ export function useWidgetStream(publicToken: string | null) {
     void poll();
   });
 
-  useEffect(() => {
-    if (!frame) return;
-    const id = setInterval(() => {
-      setRemaining(computeRemaining(frame, Date.now() + offsetRef.current));
-    }, 250);
-    return () => clearInterval(id);
-  }, [frame]);
+  const shownFrame =
+    frame && countdown.status === "ENDED" && frame.status === "RUNNING"
+      ? { ...frame, status: "ENDED" as const, remainingSeconds: 0, remainingMs: 0 }
+      : frame;
 
   return {
     widget,
-    frame,
-    remaining,
+    frame: shownFrame,
+    remaining: countdown.remaining,
     goal,
     events,
     spin,

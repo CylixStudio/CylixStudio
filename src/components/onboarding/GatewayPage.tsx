@@ -111,6 +111,12 @@ const BILLING_SUFFIX_KEY: Record<ProBillingInterval, TranslationKey> = {
   yearly: "gateway.billing.suffix.yearly",
 };
 
+const BILLING_DURATION_KEY: Record<ProBillingInterval, TranslationKey> = {
+  monthly: "gateway.billing.duration.monthly",
+  six_months: "gateway.billing.duration.sixMonths",
+  yearly: "gateway.billing.duration.yearly",
+};
+
 function FeaturePreviewThumb({ id }: { id: FeaturePreviewId }) {
   const preview =
     id === "platforms" ? (
@@ -325,24 +331,18 @@ function ProBillingSelector({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(interval)}
+            data-state={active ? "active" : "inactive"}
             className={cn(
               "rounded-md px-1.5 py-1.5 text-[0.68rem] font-semibold transition-colors sm:text-[0.72rem]",
               active
-                ? "bg-primary text-primary-foreground shadow-sm"
+                ? "bg-primary text-primary-foreground shadow-[inset_0_0_0_2px_rgba(255,255,255,0.9)]"
                 : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100",
-              option.launchOffer && !active && "text-amber-100 ring-1 ring-amber-400/35",
-              option.bestValue && !active && "text-emerald-200 ring-1 ring-emerald-400/40",
             )}
           >
             {t(BILLING_LABEL_KEY[interval])}
-            {option.launchOffer ? (
-              <span className={cn("mt-0.5 block text-[0.55rem] font-medium", active ? "text-primary-foreground/80" : "text-amber-200")}>
-                {t("gateway.billing.launchOffer")}
-              </span>
-            ) : null}
-            {option.bestValue ? (
+            {option.freeMonths > 0 ? (
               <span className={cn("mt-0.5 block text-[0.55rem] font-medium", active ? "text-primary-foreground/80" : "text-emerald-300")}>
-                {t("gateway.billing.bestValue")}
+                {t("gateway.billing.freeMonths")}
               </span>
             ) : null}
           </button>
@@ -395,31 +395,16 @@ function ProPlanCard({
               className="text-3xl font-semibold tracking-tight text-zinc-50 sm:text-[2rem]"
             />
             <span className="text-xs text-zinc-500">{t(BILLING_SUFFIX_KEY[option.id])}</span>
-            {option.listAmount != null ? (
-              <SaudiRiyalAmount
-                amount={option.listAmount}
-                className="text-sm font-medium text-zinc-500 line-through decoration-zinc-500/80"
-              />
-            ) : null}
-            {option.launchOffer ? (
-              <span className="inline-flex items-center rounded-full border border-amber-400/40 bg-amber-400/15 px-2 py-0.5 text-[0.62rem] font-semibold text-amber-200">
-                {t("gateway.billing.launchOffer")}
-              </span>
-            ) : null}
-            {option.savePercent != null ? (
+            {option.freeMonths > 0 ? (
               <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-0.5 text-[0.62rem] font-semibold text-emerald-300">
-                {t("gateway.billing.save").replace("{percent}", String(option.savePercent))}
+                {t("gateway.billing.freeMonths")}
               </span>
             ) : null}
           </div>
-          {option.launchOffer ? (
-            <p className="mt-1 text-[0.72rem] leading-relaxed text-amber-100/80">{t("gateway.billing.launchOfferHint")}</p>
-          ) : (
-            <p className="mt-1 inline-flex items-baseline gap-1 text-[0.72rem] text-zinc-400">
-              <SaudiRiyalAmount amount={option.perMonthAmount} />
-              <span>{t("gateway.billing.perMonth")}</span>
-            </p>
-          )}
+          <p className="mt-1 inline-flex items-baseline gap-1 text-[0.72rem] text-zinc-400">
+            <SaudiRiyalAmount amount={option.perMonthAmount} />
+            <span>{t("gateway.billing.perMonth")}</span>
+          </p>
         </div>
         <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-primary/40 bg-primary/15 text-primary">
           <Icon className="size-4" aria-hidden />
@@ -427,6 +412,23 @@ function ProPlanCard({
       </div>
 
       <ProBillingSelector value={billing} onChange={onBillingChange} />
+
+      <div
+        className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2.5"
+        data-order-summary
+        data-billing-interval={option.id}
+        data-amount={option.amount}
+        data-months={option.months}
+      >
+        <p className="text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+          {t("gateway.billing.orderSummary")}
+        </p>
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-zinc-50">
+          <SaudiRiyalAmount amount={option.amount} className="font-semibold" />
+          <span className="text-zinc-300">{t(BILLING_DURATION_KEY[option.id])}</span>
+        </p>
+        <p className="mt-1 text-[0.72rem] leading-relaxed text-zinc-500">{t("gateway.billing.oneTime")}</p>
+      </div>
 
       <p className="mt-3 text-[0.82rem] leading-relaxed text-zinc-400">{description}</p>
 
@@ -448,10 +450,9 @@ function ProPlanCard({
           data-tier="pro"
           data-billing-interval={option.id}
           data-amount={option.amount}
-          data-list-amount={option.listAmount ?? undefined}
-          data-launch-offer={option.launchOffer ? "1" : undefined}
           data-currency={option.currency}
           data-months={option.months}
+          data-billing-mode="one_time"
           data-purchase-type="direct"
         >
           <UserRoundCheck className="size-3.5 shrink-0 opacity-90" aria-hidden />

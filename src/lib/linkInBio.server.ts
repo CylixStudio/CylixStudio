@@ -1,4 +1,5 @@
 import {
+  cachedYoutubeLatest,
   collectStreamTargets,
   normalizeLink,
   publicLinkInBioPayload,
@@ -12,12 +13,14 @@ import {
   DEFAULT_THEME,
   linkInBioThemeRequiresPro,
   sanitizeTheme,
+  youtubeLatestColumnMissing,
   type LinkInBioState,
   type LinkPlatform,
   type LinkTilePreview,
   type LivePlatformFlags,
   type PublicLinkInBio,
   type StreamStatus,
+  type YoutubeLatestVideo,
 } from "@/lib/linkInBio";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
@@ -59,6 +62,7 @@ type ThemeRow = {
   bento_color_mode?: string;
   bento_custom_fill?: string;
   bento_custom_accent?: string;
+  youtube_latest_enabled?: boolean;
 };
 
 type LinkRow = {
@@ -124,6 +128,7 @@ function mapState(
       bentoColorMode: theme.bento_color_mode as LinkInBioState["theme"]["bentoColorMode"],
       bentoCustomFill: theme.bento_custom_fill ?? "",
       bentoCustomAccent: theme.bento_custom_accent ?? "",
+      youtubeLatestEnabled: theme.youtube_latest_enabled !== false,
     }),
     links: links.map((row, index) =>
       normalizeLink({
@@ -278,22 +283,73 @@ async function twitchStatusUncached(
 
 type PlatformHit = { live: LiveHit | null; offline: OfflineHit | null; thumbnailUrl: string | null };
 
+/** Latest uploads only. Not called when the bio toggle is off. */
+export async function fetchYoutubeLatestVideos(
+  channelId: string,
+  key: string,
+): Promise<YoutubeLatestVideo | null> {
+  const latestQs = new URLSearchParams({
+    part: "snippet",
+    channelId,
+    order: "date",
+    type: "video",
+    maxResults: "1",
+    key,
+  });
+  const latest = await jsonGet<{
+    items?: { id?: { videoId?: string }; snippet?: { title?: string; thumbnails?: Record<string, { url?: string }> } }[];
+  }>(`https://www.googleapis.com/youtube/v3/search?${latestQs.toString()}`);
+  const video = latest?.items?.[0];
+  const videoId = video?.id?.videoId;
+  if (!videoId) return null;
+  const thumbs = video?.snippet?.thumbnails ?? {};
+  const thumbnailUrl = thumbs["high"]?.url ?? thumbs["medium"]?.url ?? thumbs["default"]?.url ?? null;
+  return {
+    title: video?.snippet?.title ?? "Latest video",
+    url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+    thumbnailUrl,
+  };
+}
+
 /** Official YouTube Data API v3 — skipped honestly when YOUTUBE_API_KEY is unset. */
 export async function youtubeStatus(
   target: { handle: string | null; channelId: string | null },
   channelUrl: string | null,
+  options?: { includeLatest?: boolean },
 ): Promise<PlatformHit> {
+  const includeLatest = options?.includeLatest !== false;
   const cacheKey = `youtube:${(target.channelId ?? target.handle ?? "").toLowerCase()}`;
-  return cachedStatus(cacheKey, () => youtubeStatusUncached(target, channelUrl));
+  const base = await cachedStatus(cacheKey, () => youtubeStatusUncached(target, channelUrl));
+  if (base.live || !includeLatest) return youtubeHit(base);
+  const key = process.env["YOUTUBE_API_KEY"];
+  if (!key || !base.channelId || !base.offline) return youtubeHit(base);
+  const channelId = base.channelId;
+  const latest = await cachedYoutubeLatest(channelId, includeLatest, () => fetchYoutubeLatestVideos(channelId, key));
+  return {
+    live: null,
+    offline: { ...base.offline, latest },
+    thumbnailUrl: base.thumbnailUrl ?? latest?.thumbnailUrl ?? null,
+  };
+}
+
+type YoutubeBase = PlatformHit & { channelId: string | null };
+
+function youtubeHit(base: YoutubeBase): PlatformHit {
+  return { live: base.live, offline: base.offline, thumbnailUrl: base.thumbnailUrl };
 }
 
 async function youtubeStatusUncached(
   target: { handle: string | null; channelId: string | null },
   channelUrl: string | null,
-): Promise<PlatformHit> {
+): Promise<YoutubeBase> {
   const key = process.env["YOUTUBE_API_KEY"];
   if (!key) {
-    return { live: null, offline: { kind: "offline", platform: "youtube", latest: null, channelUrl }, thumbnailUrl: null };
+    return {
+      live: null,
+      offline: { kind: "offline", platform: "youtube", latest: null, channelUrl },
+      thumbnailUrl: null,
+      channelId: null,
+    };
   }
   let channelId = target.channelId;
   if (!channelId && target.handle) {
@@ -304,7 +360,12 @@ async function youtubeStatusUncached(
     channelId = channels?.items?.[0]?.id ?? null;
   }
   if (!channelId) {
-    return { live: null, offline: { kind: "offline", platform: "youtube", latest: null, channelUrl }, thumbnailUrl: null };
+    return {
+      live: null,
+      offline: { kind: "offline", platform: "youtube", latest: null, channelUrl },
+      thumbnailUrl: null,
+      channelId: null,
+    };
   }
   const liveQs = new URLSearchParams({
     part: "snippet",
@@ -342,38 +403,14 @@ async function youtubeStatusUncached(
       },
       offline: null,
       thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(liveId)}/hqdefault.jpg`,
+      channelId,
     };
   }
-  const latestQs = new URLSearchParams({
-    part: "snippet",
-    channelId,
-    order: "date",
-    type: "video",
-    maxResults: "1",
-    key,
-  });
-  const latest = await jsonGet<{
-    items?: { id?: { videoId?: string }; snippet?: { title?: string; thumbnails?: Record<string, { url?: string }> } }[];
-  }>(`https://www.googleapis.com/youtube/v3/search?${latestQs.toString()}`);
-  const video = latest?.items?.[0];
-  const videoId = video?.id?.videoId;
-  const thumbs = video?.snippet?.thumbnails ?? {};
-  const thumbnailUrl = thumbs["high"]?.url ?? thumbs["medium"]?.url ?? thumbs["default"]?.url ?? null;
   return {
     live: null,
-    offline: {
-      kind: "offline",
-      platform: "youtube",
-      latest: videoId
-        ? {
-            title: video?.snippet?.title ?? "Latest video",
-            url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
-            thumbnailUrl,
-          }
-        : null,
-      channelUrl,
-    },
-    thumbnailUrl,
+    offline: { kind: "offline", platform: "youtube", latest: null, channelUrl },
+    thumbnailUrl: null,
+    channelId,
   };
 }
 
@@ -461,7 +498,9 @@ export async function resolveLinkInBioStream(state: LinkInBioState): Promise<{
     targets.twitchUsername
       ? twitchStatus(targets.twitchUsername, targets.twitchUrl ?? `https://www.twitch.tv/${targets.twitchUsername}`)
       : Promise.resolve(emptyHit),
-    targets.youtube ? youtubeStatus(targets.youtube, targets.youtubeUrl) : Promise.resolve(emptyHit),
+    targets.youtube
+      ? youtubeStatus(targets.youtube, targets.youtubeUrl, { includeLatest: state.theme.youtubeLatestEnabled })
+      : Promise.resolve(emptyHit),
     targets.kickUsername
       ? kickStatus(targets.kickUsername, targets.kickUrl ?? `https://kick.com/${targets.kickUsername}`)
       : Promise.resolve(emptyHit),
@@ -528,9 +567,24 @@ export async function publicLinkInBioJson(slug: string): Promise<PublicLinkInBio
       .maybeSingle(),
   ]);
   if (!theme) return null;
+  const latestFlag = await supabaseAdmin
+    .from("link_in_bio_themes")
+    .select("youtube_latest_enabled")
+    .eq("user_id", profile.user_id)
+    .maybeSingle();
+  const youtubeLatestEnabled =
+    latestFlag.error || youtubeLatestColumnMissing(latestFlag.error) || typeof latestFlag.data?.youtube_latest_enabled !== "boolean"
+      ? true
+      : latestFlag.data.youtube_latest_enabled !== false;
   const kickUsername = connections?.find((row) => row.platform === "KICK")?.username?.trim().toLowerCase() ?? null;
   const twitchUsername = connections?.find((row) => row.platform === "TWITCH")?.username?.trim().toLowerCase() ?? null;
-  const mapped = mapState(profile as ProfileRow, theme as ThemeRow, (links ?? []) as LinkRow[], kickUsername, twitchUsername);
+  const mapped = mapState(
+    profile as ProfileRow,
+    { ...(theme as ThemeRow), youtube_latest_enabled: youtubeLatestEnabled },
+    (links ?? []) as LinkRow[],
+    kickUsername,
+    twitchUsername,
+  );
   const { userHasActivePro } = await import("@/lib/subscription.server");
   const ownerPro = await userHasActivePro(supabaseAdmin, profile.user_id);
   const state = {

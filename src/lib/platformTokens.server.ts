@@ -1,3 +1,4 @@
+import { redactKickError } from "@/lib/kickChatDeliver";
 import { readOAuthEnv } from "@/lib/oauth.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
@@ -99,7 +100,8 @@ export async function getKickAccessToken(
       .eq("id", data.id);
     return refreshed.access_token;
   } catch (error) {
-    console.error("[tokens] Kick refresh error", error);
+    const message = error instanceof Error ? error.message : "refresh_failed";
+    console.error("[tokens] Kick refresh error", redactKickError(message));
     return null;
   }
 }
@@ -153,7 +155,8 @@ export async function getTwitchAccessToken(userId: string): Promise<string | nul
       .eq("id", data.id);
     return refreshed.access_token;
   } catch (error) {
-    console.error("[tokens] Twitch refresh error", error);
+    const message = error instanceof Error ? error.message : "refresh_failed";
+    console.error("[tokens] Twitch refresh error", redactKickError(message));
     return null;
   }
 }

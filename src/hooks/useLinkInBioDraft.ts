@@ -33,6 +33,7 @@ import {
   checkLinkInBioSlug,
   getLinkInBioState,
   previewLinkInBioStream,
+  reorderLinkInBioLinks,
   replaceLinkInBioLinks,
   saveLinkInBioProfile,
   saveLinkInBioTheme,
@@ -181,6 +182,7 @@ export function useLinkInBioDraft(userId: string) {
   const persistProfile = useServerFn(saveLinkInBioProfile);
   const persistTheme = useServerFn(saveLinkInBioTheme);
   const persistLinks = useServerFn(replaceLinkInBioLinks);
+  const reorderLinks = useServerFn(reorderLinkInBioLinks);
   const checkSlug = useServerFn(checkLinkInBioSlug);
   const loadStream = useServerFn(previewLinkInBioStream);
 
@@ -198,19 +200,19 @@ export function useLinkInBioDraft(userId: string) {
     },
   });
 
-  const streamQuery = useQuery({
-    queryKey: ["link-in-bio-stream", userId, test],
-    enabled: !test && Boolean(stateQuery.data),
-    queryFn: () => loadStream(),
-    staleTime: 60_000,
-  });
-
   const [profile, setProfile] = useState<LinkInBioProfile>(DEFAULT_PROFILE);
   const [theme, setTheme] = useState<LinkInBioTheme>(DEFAULT_THEME);
   const [links, setLinks] = useState<LinkInBioLink[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken" | "invalid">("idle");
   const slugTimer = useRef(0);
+
+  const streamQuery = useQuery({
+    queryKey: ["link-in-bio-stream", userId, test, theme.youtubeLatestEnabled],
+    enabled: !test && Boolean(stateQuery.data),
+    queryFn: () => loadStream(),
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     if (hydrated) return;
@@ -272,6 +274,28 @@ export function useLinkInBioDraft(userId: string) {
     if (!themeResult.ok) throw new Error(themeResult.error);
     const linksResult = await persistLinks({ data: { links: nextLinks.map(linkToInput) } });
     if (!linksResult.ok) throw new Error(linksResult.error);
+  };
+
+  const saveLinkOrder = async (nextLinks: LinkInBioLink[]) => {
+    if (test) {
+      const stored = loadTestLinkInBio();
+      saveTestLinkInBio({ ...stored, links: nextLinks });
+      setLinks(nextLinks);
+      return;
+    }
+    const result = await reorderLinks({
+      data: {
+        ids: nextLinks.map((link) => link.id),
+        placements: nextLinks.map((link) => ({ id: link.id, gridX: link.gridX, gridY: link.gridY })),
+      },
+    });
+    if (!result.ok) throw new Error(result.error ?? "save_failed");
+    setLinks(nextLinks);
+    void queryClient.invalidateQueries({ queryKey: ["link-in-bio", userId, test] });
+  };
+
+  const refreshStream = () => {
+    void queryClient.invalidateQueries({ queryKey: ["link-in-bio-stream", userId, test] });
   };
 
   const save = useMutation({
@@ -344,6 +368,8 @@ export function useLinkInBioDraft(userId: string) {
     slugStatus,
     save,
     persist,
+    saveLinkOrder,
+    refreshStream,
     applyHandles,
     sanitizeHandle,
   };

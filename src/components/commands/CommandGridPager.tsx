@@ -13,6 +13,10 @@ const publicPager = pageStyles as {
 export const COMMAND_CARD_GRID =
   "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3.5";
 
+/** Wide desktop is one column calmer than the six-column grid. */
+export const COMMAND_CARD_GRID_CALM =
+  "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5";
+
 export const COMMAND_PAGE_SIZE = 24;
 
 export function useCommandPage<T extends { id: string }>(items: readonly T[]) {

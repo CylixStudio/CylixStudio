@@ -95,7 +95,7 @@ function SubscriptionPage() {
             setDetail(
               result.error === "not_owner"
                 ? t("gateway.return.notOwner")
-                : result.error === "not_paid"
+                : result.error === "not_paid" || result.error === "amount_mismatch"
                   ? t("gateway.return.failed")
                   : t("gateway.return.unconfirmed"),
             );

@@ -124,10 +124,9 @@ export const deleteMessageTimer = createServerFn({ method: "POST" })
     return { ok: !error };
   });
 
+/** Kept so an open commands page cannot post. Only the Worker schedule sends. */
 export const tickMessageTimers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { fireDueMessageTimers } = await import("@/lib/messageTimers.server");
-    const fired = await fireDueMessageTimers(context.userId);
-    return { ok: true as const, fired };
+  .handler(async () => {
+    return { ok: true as const, fired: 0 };
   });

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { LinkInBioBento } from "@/components/link-in-bio/LinkInBioBento";
 import { LinkInBioPage } from "@/components/link-in-bio/LinkInBioPage";
+import { LinkOrderDialog } from "@/components/link-in-bio/LinkOrderDialog";
 import { PlatformHandleDock } from "@/components/link-in-bio/PlatformHandleDock";
 import { Button } from "@/components/ui/button";
 import { DarkSelect } from "@/components/ui/dark-select";
@@ -60,6 +61,9 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
   const [editing, setEditing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [orderSaving, setOrderSaving] = useState(false);
+  const [orderFailed, setOrderFailed] = useState(false);
   const [handles, setHandles] = useState<HandleMap>(() => handlesFromLinks(links));
   const slugLocked = usernameCooldownActive(profile.usernameChangedAt);
   const unlockOn = usernameUnlockLabel(profile.usernameChangedAt);
@@ -129,6 +133,33 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
     const next = [...links, created];
     patchLinks(next);
     setSelectedId(created.id);
+  };
+
+  const saveOrder = async (next: LinkInBioLink[]) => {
+    setOrderSaving(true);
+    setOrderFailed(false);
+    try {
+      await draft.saveLinkOrder(next);
+      setOrderOpen(false);
+      toast.success(t("linkInBio.orderSaved"));
+    } catch {
+      setOrderFailed(true);
+    } finally {
+      setOrderSaving(false);
+    }
+  };
+
+  const setYoutubeLatest = async (enabled: boolean) => {
+    const previous = theme;
+    const next = { ...theme, youtubeLatestEnabled: enabled };
+    setTheme(next);
+    try {
+      await persist(profile, next, links);
+      draft.refreshStream();
+    } catch {
+      setTheme(previous);
+      toast.error(t("linkInBio.err.couldNotSave"));
+    }
   };
 
   const publish = async (published: boolean) => {
@@ -232,10 +263,15 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
               <h2 className="text-lg font-semibold">{t("linkInBio.bentoGrid")}</h2>
               <p className="text-sm text-muted-foreground">{t("linkInBio.bentoHint")}</p>
             </div>
-            <Button type="button" variant="outline" onClick={addGallery}>
-              <ImagePlus className="size-3.5" />
-              {t("linkInBio.addGallery")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" className="min-h-11" onClick={() => setOrderOpen(true)} disabled={links.length === 0}>
+                {t("linkInBio.reorderLinks")}
+              </Button>
+              <Button type="button" variant="outline" onClick={addGallery}>
+                <ImagePlus className="size-3.5" />
+                {t("linkInBio.addGallery")}
+              </Button>
+            </div>
           </div>
           <div
             className="overflow-hidden rounded-2xl p-4"
@@ -269,6 +305,8 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
           {selected ? (
             <CardInspector
               link={selected}
+              youtubeLatestEnabled={theme.youtubeLatestEnabled}
+              onYoutubeLatest={(enabled) => void setYoutubeLatest(enabled)}
               onChange={(next) => patchLinks(links.map((link) => (link.id === next.id ? next : link)))}
               onRemove={() => {
                 patchLinks(links.filter((link) => link.id !== selected.id));
@@ -432,6 +470,7 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
                   platforms={LINK_PLATFORMS}
                   handles={{ ...handlesFromLinks(links), ...handles }}
                   onChange={applyPlatforms}
+                  youtubeLatestEnabled={theme.youtubeLatestEnabled}
                 />
               </TabsContent>
 
@@ -486,6 +525,17 @@ export function LinkInBioDashboard({ draft, onReplay }: { draft: Draft; onReplay
           <LinkInBioPage data={preview} preview />
         </div>
       </div>
+      <LinkOrderDialog
+        open={orderOpen}
+        links={links}
+        saving={orderSaving}
+        failed={orderFailed}
+        onOpenChange={(next) => {
+          setOrderOpen(next);
+          if (next) setOrderFailed(false);
+        }}
+        onSave={(next) => void saveOrder(next)}
+      />
     </div>
   );
 }
@@ -521,10 +571,14 @@ function slugHint(status: Draft["slugStatus"], t: Translate) {
 
 function CardInspector({
   link,
+  youtubeLatestEnabled,
+  onYoutubeLatest,
   onChange,
   onRemove,
 }: {
   link: LinkInBioLink;
+  youtubeLatestEnabled: boolean;
+  onYoutubeLatest: (enabled: boolean) => void;
   onChange: (link: LinkInBioLink) => void;
   onRemove: () => void;
 }) {
@@ -557,6 +611,15 @@ function CardInspector({
           {t("linkInBio.remove")}
         </Button>
       </div>
+      {link.platform === "youtube" ? (
+        <div className="mt-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">{t("linkInBio.youtubeLatest")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("linkInBio.youtubeLatestHint")}</p>
+          </div>
+          <Switch checked={youtubeLatestEnabled} onCheckedChange={onYoutubeLatest} />
+        </div>
+      ) : null}
       <label className={cn(label, "mt-3")}>{t("linkInBio.field.title")}</label>
       <Input dir="auto" value={link.title} onChange={(event) => onChange({ ...link, title: event.target.value })} />
       <p className={cn(label, "mt-3")}>{t("linkInBio.field.size")}</p>

@@ -15,58 +15,44 @@ export type PlanFeatureRow = {
 
 export const PLAN_PRICES = {
   free: { amount: 0, currency: "SAR" as const },
-  /** Regular monthly Pro price. The launch offer charges less while it is active. */
-  pro: { amount: 39, currency: "SAR" as const },
+  /** Permanent monthly Pro price. Checkout charges this amount, not a promo. */
+  pro: { amount: 29, currency: "SAR" as const },
 } as const;
 
 /**
- * Opening-week price for monthly Pro.
- * Set `active` to false to charge the regular 39 SAR again.
+ * Pro billing intervals shown on the welcome plan card.
+ * StreamPay cannot be given a 6-month or 14-month recurring cycle from this app.
+ * Each option is a one-time charge. Pro ends at the stored expiry; nothing bills again early.
  */
-export const LAUNCH_OFFER = {
-  active: true,
-  interval: "monthly" as const,
-  /** Amount sent to checkout while the offer is on. */
-  amount: 20,
-  /** Regular monthly price, shown crossed out. */
-  listAmount: 39,
-} as const;
-
-/** Pro billing intervals shown on the welcome plan card. */
 export type ProBillingInterval = "monthly" | "six_months" | "yearly";
 
 export type ProBillingOption = {
   id: ProBillingInterval;
-  /** Total amount charged for this interval, in SAR. */
+  /** Total amount charged once for this term, in SAR. */
   amount: number;
   currency: "SAR";
   /** Numeric amount shown next to the riyal mark. */
   label: string;
-  /** Covered months in this purchase. */
+  /**
+   * Calendar months of Pro granted by this purchase.
+   * Yearly is 12 paid months plus 2 free months (14).
+   */
   months: number;
+  /** Free months included in `months`. Zero except the yearly term. */
+  freeMonths: number;
   /** Effective monthly rate, in SAR. */
   perMonthAmount: number;
-  /** Regular price shown crossed out while a launch offer replaces `amount`. */
-  listAmount: number | null;
-  /** Opening-week launch price is active for this interval. */
-  launchOffer: boolean;
-  /** Optional savings badge versus 12× the monthly price. */
-  savePercent: number | null;
-  /** Yearly is the highlighted best-value interval. */
-  bestValue?: boolean;
 };
 
 export const PRO_BILLING_OPTIONS: Record<ProBillingInterval, ProBillingOption> = {
   monthly: {
     id: "monthly",
-    amount: LAUNCH_OFFER.active ? LAUNCH_OFFER.amount : PLAN_PRICES.pro.amount,
+    amount: 29,
     currency: "SAR",
-    label: LAUNCH_OFFER.active ? String(LAUNCH_OFFER.amount) : String(PLAN_PRICES.pro.amount),
+    label: "29",
     months: 1,
-    perMonthAmount: LAUNCH_OFFER.active ? LAUNCH_OFFER.amount : PLAN_PRICES.pro.amount,
-    listAmount: LAUNCH_OFFER.active ? LAUNCH_OFFER.listAmount : null,
-    launchOffer: LAUNCH_OFFER.active,
-    savePercent: null,
+    freeMonths: 0,
+    perMonthAmount: 29,
   },
   six_months: {
     id: "six_months",
@@ -74,23 +60,17 @@ export const PRO_BILLING_OPTIONS: Record<ProBillingInterval, ProBillingOption> =
     currency: "SAR",
     label: "169",
     months: 6,
-    perMonthAmount: 28,
-    listAmount: null,
-    launchOffer: false,
-    savePercent: null,
+    freeMonths: 0,
+    perMonthAmount: 28.2,
   },
   yearly: {
     id: "yearly",
     amount: 279,
     currency: "SAR",
     label: "279",
-    months: 12,
-    perMonthAmount: 23,
-    listAmount: null,
-    launchOffer: false,
-    /** vs 12 × 39 SAR (468). */
-    savePercent: 40,
-    bestValue: true,
+    months: 14,
+    freeMonths: 2,
+    perMonthAmount: 19.9,
   },
 };
 
@@ -108,9 +88,8 @@ export type ProCheckoutPayload = {
   currency: "SAR";
   months: number;
   label: string;
-  /** Regular price when `amount` is a launch offer. */
-  listAmount: number | null;
-  launchOffer: boolean;
+  /** One-time StreamPay charge. Not a recurring subscription cycle. */
+  billingMode: "one_time";
   productName: string;
   /** direct = activate on buyer account; gift = email an activation code */
   purchaseType: ProPurchaseType;
@@ -132,6 +111,20 @@ export type PrepareProCheckoutOptions = {
 
 export const PENDING_PRO_CHECKOUT_KEY = "cylix.pending-pro-checkout";
 
+/** True only when the settled money is the catalog price for that plan id. */
+export function catalogChargeMatches(
+  interval: ProBillingInterval,
+  amountSar: number,
+  currency: string | null | undefined,
+): boolean {
+  const option = PRO_BILLING_OPTIONS[interval];
+  return (
+    currency?.trim().toUpperCase() === "SAR" &&
+    Number.isFinite(amountSar) &&
+    amountSar === option.amount
+  );
+}
+
 export function buildProCheckoutPayload(
   interval: ProBillingInterval,
   options?: PrepareProCheckoutOptions,
@@ -145,11 +138,8 @@ export function buildProCheckoutPayload(
     currency: option.currency,
     months: option.months,
     label: option.label,
-    listAmount: option.listAmount,
-    launchOffer: option.launchOffer,
-    productName: option.launchOffer
-      ? `CylixStudio Pro Launch Offer ${option.amount} SAR (Monthly)`
-      : `CylixStudio Pro ${option.amount} SAR (${option.months === 1 ? "Monthly" : option.months === 6 ? "6 Months" : "Yearly"})`,
+    billingMode: "one_time",
+    productName: `CylixStudio Pro ${option.amount} SAR (${option.months === 1 ? "1 Month" : `${option.months} Months`})`,
     purchaseType,
     userId: options?.userId ?? null,
     buyerEmail: options?.buyerEmail?.trim().toLowerCase() || null,

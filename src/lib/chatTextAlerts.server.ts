@@ -5,7 +5,6 @@ import {
   type ChatAlertId,
   type ChatAlertSignal,
 } from "@/lib/chatTextAlerts";
-import { sendKickChatMessage } from "@/lib/kickChat.server";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 const claimedSends = new Set<string>();
@@ -73,6 +72,7 @@ export async function deliverChatTextAlert(input: {
   if (!body) return { status: "ignored", reason: "empty" };
   const claimed = await claimSend(input.userId, providerEventId, input.signal.alertId);
   if (!claimed) return { status: "ignored", reason: "duplicate" };
+  const { sendKickChatMessage } = await import("@/lib/kickChat.server");
   const sent = await sendKickChatMessage(input.userId, broadcasterId, body);
   return sent ? { status: "replied", reason: input.signal.alertId } : { status: "error", reason: "send_failed" };
 }
@@ -106,6 +106,7 @@ export async function maybeWelcomeChatter(input: {
   claimedWelcomes.add(key);
   const body = renderChatAlert(alert.template, { name: username });
   if (!body) return { status: "ignored", reason: "empty" };
+  const { sendKickChatMessage } = await import("@/lib/kickChat.server");
   const sent = await sendKickChatMessage(input.userId, input.kickBroadcasterUserId, body);
   return sent ? { status: "replied", reason: "welcome" } : { status: "error", reason: "send_failed" };
 }

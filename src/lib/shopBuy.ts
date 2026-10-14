@@ -51,6 +51,12 @@ export function decideShopPurchase(input: {
   };
 }
 
+/** Exact. `!shop extra` is not the directory command. */
+export function parseShopDirectoryCommand(text: string): boolean {
+  return /^!?(?:shop|store|متجر)$/i.test(text.trim());
+}
+
+/** `!buy` plus the item name. The name is the parameter and may contain spaces. */
 export function parseBuyArgument(text: string): string | null {
   const match = text.trim().match(/^!buy(?:\s+([\s\S]+))?$/i);
   if (!match) return null;

@@ -2,11 +2,10 @@ import { COMMAND_PERMISSION_DENIED, isCommandMinRole, senderMayRun } from "@/lib
 import { catalogDefaultCommand } from "@/lib/defaultCommands";
 import { sendKickChatMessage } from "@/lib/kickChat.server";
 import { publishedSlugForUser } from "@/lib/publicChannel.server";
+import { parseShopDirectoryCommand } from "@/lib/shopBuy";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
-export function parseShopDirectoryCommand(text: string): boolean {
-  return /^!?(?:shop|store|متجر)$/i.test(text.trim());
-}
+export { parseShopDirectoryCommand };
 
 export function shopDirectoryMessage(slug: string, names: string[]): string {
   const url = `https://cylixstudio.com/store/${encodeURIComponent(slug)}`;
