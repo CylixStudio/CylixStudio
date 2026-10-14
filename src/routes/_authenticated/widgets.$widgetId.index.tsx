@@ -25,6 +25,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { syncGoalFollowers } from "@/lib/goals.functions";
 import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
 import { ChatThemePicker } from "@/components/widgets/ChatThemePicker";
+import { KickSubscriberBadgesField } from "@/components/widgets/KickSubscriberBadgesField";
 import { saveWidgetSettings } from "@/lib/widgets.functions";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -892,6 +893,12 @@ function WidgetBuilder() {
                       hint={"Hides the Twitch / Kick / TikTok tag next to the username"}
                       checked={parseChatConfig(config).showPlatform}
                       onChange={(next) => set("showPlatform", next)}
+                    />
+                    <KickSubscriberBadgesField
+                      userId={userId}
+                      config={config}
+                      onChange={(tiers) => set("kickSubscriberBadges", tiers)}
+                      onUseDefault={(enabled) => set("kickDefaultSubscriberBadge", enabled)}
                     />
                   </div>
                 )}

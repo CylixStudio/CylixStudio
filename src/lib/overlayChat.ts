@@ -1,3 +1,4 @@
+import { badgesWithPayloadArt, type KickBadgeRecord } from "@/lib/kickBadgeResolver";
 import { extractKickChat, viewerChatMessageId, type KickPayload } from "@/lib/kickWebhookParse";
 import { readChatAvatarUrl } from "@/lib/royalCompact";
 
@@ -8,6 +9,8 @@ export type OverlayChatLine = {
   author: string;
   color: string | null;
   badges: string[];
+  /** Kick badge type, months, and image URL when the webhook already included them. */
+  badgeList?: KickBadgeRecord[];
   avatarUrl?: string | null;
   text: string;
   at: number;
@@ -48,6 +51,7 @@ export function readChatLine(row: unknown): OverlayChatLine | null {
   const color = typeof record["color"] === "string" && record["color"].trim() ? record["color"].trim() : null;
   const avatar =
     typeof record["avatarUrl"] === "string" && /^https:\/\//i.test(record["avatarUrl"]) ? record["avatarUrl"] : null;
+  const badgeList = readStoredBadgeList(record["badgeList"]);
   const line: OverlayChatLine = {
     id: id.slice(0, 80),
     platform,
@@ -58,7 +62,31 @@ export function readChatLine(row: unknown): OverlayChatLine | null {
     at,
   };
   if (avatar) line.avatarUrl = avatar;
+  if (badgeList) line.badgeList = badgeList;
   return line;
+}
+
+function readStoredBadgeList(value: unknown): KickBadgeRecord[] | null {
+  if (!Array.isArray(value)) return null;
+  const badges: KickBadgeRecord[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const type = typeof record["type"] === "string" ? record["type"].trim().slice(0, 40) : "";
+    const imageUrl =
+      typeof record["imageUrl"] === "string" && record["imageUrl"].startsWith("https://")
+        ? record["imageUrl"].slice(0, 500)
+        : null;
+    if (!type && !imageUrl) continue;
+    const badge: KickBadgeRecord = { type };
+    if (typeof record["text"] === "string" && record["text"].trim()) badge.text = record["text"].trim().slice(0, 40);
+    if (typeof record["count"] === "number" && Number.isFinite(record["count"])) {
+      badge.count = Math.max(0, Math.round(record["count"]));
+    }
+    if (imageUrl) badge.imageUrl = imageUrl;
+    badges.push(badge);
+  }
+  return badges.length > 0 ? badges.slice(0, 12) : null;
 }
 
 export function parseOverlayChat(state: unknown): OverlayChatLine[] {
@@ -251,6 +279,7 @@ export function viewerLineFromKick(body: KickPayload, fallbackId: string, at = D
   const id = (viewerChatMessageId(body) ?? fallbackId).trim();
   if (!id) return null;
   const avatar = readChatAvatarUrl(body);
+  const badgeList = badgesWithPayloadArt(body);
   const line: OverlayChatLine = {
     id,
     platform: "KICK",
@@ -261,6 +290,7 @@ export function viewerLineFromKick(body: KickPayload, fallbackId: string, at = D
     at,
   };
   if (avatar) line.avatarUrl = avatar;
+  if (badgeList.length > 0) line.badgeList = badgeList;
   return line;
 }
 

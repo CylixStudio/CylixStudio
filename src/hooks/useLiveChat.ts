@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { badgeAssetUrl, type KickBadge } from "@/hooks/useKickBadges";
+import { parseKickBadges, type KickBadge } from "@/hooks/useKickBadges";
 import { applyKickPoll, applyKickPrediction, type PollRuntime, type PredictionRuntime } from "@/lib/interactiveWidgets";
 import { readChatAvatarUrl } from "@/lib/royalCompact";
 import { readReplyMeta } from "@/lib/replyAlert";
@@ -241,14 +241,7 @@ export function useLiveChat(
             };
             if (!pinPayload?.content) return;
             const pinReply = replyFields(pin, Date.now());
-            const pinBadges: KickBadge[] = (pinPayload.sender?.identity?.badges ?? []).map(
-              (badge) => ({
-                type: String(badge["type"] ?? "").trim(),
-                text: typeof badge["text"] === "string" ? badge["text"] : null,
-                count: typeof badge["count"] === "number" ? badge["count"] : null,
-                imageUrl: badgeAssetUrl(badge),
-              }),
-            );
+            const pinBadges: KickBadge[] = parseKickBadges(pinPayload.sender?.identity?.badges);
             const pinAvatar = readChatAvatarUrl(pinPayload.sender);
             setPinnedLive({
               id: pinPayload.id ?? nextId(),
@@ -271,15 +264,7 @@ export function useLiveChat(
               identity?: { color?: string; badges?: Record<string, unknown>[] };
             };
           };
-          const rawBadges = payload.sender?.identity?.badges ?? [];
-          const badgeList: KickBadge[] = rawBadges
-            .map((badge) => ({
-              type: String(badge["type"] ?? "").trim(),
-              text: typeof badge["text"] === "string" ? badge["text"] : null,
-              count: typeof badge["count"] === "number" ? badge["count"] : null,
-              imageUrl: badgeAssetUrl(badge),
-            }))
-            .filter((badge) => badge.type.length > 0 || Boolean(badge.imageUrl));
+          const badgeList: KickBadge[] = parseKickBadges(payload.sender?.identity?.badges);
           let text = payload.content ?? "";
           // Kick can place channel-point input outside `content`. Always scan
           // the complete event so Media Request URLs cannot be missed.

@@ -9,7 +9,8 @@ import { StreamEventsScheduleView } from "@/components/widgets/StreamEventsSched
 import { PollOverlay } from "@/components/widgets/PollOverlay";
 import { PredictionOverlay } from "@/components/widgets/PredictionOverlay";
 
-import { useKickBadges, kickGlobalBadgeUrl, type KickBadge } from "@/hooks/useKickBadges";
+import { useKickBadges, type KickBadge } from "@/hooks/useKickBadges";
+import { readKickDefaultSubscriberBadge, readOwnerSubscriberTiers } from "@/lib/kickBadgeResolver";
 import { TWITCH_BADGE_SET, useTwitchBadges } from "@/hooks/useTwitchBadges";
 import { useLiveChat, type ChatMessage, type ChatSources } from "@/hooks/useLiveChat";
 import {
@@ -919,6 +920,7 @@ function storedChatMessage(line: OverlayChatLine): ChatMessage {
     at: line.at,
   };
   if (line.avatarUrl) message.avatarUrl = line.avatarUrl;
+  if (line.badgeList && line.badgeList.length > 0) message.badgeList = line.badgeList;
   return message;
 }
 
@@ -954,8 +956,13 @@ export function ChatBoxView({
   const { messages } = useLiveChat(chat ?? null, style.maxMessages);
   // Official Twitch badge artwork (public endpoint); vector marks stay as fallback.
   const twitchBadgeUrls = useTwitchBadges(style.showBadges);
-  // Channel-aware Kick badge resolver (custom subscriber tiers + payload art).
-  const resolveKickBadge = useKickBadges(chat?.kickSlug ?? null, style.showBadges);
+  // This widget's uploaded subscriber tiers only. No badge catalog is fetched.
+  const resolveKickBadge = useKickBadges(
+    chat?.kickSlug ?? null,
+    style.showBadges,
+    readOwnerSubscriberTiers(config),
+    readKickDefaultSubscriberBadge(config),
+  );
   const layout = style.chatLayout;
 
   // Live viewer messages only. Anything without visible text (system/event
@@ -1166,58 +1173,42 @@ export function ChatBoxView({
     ).filter((badge) => badge && (style.showPlatform || !isPlatformMark(badge?.type)));
 
     const roleKeys = badges.filter((role) => style.showPlatform || !isPlatformMark(role));
+    const imagedKickLabels = new Set(
+      kickBadges
+        .filter((badge) => {
+          const type = typeof badge?.type === "string" ? badge.type : "";
+          return Boolean(type || badge?.imageUrl) && resolveKickBadge({ ...badge, type });
+        })
+        .map((badge) => shortRoleLabel(badge?.type))
+        .filter((label): label is "Mod" | "VIP" => label != null),
+    );
     const pillLabels: Array<"Mod" | "VIP"> = [];
     for (const role of roleKeys) {
       const label = shortRoleLabel(role);
-      if (label && !pillLabels.includes(label)) pillLabels.push(label);
+      if (label && !pillLabels.includes(label) && !imagedKickLabels.has(label)) pillLabels.push(label);
     }
     const pillNodes = style.showBadges
       ? pillLabels.map((label) => <ChatBadgePill key={label} label={label} size={royal ? badgePx : 14} />)
       : [];
 
-    // Kick: payload artwork first. Mod / VIP stay as short labels beside the name.
+    // Kick art is the local SVG for that badge type, or this channel's uploaded subscriber image.
     const artNodes: React.ReactNode[] = !style.showBadges
       ? []
       : isKick
         ? kickBadges.map((badge, index) => {
-            if (shortRoleLabel(badge?.type)) return null;
             const type = typeof badge?.type === "string" ? badge.type : "";
-            const url =
-              badge?.imageUrl ??
-              (type ? resolveKickBadge({ ...badge, type }) : null) ??
-              (type ? kickGlobalBadgeUrl(type) : null);
+            const url = type || badge?.imageUrl ? resolveKickBadge({ ...badge, type }) : null;
+            if (shortRoleLabel(badge?.type) && !url) return null;
+            if (!url) return null;
             const label = badge?.text || type || "badge";
-            const role = type ? normalizeBadgeRole(type) : null;
-            if (!url) {
-              if (!role) return null;
-              return (
-                <RoleBadgeIcon
-                  key={`${type || "badge"}-${index}`}
-                  role={role}
-                  platform={platform || "KICK"}
-                  size={badgePx}
-                  style={{ marginInlineEnd: badgeMargin }}
-                />
-              );
-            }
             return (
               <BadgeImg
                 key={`${type || "badge"}-${index}`}
                 src={url}
                 label={label}
-                pixelated
                 size={badgePx}
                 marginRight={badgeMargin}
-                fallback={
-                  role ? (
-                    <RoleBadgeIcon
-                      role={role}
-                      platform={platform || "KICK"}
-                      size={badgePx}
-                      style={{ marginInlineEnd: badgeMargin }}
-                    />
-                  ) : null
-                }
+                fallback={null}
               />
             );
           })
@@ -1256,8 +1247,8 @@ export function ChatBoxView({
     const identity = (
       <span style={islandNameStyle}>
         {initialNode}
-        {nameBlock}
         {badgesBlock}
+        {nameBlock}
         {message?.previewSample ? (
           <span style={{ fontSize: 9, letterSpacing: "0.04em", opacity: 0.6 }}>{t("chat.previewSample")}</span>
         ) : null}
