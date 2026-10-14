@@ -21,6 +21,14 @@ import { parseOverlayTheme, withAlpha } from "@/lib/overlayTheme";
 import { chromeLayoutClass, parseChromeLayout, parseEventLabelLayout, parseGoalLayout, parseViewerLayout } from "@/lib/widgetLayouts";
 import { SpinWheelView } from "@/components/widgets/SpinWheel";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
+import {
+  dedupeChatBadgeKeys,
+  isRoyalCompactTheme,
+  parseRoyalCompactSettings,
+  readChatThemeId,
+  royalBadgeGap,
+  royalCompactLayout,
+} from "@/lib/royalCompact";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
 import type { PollRuntime, PredictionRuntime } from "@/lib/interactiveWidgets";
 import { formatDuration, type TimerFrame } from "@/lib/timer";
@@ -563,14 +571,14 @@ function shortRoleLabel(type: string | null | undefined): "Mod" | "VIP" | null {
   return null;
 }
 
-function ChatBadgePill({ label }: { label: "Mod" | "VIP" }) {
+function ChatBadgePill({ label, size = 14 }: { label: "Mod" | "VIP"; size?: number }) {
   const vip = label === "VIP";
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
-        height: 14,
+        height: size,
         paddingInline: 4,
         borderRadius: 4,
         fontSize: 9,
@@ -673,6 +681,9 @@ function readableChatMessage(message: ChatMessage | null | undefined, index: num
     replyQuote: typeof message.replyQuote === "string" ? message.replyQuote : null,
   };
   if (Array.isArray(message.badgeList)) readable.badgeList = message.badgeList;
+  if (typeof message.avatarUrl === "string" && /^https:\/\//i.test(message.avatarUrl)) {
+    readable.avatarUrl = message.avatarUrl;
+  }
   if (typeof message.altText === "string" && message.altText.trim().length > 0) readable.altText = message.altText;
   if (typeof message.altAuthor === "string" && message.altAuthor.trim().length > 0) readable.altAuthor = message.altAuthor;
   if (message.previewSample) readable.previewSample = true;
@@ -838,6 +849,52 @@ function useChatStackShift(signature: string, reduced: boolean) {
 }
 
 
+function RoyalAvatar({
+  url,
+  size,
+  letter,
+  color,
+}: {
+  url: string | null;
+  size: number;
+  letter: string;
+  color: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const safe = url && /^https:\/\//i.test(url) && !failed ? url : null;
+  return (
+    <span
+      data-royal-avatar=""
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        border: "2px solid rgba(255,255,255,0.28)",
+        overflow: "hidden",
+        flex: "0 0 auto",
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(17, 20, 25, 0.88)",
+        color,
+        fontSize: Math.max(11, Math.round(size * 0.38)),
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      {safe ? (
+        <img
+          src={safe}
+          alt=""
+          onError={() => setFailed(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : (
+        letter
+      )}
+    </span>
+  );
+}
+
 /**
  * Chat Box renders viewer text messages ONLY. Stream activity (follows, subs,
  * cheers, raids, gifts) is deliberately never rendered here — those payloads
@@ -858,6 +915,9 @@ export function ChatBoxView({
   demo?: boolean;
 }) {
   const style = parseChatConfig(config);
+  const royal = isRoyalCompactTheme(readChatThemeId(config));
+  const royalSettings = parseRoyalCompactSettings(config);
+  const royalLayout = royalCompactLayout(royalSettings);
   const skin = widgetThemeSkin(parseWidgetThemeId(config));
   const accent = skin.accentColor ?? style.accentColor;
   const { messages } = useLiveChat(chat ?? null, style.maxMessages);
@@ -922,12 +982,13 @@ export function ChatBoxView({
     setEnteringId(fresh);
     const timer = window.setTimeout(() => {
       setEnteringId((current) => (current === fresh ? null : current));
-    }, 460);
+    }, royal ? royalLayout.animationMs : 460);
     return () => window.clearTimeout(timer);
-  }, [shownSignature, reducedMotion]);
+  }, [shownSignature, reducedMotion, royal, royalLayout.animationMs]);
 
-  const containerClass =
-    layout === "glass"
+  const containerClass = royal
+    ? "flex w-full min-w-0 max-w-[520px] flex-col items-start overflow-visible bg-transparent p-0"
+    : layout === "glass"
       ? "flex w-full min-w-[380px] max-w-[520px] flex-col overflow-hidden rounded-xl bg-slate-900/70 p-5 backdrop-blur-lg border border-white/10 shadow-2xl"
       : "flex w-full min-w-[380px] max-w-[520px] flex-col items-start overflow-visible rounded-2xl bg-transparent p-0";
 
@@ -1000,11 +1061,14 @@ export function ChatBoxView({
     const text = typeof message?.text === "string" ? message.text : "";
     const platform = typeof message?.platform === "string" ? message.platform : "";
     const platformKey = platform ? normalizePlatform(platform) : null;
-    const badges = Array.isArray(message?.badges)
+    const rawBadges = Array.isArray(message?.badges)
       ? message.badges.filter((role): role is string => typeof role === "string")
       : [];
+    const badges = royal ? dedupeChatBadgeKeys(rawBadges) : rawBadges;
+    const badgePx = royal ? royalLayout.badgeSize : 18;
+    const badgeMargin = royal ? 0 : 4;
     const entering = !leaving && !reducedMotion && message?.id === enteringId;
-    const motion = leaving ? "overlay-anim-fade-out" : entering ? "overlay-anim-fade" : "";
+    const motion = leaving ? "overlay-anim-fade-out" : entering ? (royal ? "overlay-royal-in" : "overlay-anim-fade") : "";
 
     const nameBlock = (
       <span dir="auto" style={{ color: message?.color ?? accent, fontWeight: 700, whiteSpace: "nowrap", ...skin.text }}>
@@ -1073,7 +1137,7 @@ export function ChatBoxView({
       if (label && !pillLabels.includes(label)) pillLabels.push(label);
     }
     const pillNodes = style.showBadges
-      ? pillLabels.map((label) => <ChatBadgePill key={label} label={label} />)
+      ? pillLabels.map((label) => <ChatBadgePill key={label} label={label} size={royal ? badgePx : 14} />)
       : [];
 
     // Kick: payload artwork first. Mod / VIP stay as short labels beside the name.
@@ -1096,8 +1160,8 @@ export function ChatBoxView({
                   key={`${type || "badge"}-${index}`}
                   role={role}
                   platform={platform || "KICK"}
-                  size={18}
-                  style={{ marginInlineEnd: 4 }}
+                  size={badgePx}
+                  style={{ marginInlineEnd: badgeMargin }}
                 />
               );
             }
@@ -1107,15 +1171,15 @@ export function ChatBoxView({
                 src={url}
                 label={label}
                 pixelated
-                size={18}
-                marginRight={4}
+                size={badgePx}
+                marginRight={badgeMargin}
                 fallback={
                   role ? (
                     <RoleBadgeIcon
                       role={role}
                       platform={platform || "KICK"}
-                      size={18}
-                      style={{ marginInlineEnd: 4 }}
+                      size={badgePx}
+                      style={{ marginInlineEnd: badgeMargin }}
                     />
                   ) : null
                 }
@@ -1130,8 +1194,8 @@ export function ChatBoxView({
               key={role}
               role={role}
               platform={platform || "TWITCH"}
-              size={18}
-              style={{ marginInlineEnd: 4 }}
+              size={badgePx}
+              style={{ marginInlineEnd: badgeMargin }}
               imageUrl={
                 platformKey === "TWITCH" ? (twitchBadgeUrls?.[TWITCH_BADGE_SET[role] ?? role] ?? null) : null
               }
@@ -1178,6 +1242,96 @@ export function ChatBoxView({
       </ReplyAlertFrame>
     );
 
+    if (royal) {
+      const visibleBadges = badgeNodes.filter(Boolean);
+      const badgeGap = royalBadgeGap(style.showBadges, visibleBadges.length);
+      const bubbleMax = royalLayout.avatar > 0 ? `calc(100% - ${royalLayout.avatar + royalLayout.gap}px)` : "100%";
+      const lineText: React.CSSProperties = {
+        fontSize: royalLayout.fontSize,
+        lineHeight: 1.25,
+        unicodeBidi: royalLayout.unicodeBidi,
+        maxWidth: "100%",
+        minWidth: 0,
+        overflowWrap: royalLayout.overflowWrap,
+        wordBreak: "break-word",
+        whiteSpace: royalLayout.whiteSpace,
+      };
+      return replyWrap(
+        <div
+          data-chat-id={leaving ? undefined : message?.id}
+          data-chat-theme="royal-compact"
+          data-show-avatar={royalSettings.showAvatar ? "true" : "false"}
+          className={`overlay-chat-row ${motion}`}
+          dir={royalLayout.rowDirection}
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "flex-start",
+            gap: royalLayout.gap,
+            width: "fit-content",
+            maxWidth: "100%",
+            minWidth: 0,
+            background: "transparent",
+            boxShadow: "none",
+          }}
+        >
+          {royalSettings.showAvatar ? (
+            <RoyalAvatar
+              url={typeof message?.avatarUrl === "string" ? message.avatarUrl : null}
+              size={royalLayout.avatar}
+              letter={chatInitial(author)}
+              color={message?.color ?? "#F4F1EA"}
+            />
+          ) : null}
+          <div
+            dir="auto"
+            style={{
+              boxSizing: "border-box",
+              width: royalLayout.width,
+              maxWidth: bubbleMax,
+              minWidth: 0,
+              minHeight: royalLayout.minHeight,
+              padding: royalLayout.padding,
+              borderRadius: royalLayout.radius,
+              background: royalLayout.background,
+              boxShadow: royalLayout.shadow,
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              columnGap: 6,
+              rowGap: 2,
+              overflowX: royalLayout.overflowX,
+              overflowY: "visible",
+            }}
+          >
+            {visibleBadges.length > 0 ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: badgeGap, flexShrink: 0, maxWidth: "100%" }}>
+                {visibleBadges}
+              </span>
+            ) : null}
+            {style.showPlatform ? platformBlock : null}
+            <span dir={royalLayout.textDirection} style={{ ...lineText, color: message?.color ?? "#F4F1EA", fontWeight: 700 }}>
+              <ChatLineText
+                text={author}
+                {...(message?.altAuthor ? { altText: message.altAuthor } : {})}
+                reduced={reducedMotion}
+                render={(value) => value}
+              />
+            </span>
+            <span dir={royalLayout.textDirection} style={{ ...lineText, color: style.textColor, fontWeight: 500 }}>
+              <ChatLineText
+                text={text}
+                {...(message?.altText ? { altText: message.altText } : {})}
+                reduced={reducedMotion}
+                render={renderChatText}
+              />
+            </span>
+          </div>
+        </div>,
+      );
+    }
+
     if (layout === "island") {
       return replyWrap(
         <div
@@ -1222,10 +1376,12 @@ export function ChatBoxView({
       className={containerClass}
       style={{
         boxSizing: "border-box",
-        gap: layout === "island" ? "0px" : layout === "glass" ? "12px" : `${style.messageGap}px`,
+        gap: royal ? `${royalLayout.messageGap}px` : layout === "island" ? "0px" : layout === "glass" ? "12px" : `${style.messageGap}px`,
         fontFamily: skin.fontFamily ?? style.fontFamily,
         color: style.textColor,
-        fontSize: `${style.fontSize}px`,
+        fontSize: `${royal ? royalLayout.fontSize : style.fontSize}px`,
+        background: royal ? "transparent" : undefined,
+        overflow: royal ? "visible" : undefined,
       }}
     >
       {shownChat.map((message) => renderMessage(message, false))}

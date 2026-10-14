@@ -1,21 +1,23 @@
-import { deliverKickChat } from "@/lib/kickChatDeliver";
-import { getKickAccessToken } from "@/lib/platformTokens.server";
+import { deliverKickChat, redactKickError, selectCylixBotToken } from "@/lib/kickChatDeliver";
+import { getCylixBotChatToken } from "@/lib/platformTokens.server";
 
-async function kickToken(userId: string): Promise<string | null> {
-  return getKickAccessToken(userId, { requireScopes: ["chat:write"] });
-}
-
-/** Posts a chat line as the connected Kick user. Bot type is only a fallback. */
+/**
+ * Posts as @CylixBot into the partner channel (`type: "user"` + that channel's broadcaster id).
+ * The studio user's Kick token is not read. A missing or rejected CylixBot token does not post.
+ */
 export async function sendKickChatMessage(
-  userId: string,
+  _userId: string,
   broadcasterUserId: string,
   content: string,
   replyToMessageId?: string | null,
   options?: { userOnly?: boolean },
 ): Promise<boolean> {
-  const token = await kickToken(userId);
+  const token = selectCylixBotToken(await getCylixBotChatToken(), null);
   if (!token) {
-    console.warn("[chat-bot] kick send skipped — no access token", { userId, broadcasterUserId });
+    console.warn("[chat-bot] kick send skipped — CylixBot token missing", {
+      broadcasterUserId,
+      hint: "Set KICK_BOT_ACCESS_TOKEN or KICK_BOT_PLATFORM_USER_ID",
+    });
     return false;
   }
   try {
@@ -34,7 +36,8 @@ export async function sendKickChatMessage(
     });
     return true;
   } catch (error) {
-    console.error("[chat-bot] kick chat send threw", error);
+    const message = error instanceof Error ? error.message : "send_failed";
+    console.error("[chat-bot] kick chat send threw", redactKickError(message));
     return false;
   }
 }

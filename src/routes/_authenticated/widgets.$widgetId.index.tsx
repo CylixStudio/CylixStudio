@@ -23,10 +23,19 @@ import { STANDALONE_TOOLS } from "@/lib/standaloneTools";
 import { supabase } from "@/lib/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { syncGoalFollowers } from "@/lib/goals.functions";
-import { notePlanError } from "@/components/subscription/upgradePlan";
+import { notePlanError, requestUpgrade } from "@/components/subscription/upgradePlan";
+import { ChatThemePicker } from "@/components/widgets/ChatThemePicker";
 import { saveWidgetSettings } from "@/lib/widgets.functions";
 import { useWidgetStream } from "@/hooks/useWidgetStream";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import {
+  isRoyalCompactTheme,
+  parseRoyalCompactSettings,
+  readChatThemeId,
+  ROYAL_COMPACT_THEME_ID,
+  type RoyalCompactSettings,
+} from "@/lib/royalCompact";
 import { parseOverlayTheme } from "@/lib/overlayTheme";
 import { useLanguage } from "@/lib/i18n";
 import { ensureWidgetSubathon, widgetErrorText } from "@/lib/createWidget";
@@ -107,6 +116,8 @@ function WidgetBuilder() {
   const queryClient = useQueryClient();
   const { t } = useLanguage();
   const { data: workspace } = useWorkspace(userId);
+  const subscription = useSubscription(userId);
+  const proActive = subscription.data?.isActive === true;
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -344,6 +355,11 @@ function WidgetBuilder() {
   };
 
   const set = (key: string, value: unknown) => setConfig((prev) => ({ ...prev, [key]: value }));
+  const patchRoyal = (partial: Partial<RoyalCompactSettings>) =>
+    setConfig((prev) => ({
+      ...prev,
+      royalCompact: { ...parseRoyalCompactSettings(prev), ...partial },
+    }));
 
 
   const scheduleStyle =
@@ -668,26 +684,30 @@ function WidgetBuilder() {
 
             {widget.type === "CHAT_BOX" ? (
               <div className="space-y-4 rounded-xl border border-border bg-background p-4">
-                <label className="block">
-                  <span className={labelClass}>
-                    {"Message layout style"}
-                  </span>
-                  <DarkSelect
-                    className="mt-2"
-                    value={parseChatConfig(config).chatLayout}
-                    onValueChange={(next) => set("chatLayout", next)}
-                    options={CHAT_LAYOUTS.map((entry) => ({
-                      value: entry.value,
-                      label: entry.label,
-                    }))}
-                  />
+                <div className="block">
+                  <span className={labelClass}>{"Message layout style"}</span>
+                  <div className="mt-2">
+                    <ChatThemePicker
+                      layout={parseChatConfig(config).chatLayout}
+                      royalSelected={isRoyalCompactTheme(readChatThemeId(config))}
+                      onSelectLayout={(next) =>
+                        setConfig((prev) => ({ ...prev, chatLayout: next, themeId: "dark-glass" }))
+                      }
+                      onSelectRoyal={() => {
+                        if (!proActive) {
+                          requestUpgrade();
+                          return;
+                        }
+                        set("themeId", ROYAL_COMPACT_THEME_ID);
+                      }}
+                    />
+                  </div>
                   <span className="mt-1 block text-[10px] text-muted-foreground">
-                    {
-                      CHAT_LAYOUTS.find((e) => e.value === parseChatConfig(config).chatLayout)
-                        ?.hint
-                    }
+                    {isRoyalCompactTheme(readChatThemeId(config))
+                      ? t("chat.theme.royalHint")
+                      : CHAT_LAYOUTS.find((e) => e.value === parseChatConfig(config).chatLayout)?.hint}
                   </span>
-                </label>
+                </div>
 
                 <label className="block">
                   <span className={`${labelClass} inline-flex items-center gap-1.5`}>
@@ -707,7 +727,10 @@ function WidgetBuilder() {
                 <label className="block">
                   <span className={`${labelClass} inline-flex items-center gap-1.5`}>
                     {"Message spacing"} (
-                    {parseChatConfig(config).messageGap}px)
+                    {isRoyalCompactTheme(readChatThemeId(config))
+                      ? parseRoyalCompactSettings(config).messageGap
+                      : parseChatConfig(config).messageGap}
+                    px)
                     <InfoTip text={t("tooltips.widget.chatGap")} />
                   </span>
                   <input
@@ -715,23 +738,42 @@ function WidgetBuilder() {
                     min={4}
                     max={20}
                     className="mt-3 w-full accent-primary"
-                    value={parseChatConfig(config).messageGap}
-                    onChange={(event) => set("messageGap", Number(event.target.value))}
+                    value={
+                      isRoyalCompactTheme(readChatThemeId(config))
+                        ? parseRoyalCompactSettings(config).messageGap
+                        : parseChatConfig(config).messageGap
+                    }
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (isRoyalCompactTheme(readChatThemeId(config))) patchRoyal({ messageGap: next });
+                      else set("messageGap", next);
+                    }}
                   />
                 </label>
 
                 <label className="block">
                   <span className={labelClass}>
                     {"Text size"} (
-                    {Math.min(28, Math.max(12, parseChatConfig(config).fontSize))}px)
+                    {isRoyalCompactTheme(readChatThemeId(config))
+                      ? parseRoyalCompactSettings(config).fontSize
+                      : Math.min(28, Math.max(12, parseChatConfig(config).fontSize))}
+                    px)
                   </span>
                   <input
                     type="range"
                     min={12}
                     max={28}
                     className="mt-3 w-full accent-primary"
-                    value={Math.min(28, Math.max(12, parseChatConfig(config).fontSize))}
-                    onChange={(event) => set("fontSize", Number(event.target.value))}
+                    value={
+                      isRoyalCompactTheme(readChatThemeId(config))
+                        ? parseRoyalCompactSettings(config).fontSize
+                        : Math.min(28, Math.max(12, parseChatConfig(config).fontSize))
+                    }
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (isRoyalCompactTheme(readChatThemeId(config))) patchRoyal({ fontSize: next });
+                      else set("fontSize", next);
+                    }}
                   />
                 </label>
 
@@ -750,6 +792,58 @@ function WidgetBuilder() {
                   checked={parseChatConfig(config).showBadges}
                   onChange={(next) => set("showBadges", next)}
                 />
+
+                {isRoyalCompactTheme(readChatThemeId(config)) ? (
+                  <>
+                    <ToggleField
+                      label={t("chat.theme.showAvatar")}
+                      checked={parseRoyalCompactSettings(config).showAvatar}
+                      onChange={(next) => patchRoyal({ showAvatar: next })}
+                    />
+                    <label className="block">
+                      <span className={labelClass}>{t("chat.theme.density")}</span>
+                      <DarkSelect
+                        className="mt-2"
+                        value={parseRoyalCompactSettings(config).density}
+                        onValueChange={(next) =>
+                          patchRoyal({ density: next === "normal" ? "normal" : "compact" })
+                        }
+                        options={[
+                          { value: "compact", label: t("chat.theme.density.compact") },
+                          { value: "normal", label: t("chat.theme.density.normal") },
+                        ]}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className={labelClass}>
+                        {t("chat.theme.opacity")} ({parseRoyalCompactSettings(config).bubbleOpacity}%)
+                      </span>
+                      <input
+                        type="range"
+                        min={40}
+                        max={100}
+                        className="mt-3 w-full accent-primary"
+                        value={parseRoyalCompactSettings(config).bubbleOpacity}
+                        onChange={(event) => patchRoyal({ bubbleOpacity: Number(event.target.value) })}
+                      />
+                    </label>
+                    {parseRoyalCompactSettings(config).showAvatar ? (
+                      <label className="block">
+                        <span className={labelClass}>
+                          {t("chat.theme.avatarSize")} ({parseRoyalCompactSettings(config).avatarSize}px)
+                        </span>
+                        <input
+                          type="range"
+                          min={24}
+                          max={64}
+                          className="mt-3 w-full accent-primary"
+                          value={parseRoyalCompactSettings(config).avatarSize}
+                          onChange={(event) => patchRoyal({ avatarSize: Number(event.target.value) })}
+                        />
+                      </label>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             ) : null}
 

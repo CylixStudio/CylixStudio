@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { badgeAssetUrl, type KickBadge } from "@/hooks/useKickBadges";
 import { applyKickPoll, applyKickPrediction, type PollRuntime, type PredictionRuntime } from "@/lib/interactiveWidgets";
+import { readChatAvatarUrl } from "@/lib/royalCompact";
 import { readReplyMeta } from "@/lib/replyAlert";
 
 export type ChatMessage = {
@@ -12,6 +13,8 @@ export type ChatMessage = {
   badges: string[];
   /** Full, ordered badge objects exactly as the provider sent them (Kick). */
   badgeList?: KickBadge[];
+  /** Platform profile image when the payload includes one. */
+  avatarUrl?: string | null;
   text: string;
   /** Second language already on the message. Never fetched from a translation API. */
   altText?: string;
@@ -131,6 +134,7 @@ export function useLiveChat(
             },
             Date.now(),
           );
+          const twitchAvatar = readChatAvatarUrl(tags);
           push.current({
             id: tags["id"] ?? nextId(),
             platform: "TWITCH",
@@ -140,6 +144,7 @@ export function useLiveChat(
               .split(",")
               .map((badge) => badge.split("/")[0] ?? "")
               .filter(Boolean),
+            ...(twitchAvatar ? { avatarUrl: twitchAvatar } : {}),
             text: match[3] ?? "",
             ...reply,
           });
@@ -244,6 +249,7 @@ export function useLiveChat(
                 imageUrl: badgeAssetUrl(badge),
               }),
             );
+            const pinAvatar = readChatAvatarUrl(pinPayload.sender);
             setPinnedLive({
               id: pinPayload.id ?? nextId(),
               platform: "KICK",
@@ -251,6 +257,7 @@ export function useLiveChat(
               color: pinPayload.sender?.identity?.color ?? null,
               badges: pinBadges.map((badge) => badge.type).filter(Boolean),
               badgeList: pinBadges,
+              ...(pinAvatar ? { avatarUrl: pinAvatar } : {}),
               text: pinPayload.content,
               ...pinReply,
             });
@@ -285,6 +292,7 @@ export function useLiveChat(
           } catch {
             /* ignore malformed payloads */
           }
+          const kickAvatar = readChatAvatarUrl(payload.sender);
           const message: ChatMessage = {
             id: payload.id ?? nextId(),
             platform: "KICK",
@@ -292,6 +300,7 @@ export function useLiveChat(
             color: payload.sender?.identity?.color ?? null,
             badges: badgeList.map((badge) => badge.type).filter(Boolean),
             badgeList,
+            ...(kickAvatar ? { avatarUrl: kickAvatar } : {}),
             text,
             ...replyFields(data, Date.now()),
           };

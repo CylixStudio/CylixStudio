@@ -370,3 +370,17 @@ export function rememberKickEvent(messageId: string | null): void {
 export function resetKickEventMemory(): void {
   seenEvents.clear();
 }
+
+const CYLIX_BOT_USERNAME = "cylixbot";
+
+/** True when this chat line was sent by @CylixBot, so commands must not run again. */
+export function isCylixBotChatAuthor(
+  username: string,
+  senderUserId: string | null,
+  botUserId?: string | null,
+): boolean {
+  const name = username.trim().replace(/^@+/, "").toLowerCase();
+  if (name === CYLIX_BOT_USERNAME) return true;
+  const configured = botUserId?.trim() ?? "";
+  return Boolean(configured && senderUserId && senderUserId === configured);
+}

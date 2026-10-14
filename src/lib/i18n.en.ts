@@ -1320,4 +1320,12 @@ export const EN = {
   "widget.prediction.lastEvent": "Last event",
   "widget.prediction.points": "Points",
   "widget.prediction.failed": "Could not read the prediction.",
+  "chat.theme.royal": "Royal Compact",
+  "chat.theme.royalHint": "Charcoal bubbles with the avatar outside the bubble.",
+  "chat.theme.showAvatar": "Show account photo",
+  "chat.theme.density": "Density",
+  "chat.theme.density.compact": "Compact",
+  "chat.theme.density.normal": "Normal",
+  "chat.theme.opacity": "Bubble opacity",
+  "chat.theme.avatarSize": "Avatar size",
 } as const;

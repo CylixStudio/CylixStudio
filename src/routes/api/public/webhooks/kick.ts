@@ -4,6 +4,7 @@ import {
   chatLineNeedsCommandModules,
   chatTextNeedsHandlers,
   extractKickChat,
+  isCylixBotChatAuthor,
   isKickChatEvent,
   kickEventAlreadyHandled,
   normalizeKickEvent,
@@ -171,6 +172,11 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
 
           if (isKickChatEvent(type, chat)) {
             const { broadcasterId, text, username, senderId, senderUserId, identityBadges } = chat;
+            if (isCylixBotChatAuthor(username, senderUserId, process.env["KICK_BOT_PLATFORM_USER_ID"])) {
+              rememberKickEvent(messageId);
+              logOutcome({ messageId, outcome: "intentionally_ignored", reason: "bot_author", eventType: type });
+              return jsonResponse({ status: "ignored", reason: "bot_author" });
+            }
             if (!broadcasterId) {
               logOutcome({ messageId, outcome: "intentionally_ignored", reason: "no_broadcaster", eventType: type });
               return jsonResponse({ status: "ignored", reason: "no_broadcaster" });

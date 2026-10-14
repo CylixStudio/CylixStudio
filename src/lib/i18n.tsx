@@ -1389,6 +1389,14 @@ const DICT = {
   "widget.prediction.lastEvent": "آخر حدث",
   "widget.prediction.points": "نقاط",
   "widget.prediction.failed": "تعذر قراءة التوقع.",
+  "chat.theme.royal": "Royal Compact",
+  "chat.theme.royalHint": "فقاعات فحمية شفافة وصورة الحساب خارج الفقاعة.",
+  "chat.theme.showAvatar": "إظهار صورة الحساب",
+  "chat.theme.density": "الكثافة",
+  "chat.theme.density.compact": "مضغوط",
+  "chat.theme.density.normal": "عادي",
+  "chat.theme.opacity": "شفافية الفقاعة",
+  "chat.theme.avatarSize": "حجم الصورة",
 } as const;
 
 export type TranslationKey = keyof typeof DICT;

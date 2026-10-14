@@ -1,4 +1,5 @@
 import { DEFAULT_OVERLAY_THEME } from "@/lib/overlayTheme";
+import { ROYAL_COMPACT_THEME_ID } from "@/lib/royalCompact";
 import { FREE_PLAN_LIMITS, PRO_ONLY_WIDGET_TYPES } from "@/lib/plans";
 import {
   DEFAULT_STYLE,
@@ -68,6 +69,7 @@ export function widgetAppearanceRequiresPro(type: string, config: Record<string,
   const css = config["customCss"] ?? config["css"];
   if (typeof css === "string" && css.trim()) return true;
   const themeId = config["themeId"];
+  if (themeId === ROYAL_COMPACT_THEME_ID) return true;
   if (typeof themeId === "string" && themeId.trim() && themeId !== "dark-glass") return true;
   const defaults = defaultWidgetAppearance(type);
   for (const key of APPEARANCE_KEYS) {
@@ -76,6 +78,17 @@ export function widgetAppearanceRequiresPro(type: string, config: Record<string,
     if (String(config[key]).trim().toLowerCase() !== String(defaults[key]).trim().toLowerCase()) return true;
   }
   return false;
+}
+
+/** Free (including expired Pro) cannot persist a premium theme. Pro skips this gate. */
+export function widgetConfigBlockedForFree(type: string, config: Record<string, unknown>): boolean {
+  return isProOnlyWidgetType(type) || widgetAppearanceRequiresPro(type, config);
+}
+
+/** Same check the widget save handler uses before writing config JSON. */
+export function widgetSaveAllowed(isPro: boolean, type: string, config: Record<string, unknown>): boolean {
+  if (isPro) return true;
+  return !widgetConfigBlockedForFree(type, config);
 }
 
 export function eventLabelsOverFreeLimit(config: Record<string, unknown>): boolean {
@@ -98,6 +111,7 @@ export function clampFreeWidgetConfig(type: string, config: unknown): Record<str
   delete next["customCss"];
   delete next["css"];
   next["themeId"] = "dark-glass";
+  if ("royalCompact" in record) next["royalCompact"] = record["royalCompact"];
   if (type === "EVENT_LABELS" && Array.isArray(next["labels"])) {
     next["labels"] = next["labels"].slice(0, FREE_PLAN_LIMITS.eventLabels);
   }

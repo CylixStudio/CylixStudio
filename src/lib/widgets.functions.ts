@@ -2,8 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import {
   eventLabelsOverFreeLimit,
-  isProOnlyWidgetType,
-  widgetAppearanceRequiresPro,
+  widgetSaveAllowed,
 } from "@/lib/planLimits";
 import { FREE_PLAN_LIMITS } from "@/lib/plans";
 import { requireSupabaseAuth } from "@/lib/supabase/auth-middleware";
@@ -44,8 +43,7 @@ export const saveWidgetSettings = createServerFn({ method: "POST" })
     if (!existing) throw new Error("Widget not found");
 
     const isPro = await userHasActivePro(supabase, userId);
-    if (!isPro && isProOnlyWidgetType(existing.type)) throw new Error("pro_required");
-    if (!isPro && widgetAppearanceRequiresPro(existing.type, data.config)) throw new Error("pro_required");
+    if (!widgetSaveAllowed(isPro, existing.type, data.config)) throw new Error("pro_required");
     if (!isPro && existing.type === "EVENT_LABELS" && eventLabelsOverFreeLimit(data.config)) {
       throw new Error("free_limit_labels");
     }
@@ -102,8 +100,7 @@ export const createOwnedWidget = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     if (!WIDGET_TYPE_VALUES.has(data.type as WidgetType)) throw new Error("Unknown widget type");
     const isPro = await userHasActivePro(context.supabase, context.userId);
-    if (!isPro && isProOnlyWidgetType(data.type)) throw new Error("pro_required");
-    if (!isPro && widgetAppearanceRequiresPro(data.type, data.config)) throw new Error("pro_required");
+    if (!widgetSaveAllowed(isPro, data.type, data.config)) throw new Error("pro_required");
     const config =
       !isPro && data.type === "EVENT_LABELS" && Array.isArray(data.config["labels"])
         ? { ...data.config, labels: data.config["labels"].slice(0, FREE_PLAN_LIMITS.eventLabels) }
