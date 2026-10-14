@@ -925,3 +925,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .overlay-prediction-win {
   animation: overlay-prediction-win 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+/* Speech-bubble theme only. Wash always starts on the left and dies before mid-card. */
+[data-chat-theme="bubble"] [data-chat-accent-wash] {
+  background-image: linear-gradient(
+    to right,
+    var(--bubble-accent-wash, transparent) 0%,
+    transparent 36%
+  );
+}

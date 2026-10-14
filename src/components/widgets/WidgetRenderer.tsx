@@ -573,6 +573,53 @@ function chatInitial(author: string) {
   return first || "?";
 }
 
+/** Neutral ring only when that message has no hex accent of its own. */
+const BUBBLE_ACCENT_FALLBACK = "#f2f2f2";
+const BUBBLE_ACCENT_HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+function bubbleUserAccent(color: string | null | undefined) {
+  if (typeof color === "string" && BUBBLE_ACCENT_HEX.test(color.trim())) return color.trim();
+  return BUBBLE_ACCENT_FALLBACK;
+}
+
+function BubbleAvatar({ url, letter }: { url: string | null; letter: string }) {
+  const [failed, setFailed] = useState(false);
+  const safe = url && /^https:\/\//i.test(url) && !failed ? url : null;
+  const size = 38;
+  return (
+    <span
+      data-chat-avatar=""
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        border: "2px solid var(--bubble-accent, #f2f2f2)",
+        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.35)",
+        overflow: "hidden",
+        flex: "0 0 auto",
+        display: "grid",
+        placeItems: "center",
+        background: "#161616",
+        color: "#f2f2f2",
+        fontSize: 14,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      {safe ? (
+        <img
+          src={safe}
+          alt=""
+          onError={() => setFailed(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : (
+        letter
+      )}
+    </span>
+  );
+}
+
 function shortRoleLabel(type: string | null | undefined): "Mod" | "VIP" | null {
   const role = normalizeBadgeRole(String(type ?? ""));
   if (role === "moderator") return "Mod";
@@ -1358,6 +1405,102 @@ export function ChatBoxView({
       );
     }
 
+    if (layout === "bubble") {
+      const userAccent = bubbleUserAccent(message?.color);
+      return replyWrap(
+        <div
+          dir="ltr"
+          data-chat-id={leaving ? undefined : message?.id}
+          data-chat-theme="bubble"
+          className={`overlay-chat-row ${motion}`}
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            direction: "ltr",
+            alignItems: "flex-start",
+            justifyContent: "flex-start",
+            gap: 8,
+            width: "fit-content",
+            maxWidth: "100%",
+            minWidth: 0,
+            background: "transparent",
+            border: "none",
+            boxShadow: "none",
+            ["--bubble-accent" as string]: userAccent,
+          }}
+        >
+          <BubbleAvatar
+            url={typeof message?.avatarUrl === "string" ? message.avatarUrl : null}
+            letter={chatInitial(author)}
+          />
+          <div
+            dir="ltr"
+            data-chat-bubble=""
+            style={{
+              position: "relative",
+              isolation: "isolate",
+              boxSizing: "border-box",
+              direction: "ltr",
+              width: "fit-content",
+              maxWidth: "min(460px, 100%)",
+              minWidth: 0,
+              padding: "8px 12px 8px 16px",
+              borderRadius: 18,
+              background: "rgba(10, 10, 12, 0.82)",
+              border: "1px solid rgba(242, 242, 242, 0.18)",
+              boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.12)",
+              overflow: "hidden",
+            }}
+          >
+            <span
+              aria-hidden
+              data-chat-accent=""
+              style={{
+                position: "absolute",
+                left: 0,
+                right: "auto",
+                top: 9,
+                bottom: 9,
+                width: 5,
+                borderRadius: "0 10px 10px 0",
+                background: "var(--bubble-accent, #f2f2f2)",
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
+            />
+            <span
+              aria-hidden
+              data-chat-accent-wash=""
+              style={{
+                position: "absolute",
+                inset: 0,
+                ["--bubble-accent-wash" as string]: withAlpha(userAccent, 24),
+                pointerEvents: "none",
+                zIndex: 0,
+              }}
+            />
+            <span dir="ltr" style={{ position: "relative", zIndex: 2, display: "block", minWidth: 0, direction: "ltr" }}>
+              <span
+                dir="ltr"
+                style={{ ...islandNameStyle, direction: "ltr", flexWrap: "wrap", maxWidth: "100%" }}
+              >
+                {badgesBlock}
+                {nameBlock}
+                {message?.previewSample ? (
+                  <span style={{ fontSize: 9, letterSpacing: "0.04em", opacity: 0.6 }}>{t("chat.previewSample")}</span>
+                ) : null}
+                {platformBlock}
+                <span style={{ color: style.textColor, opacity: 0.7, ...skin.text }}>:</span>
+              </span>
+              <span className="ms-1.5" dir="auto" style={textStyle}>
+                <ChatLineText text={text} altText={message?.altText} reduced={reducedMotion} render={renderChatText} />
+              </span>
+            </span>
+          </div>
+        </div>,
+      );
+    }
+
     if (layout === "island") {
       return replyWrap(
         <div
@@ -1413,6 +1556,7 @@ export function ChatBoxView({
         fontSize: `${royal ? royalLayout.fontSize : style.fontSize}px`,
         background: royal ? "transparent" : undefined,
         overflow: royal ? "visible" : undefined,
+        direction: !royal && layout === "bubble" ? "ltr" : undefined,
       }}
     >
       {shownChat.map((message) => renderMessage(message, false))}
