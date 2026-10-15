@@ -585,23 +585,24 @@ function bubbleUserAccent(color: string | null | undefined) {
 function BubbleAvatar({ url, letter }: { url: string | null; letter: string }) {
   const [failed, setFailed] = useState(false);
   const safe = url && /^https:\/\//i.test(url) && !failed ? url : null;
-  const size = 38;
+  const size = 34;
   return (
     <span
       data-chat-avatar=""
       style={{
         width: size,
         height: size,
+        boxSizing: "border-box",
         borderRadius: 999,
-        border: "2px solid var(--bubble-accent, #f2f2f2)",
-        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.35)",
+        border: "3px solid var(--bubble-accent, #f2f2f2)",
+        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.28)",
         overflow: "hidden",
         flex: "0 0 auto",
         display: "grid",
         placeItems: "center",
-        background: "#161616",
+        background: "#121214",
         color: "#f2f2f2",
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: 700,
         lineHeight: 1,
       }}
@@ -1417,9 +1418,9 @@ export function ChatBoxView({
             display: "flex",
             flexDirection: "row",
             direction: "ltr",
-            alignItems: "flex-start",
+            alignItems: "center",
             justifyContent: "flex-start",
-            gap: 8,
+            gap: 6,
             width: "fit-content",
             maxWidth: "100%",
             minWidth: 0,
@@ -1442,57 +1443,76 @@ export function ChatBoxView({
               boxSizing: "border-box",
               direction: "ltr",
               width: "fit-content",
-              maxWidth: "min(460px, 100%)",
+              maxWidth: "min(520px, 100%)",
               minWidth: 0,
-              padding: "8px 12px 8px 16px",
-              borderRadius: 18,
-              background: "rgba(10, 10, 12, 0.82)",
-              border: "1px solid rgba(242, 242, 242, 0.18)",
-              boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.12)",
-              overflow: "hidden",
+              minHeight: 34,
+              padding: 0,
+              background: "none",
+              border: "none",
+              borderRadius: 0,
+              boxShadow: "none",
+              overflow: "visible",
             }}
           >
             <span
               aria-hidden
-              data-chat-accent=""
+              data-chat-arc=""
               style={{
                 position: "absolute",
                 left: 0,
-                right: "auto",
-                top: 9,
-                bottom: 9,
-                width: 5,
-                borderRadius: "0 10px 10px 0",
-                background: "var(--bubble-accent, #f2f2f2)",
+                top: 0,
+                bottom: 0,
+                width: 14,
+                boxSizing: "border-box",
+                borderTop: "3px solid var(--bubble-accent, #f2f2f2)",
+                borderBottom: "3px solid var(--bubble-accent, #f2f2f2)",
+                borderLeft: "3px solid var(--bubble-accent, #f2f2f2)",
+                borderRight: "0 solid transparent",
+                borderRadius: "50% 0 0 50%",
+                background: "transparent",
                 pointerEvents: "none",
-                zIndex: 1,
+                zIndex: 2,
               }}
             />
             <span
               aria-hidden
-              data-chat-accent-wash=""
+              data-chat-fill=""
               style={{
                 position: "absolute",
-                inset: 0,
-                ["--bubble-accent-wash" as string]: withAlpha(userAccent, 24),
+                top: 1,
+                bottom: 1,
+                left: 3,
+                right: 0,
+                borderRadius: "12px 0 0 12px",
+                backgroundImage: `linear-gradient(to right, ${withAlpha(userAccent, 48)} 0px, ${withAlpha(userAccent, 16)} 28%, transparent min(180px, 100%)), linear-gradient(to right, rgba(5, 7, 11, 0.88) 0px, rgba(5, 7, 11, 0.5) 32%, rgba(5, 7, 11, 0) min(190px, 100%))`,
                 pointerEvents: "none",
                 zIndex: 0,
               }}
             />
-            <span dir="ltr" style={{ position: "relative", zIndex: 2, display: "block", minWidth: 0, direction: "ltr" }}>
-              <span
-                dir="ltr"
-                style={{ ...islandNameStyle, direction: "ltr", flexWrap: "wrap", maxWidth: "100%" }}
-              >
-                {badgesBlock}
-                {nameBlock}
-                {message?.previewSample ? (
-                  <span style={{ fontSize: 9, letterSpacing: "0.04em", opacity: 0.6 }}>{t("chat.previewSample")}</span>
-                ) : null}
-                {platformBlock}
-                <span style={{ color: style.textColor, opacity: 0.7, ...skin.text }}>:</span>
-              </span>
-              <span className="ms-1.5" dir="auto" style={textStyle}>
+            <span
+              dir="ltr"
+              style={{
+                position: "relative",
+                zIndex: 1,
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                columnGap: 6,
+                rowGap: 2,
+                direction: "ltr",
+                minHeight: 34,
+                padding: "4px 2px 4px 18px",
+                maxWidth: "100%",
+              }}
+            >
+              {badgesBlock}
+              {platformBlock}
+              {nameBlock}
+              {message?.previewSample ? (
+                <span style={{ fontSize: 9, letterSpacing: "0.04em", opacity: 0.6 }}>{t("chat.previewSample")}</span>
+              ) : null}
+              <span style={{ color: "#ffffff", fontWeight: 500 }}>:</span>
+              <span dir="auto" style={{ ...textStyle, color: "#ffffff", fontWeight: 500 }}>
                 <ChatLineText text={text} altText={message?.altText} reduced={reducedMotion} render={renderChatText} />
               </span>
             </span>
