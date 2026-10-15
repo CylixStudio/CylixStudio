@@ -15,6 +15,7 @@ import {
   parseViewerCounterConfig,
   parsePollConfig,
   parsePredictionConfig,
+  CHAT_LAYOUTS,
 } from "@/lib/widgets";
 
 const APPEARANCE_KEYS = [
@@ -74,6 +75,8 @@ export function widgetAppearanceRequiresPro(type: string, config: Record<string,
   const defaults = defaultWidgetAppearance(type);
   for (const key of APPEARANCE_KEYS) {
     if (!(key in config) || config[key] == null || config[key] === "") continue;
+    // Built-in chat layouts, including Speech Bubbles, stay free. Royal Compact is the Pro theme.
+    if (key === "chatLayout" && CHAT_LAYOUTS.some((entry) => entry.value === config[key])) continue;
     if (!(key in defaults) || defaults[key] == null || defaults[key] === "") continue;
     if (String(config[key]).trim().toLowerCase() !== String(defaults[key]).trim().toLowerCase()) return true;
   }
@@ -111,6 +114,8 @@ export function clampFreeWidgetConfig(type: string, config: unknown): Record<str
   delete next["customCss"];
   delete next["css"];
   next["themeId"] = "dark-glass";
+  // Speech Bubbles is a free layout and wins over a leftover Royal theme id.
+  if (record["chatLayout"] === "bubble") next["chatLayout"] = "bubble";
   if ("royalCompact" in record) next["royalCompact"] = record["royalCompact"];
   if (type === "EVENT_LABELS" && Array.isArray(next["labels"])) {
     next["labels"] = next["labels"].slice(0, FREE_PLAN_LIMITS.eventLabels);

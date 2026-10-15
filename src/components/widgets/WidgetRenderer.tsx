@@ -32,7 +32,7 @@ import { SpinWheelView } from "@/components/widgets/SpinWheel";
 import { parseWidgetThemeId, widgetThemeSkin } from "@/lib/widgetThemes";
 import {
   dedupeChatBadgeKeys,
-  isRoyalCompactTheme,
+  chatUsesRoyalCompact,
   parseRoyalCompactSettings,
   readChatThemeId,
   royalBadgeGap,
@@ -578,14 +578,18 @@ const BUBBLE_ACCENT_FALLBACK = "#f2f2f2";
 const BUBBLE_ACCENT_HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 function bubbleUserAccent(color: string | null | undefined) {
-  if (typeof color === "string" && BUBBLE_ACCENT_HEX.test(color.trim())) return color.trim();
+  if (typeof color !== "string") return BUBBLE_ACCENT_FALLBACK;
+  const value = color.trim();
+  if (BUBBLE_ACCENT_HEX.test(value)) return value;
+  if (/^#[0-9a-f]{8}$/i.test(value)) return value.slice(0, 7);
+  if (/^(rgb|hsl)a?\(/i.test(value)) return value;
   return BUBBLE_ACCENT_FALLBACK;
 }
 
 function BubbleAvatar({ url, letter }: { url: string | null; letter: string }) {
   const [failed, setFailed] = useState(false);
   const safe = url && /^https:\/\//i.test(url) && !failed ? url : null;
-  const size = 34;
+  const size = 36;
   return (
     <span
       data-chat-avatar=""
@@ -996,7 +1000,7 @@ export function ChatBoxView({
   demo?: boolean;
 }) {
   const style = parseChatConfig(config);
-  const royal = isRoyalCompactTheme(readChatThemeId(config));
+  const royal = chatUsesRoyalCompact(config);
   const royalSettings = parseRoyalCompactSettings(config);
   const royalLayout = royalCompactLayout(royalSettings);
   const skin = widgetThemeSkin(parseWidgetThemeId(config));
@@ -1454,37 +1458,46 @@ export function ChatBoxView({
               overflow: "visible",
             }}
           >
-            <span
+            <svg
               aria-hidden
               data-chat-arc=""
+              viewBox="0 0 18 40"
+              preserveAspectRatio="none"
               style={{
                 position: "absolute",
                 left: 0,
                 top: 0,
-                bottom: 0,
-                width: 14,
-                boxSizing: "border-box",
-                borderTop: "3px solid var(--bubble-accent, #f2f2f2)",
-                borderBottom: "3px solid var(--bubble-accent, #f2f2f2)",
-                borderLeft: "3px solid var(--bubble-accent, #f2f2f2)",
-                borderRight: "0 solid transparent",
-                borderRadius: "50% 0 0 50%",
-                background: "transparent",
+                width: 18,
+                height: "100%",
+                overflow: "visible",
                 pointerEvents: "none",
                 zIndex: 2,
+                color: "var(--bubble-accent, #f2f2f2)",
               }}
-            />
+            >
+              <path
+                d="M15 2 Q 2 20 15 38"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="butt"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
             <span
               aria-hidden
               data-chat-fill=""
               style={{
                 position: "absolute",
-                top: 1,
-                bottom: 1,
-                left: 3,
+                top: 0,
+                bottom: 0,
+                left: 6,
                 right: 0,
-                borderRadius: "12px 0 0 12px",
-                backgroundImage: `linear-gradient(to right, ${withAlpha(userAccent, 48)} 0px, ${withAlpha(userAccent, 16)} 28%, transparent min(180px, 100%)), linear-gradient(to right, rgba(5, 7, 11, 0.88) 0px, rgba(5, 7, 11, 0.5) 32%, rgba(5, 7, 11, 0) min(190px, 100%))`,
+                borderRadius: 0,
+                backgroundColor: "transparent",
+                backgroundImage: `linear-gradient(to right, ${withAlpha(userAccent, 26)} 0px, ${withAlpha(userAccent, 8)} 90px, transparent 190px), linear-gradient(to right, rgba(8, 10, 14, 0.58) 0px, rgba(8, 10, 14, 0.16) 100px, transparent 200px)`,
+                maskImage: "linear-gradient(to right, #000 0px, #000 36px, transparent min(210px, 100%))",
+                WebkitMaskImage: "linear-gradient(to right, #000 0px, #000 36px, transparent min(210px, 100%))",
                 pointerEvents: "none",
                 zIndex: 0,
               }}
@@ -1501,7 +1514,7 @@ export function ChatBoxView({
                 rowGap: 2,
                 direction: "ltr",
                 minHeight: 34,
-                padding: "4px 2px 4px 18px",
+                padding: "5px 2px 5px 20px",
                 maxWidth: "100%",
               }}
             >

@@ -12,6 +12,8 @@ import {
   royalBadgeGap,
   royalCompactLayout,
   royalCompactPayload,
+  readChatPresentation,
+  chatUsesRoyalCompact,
 } from "../src/lib/royalCompact.ts";
 import { subscriptionIsActive } from "../src/lib/subscription.server.ts";
 
@@ -21,6 +23,25 @@ test("royal-compact theme id is present beside the existing layouts", () => {
     CHAT_LAYOUTS.map((entry) => entry.value),
     ["transparent", "glass", "island", "bubble"],
   );
+});
+
+test("speech bubbles stay free and beat a leftover royal theme id", () => {
+  assert.equal(widgetSaveAllowed(false, "CHAT_BOX", { chatLayout: "bubble", themeId: "dark-glass" }), true);
+  assert.equal(widgetSaveAllowed(false, "CHAT_BOX", { chatLayout: "bubble", themeId: ROYAL_COMPACT_THEME_ID }), false);
+  assert.equal(widgetSaveAllowed(false, "CHAT_BOX", { themeId: ROYAL_COMPACT_THEME_ID, chatLayout: "glass" }), false);
+  assert.equal(readChatPresentation(null), "glass");
+  assert.equal(readChatPresentation({ chatLayout: "bubble", themeId: ROYAL_COMPACT_THEME_ID }), "bubble");
+  assert.equal(chatUsesRoyalCompact({ chatLayout: "bubble", themeId: ROYAL_COMPACT_THEME_ID }), false);
+  assert.equal(readChatPresentation({ themeId: ROYAL_COMPACT_THEME_ID, chatLayout: "glass" }), ROYAL_COMPACT_THEME_ID);
+  assert.equal(readChatPresentation({ themeId: ROYAL_COMPACT_THEME_ID, chatLayout: "island" }), ROYAL_COMPACT_THEME_ID);
+  assert.equal(chatUsesRoyalCompact({ themeId: ROYAL_COMPACT_THEME_ID }), true);
+  const clampedBubble = clampFreeWidgetConfig("CHAT_BOX", {
+    chatLayout: "bubble",
+    themeId: ROYAL_COMPACT_THEME_ID,
+  });
+  assert.equal(clampedBubble["chatLayout"], "bubble");
+  assert.equal(clampedBubble["themeId"], "dark-glass");
+  assert.equal(readChatPresentation(clampedBubble), "bubble");
 });
 
 test("free save of royal-compact is rejected and Pro save is accepted", () => {

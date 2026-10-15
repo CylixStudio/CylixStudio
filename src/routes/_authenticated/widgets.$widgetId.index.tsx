@@ -31,9 +31,8 @@ import { useWidgetStream } from "@/hooks/useWidgetStream";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
-  isRoyalCompactTheme,
+  chatUsesRoyalCompact,
   parseRoyalCompactSettings,
-  readChatThemeId,
   ROYAL_COMPACT_THEME_ID,
   type RoyalCompactSettings,
 } from "@/lib/royalCompact";
@@ -724,7 +723,7 @@ function WidgetBuilder() {
                       <div className="mt-3">
                         <ChatThemePicker
                           layout={parseChatConfig(config).chatLayout}
-                          royalSelected={isRoyalCompactTheme(readChatThemeId(config))}
+                          royalSelected={chatUsesRoyalCompact(config)}
                           onSelectLayout={(next) =>
                             setConfig((prev) => ({ ...prev, chatLayout: next, themeId: "dark-glass" }))
                           }
@@ -733,18 +732,23 @@ function WidgetBuilder() {
                               requestUpgrade();
                               return;
                             }
-                            set("themeId", ROYAL_COMPACT_THEME_ID);
+                            setConfig((prev) => ({
+                              ...prev,
+                              themeId: ROYAL_COMPACT_THEME_ID,
+                              // Bubble wins over royal, so choosing Royal leaves the bubble layout.
+                              ...(parseChatConfig(prev).chatLayout === "bubble" ? { chatLayout: "glass" } : {}),
+                            }));
                           }}
                         />
                       </div>
                       <span className="mt-2 block text-[10px] text-muted-foreground">
-                        {isRoyalCompactTheme(readChatThemeId(config))
+                        {chatUsesRoyalCompact(config)
                           ? t("chat.theme.royalHint")
                           : CHAT_LAYOUTS.find((e) => e.value === parseChatConfig(config).chatLayout)?.hint}
                       </span>
                     </div>
 
-                    {isRoyalCompactTheme(readChatThemeId(config)) ? (
+                    {chatUsesRoyalCompact(config) ? (
                       <>
                         <ToggleField
                           label={t("chat.theme.showAvatar")}
@@ -846,7 +850,7 @@ function WidgetBuilder() {
                       />
                     </label>
 
-                    {isRoyalCompactTheme(readChatThemeId(config)) ? null : (
+                    {chatUsesRoyalCompact(config) ? null : (
                       <>
                         <label className="block">
                           <span className={`${labelClass} inline-flex items-center gap-1.5`}>

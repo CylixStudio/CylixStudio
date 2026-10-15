@@ -4,6 +4,8 @@
  * Expired Pro falls back at read time; the stored object is left in place.
  */
 
+import { parseChatConfig, type ChatLayout } from "@/lib/widgets";
+
 export const ROYAL_COMPACT_THEME_ID = "royal-compact";
 
 export const ROYAL_COMPACT_DEFAULTS = {
@@ -54,6 +56,24 @@ function bool(value: unknown, fallback: boolean) {
 
 export function isRoyalCompactTheme(themeId: unknown): boolean {
   return themeId === ROYAL_COMPACT_THEME_ID;
+}
+
+/**
+ * One layout decision for the editor, the preview, and the OBS renderer.
+ * Speech Bubbles (`chatLayout: "bubble"`) wins over a leftover `themeId` of
+ * `royal-compact`, so an old bubble save is not painted as Royal Compact.
+ * Royal Compact stays on for every other saved `chatLayout` until the user
+ * picks a different layout. Empty configs stay on glass.
+ */
+export function readChatPresentation(config: unknown): ChatLayout | typeof ROYAL_COMPACT_THEME_ID {
+  const layout = parseChatConfig(config).chatLayout;
+  if (layout === "bubble") return "bubble";
+  if (isRoyalCompactTheme(readChatThemeId(config))) return ROYAL_COMPACT_THEME_ID;
+  return layout;
+}
+
+export function chatUsesRoyalCompact(config: unknown): boolean {
+  return readChatPresentation(config) === ROYAL_COMPACT_THEME_ID;
 }
 
 export function readChatThemeId(config: unknown): string {
