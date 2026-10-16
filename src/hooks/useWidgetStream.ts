@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useTimerSession } from "@/hooks/useTimerSession";
 import { useWidgetRealtime } from "@/hooks/useWidgetRealtime";
@@ -9,6 +9,15 @@ import {
   type ChatLinkStatus,
   type OverlayChatLine,
 } from "@/lib/overlayChat";
+import {
+  createOverlayLink,
+  eventFromBroadcast,
+  FALLBACK_MS,
+  mergeAlert,
+  mergeServerEvents,
+  needsDirectRead,
+  SSE_BOOT_MS,
+} from "@/lib/overlayTransport";
 import { readReplyMeta } from "@/lib/replyAlert";
 import type { StreamEventsRuntime } from "@/lib/streamEventsSchedule";
 import type { PollRuntime, PredictionRuntime } from "@/lib/interactiveWidgets";
@@ -30,26 +39,6 @@ function mergePreviewTests(pending: OverlayEvent[], server: OverlayEvent[]) {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
   return { pending: nextPending, events };
-}
-
-function previewFromAlert(payload: Record<string, unknown>): OverlayEvent | null {
-  if (payload["isTest"] !== true) return null;
-  const id = typeof payload["eventId"] === "string" ? payload["eventId"] : "";
-  if (!id) return null;
-  const amount = payload["amount"];
-  const quantity = payload["quantity"];
-  return {
-    id,
-    platform: String(payload["platform"] ?? ""),
-    eventType: String(payload["eventType"] ?? ""),
-    actorName: typeof payload["actorName"] === "string" ? payload["actorName"] : null,
-    amount: typeof amount === "number" && Number.isFinite(amount) ? amount : null,
-    currency: typeof payload["currency"] === "string" ? payload["currency"] : null,
-    quantity: typeof quantity === "number" && quantity > 0 ? quantity : 1,
-    secondsAdded: 0,
-    createdAt: new Date().toISOString(),
-    isTest: true,
-  };
 }
 
 export type StreamStatus = ChatLinkStatus;
@@ -78,11 +67,10 @@ type Snapshot = {
 };
 
 /**
- * Single subscription that powers every public widget renderer. Three layers
- * keep OBS in sync: Supabase Realtime broadcasts (instant), SSE (fast path)
- * and a light poll (guaranteed convergence). The subathon countdown reads
- * one absolute end time. Repeated snapshots do not move that end, and the
- * 250ms interval only refreshes the displayed second.
+ * One direct stream while it is healthy. /live runs only after that stream
+ * drops, and once more when a broadcast changes timer, goal, or widget state
+ * the stream has not pushed yet. The subathon second still comes from the
+ * absolute end time.
  */
 export function useWidgetStream(publicToken: string | null) {
   const [widget, setWidget] = useState<StreamWidget | null>(null);
@@ -110,57 +98,126 @@ export function useWidgetStream(publicToken: string | null) {
     return merged.events;
   };
 
+  const pullRef = useRef<((reason: "fallback" | "refresh") => void) | null>(null);
+
   useEffect(() => {
     if (!publicToken) return;
+    const link = createOverlayLink();
     let source: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
-    let attempts = 0;
+    let fallback: ReturnType<typeof setInterval> | null = null;
+    let boot: ReturnType<typeof setTimeout> | null = null;
+    let flight: AbortController | null = null;
     let cancelled = false;
+    let pulling = false;
+    let queued: "fallback" | "refresh" | null = null;
 
-    const onFrame = (next: TimerFrame) => {
-      countdown.adopt(next, "realtime");
-      setFrame(next);
+    const applySnapshot = (payload: Snapshot) => {
+      setWidget(payload.widget);
+      setGoal(payload.goal);
+      setEvents((current) => mergeServerEvents(adoptServerEvents(payload.events ?? []), current));
+      setSpin(payload.spin);
+      setSpotlight(payload.spotlight ?? null);
+      setStreamEvents(payload.streamEvents ?? null);
+      setPollRuntime(payload.poll ?? null);
+      setPredictionRuntime(payload.prediction ?? null);
+      setTappers(payload.tappers ?? []);
+      setTapGoal(payload.tapGoal?.taps ?? 0);
+      if (payload.chat) setChat(payload.chat);
+      if (Array.isArray(payload.chatMessages)) {
+        setChatMessages((prev) => reconcileChatLines(prev, payload.chatMessages ?? []));
+      }
+      if (payload.frame) {
+        countdown.adopt(payload.frame, link.streamOpen() ? "realtime" : "sync");
+        setFrame(payload.frame);
+      }
+      sawLive.current = true;
+      setStatus("live");
+    };
+
+    const stopFallback = () => {
+      if (fallback) clearInterval(fallback);
+      fallback = null;
+    };
+
+    const pull = (reason: "fallback" | "refresh") => {
+      if (cancelled || !publicToken) return;
+      if (reason === "fallback" && !link.fallbackActive()) return;
+      if (pulling) {
+        queued = reason === "refresh" || queued === "refresh" ? "refresh" : reason;
+        return;
+      }
+      pulling = true;
+      flight?.abort();
+      const controller = new AbortController();
+      flight = controller;
+      void (async () => {
+        try {
+          const response = await fetch(`/api/public/overlay/${publicToken}/live`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted || cancelled) return;
+          if (response.status === 404) {
+            cancelled = true;
+            stopFallback();
+            if (retry) clearTimeout(retry);
+            source?.close();
+            source = null;
+            setStatus("error");
+            return;
+          }
+          if (!response.ok) {
+            setStatus((current) => (current === "live" ? "reconnecting" : current));
+            return;
+          }
+          applySnapshot((await response.json()) as Snapshot);
+        } catch {
+          if (controller.signal.aborted || cancelled) return;
+          setStatus((current) => (current === "live" ? "reconnecting" : current));
+        } finally {
+          pulling = false;
+          const next = queued;
+          queued = null;
+          if (next && !cancelled) pull(next);
+        }
+      })();
+    };
+    pullRef.current = pull;
+
+    const startFallback = () => {
+      if (fallback || cancelled) return;
+      pull("fallback");
+      fallback = setInterval(() => pull("fallback"), FALLBACK_MS);
     };
 
     const connect = () => {
       if (cancelled) return;
+      if (!link.begin().opened) return;
+      source?.close();
       source = new EventSource(`/api/public/overlay/${publicToken}/stream`);
 
       source.addEventListener("init", (event) => {
-        attempts = 0;
         sawLive.current = true;
-        const payload = JSON.parse((event as MessageEvent).data) as Snapshot;
-        setWidget(payload.widget);
-        setGoal(payload.goal);
-        setEvents(adoptServerEvents(payload.events ?? []));
-        setSpin(payload.spin);
-        setSpotlight(payload.spotlight ?? null);
-        setStreamEvents(payload.streamEvents ?? null);
-        setPollRuntime(payload.poll ?? null);
-        setPredictionRuntime(payload.prediction ?? null);
-        setTappers(payload.tappers ?? []);
-        setTapGoal(payload.tapGoal?.taps ?? 0);
-        setChat(payload.chat ?? null);
-        if (Array.isArray(payload.chatMessages)) {
-          setChatMessages((prev) => reconcileChatLines(prev, payload.chatMessages ?? []));
-        }
-        if (payload.frame) onFrame(payload.frame);
-        setStatus("live");
+        link.opened();
+        stopFallback();
+        applySnapshot(JSON.parse((event as MessageEvent).data) as Snapshot);
       });
-
       source.addEventListener("chatlines", (event) => {
         const next = JSON.parse((event as MessageEvent).data) as OverlayChatLine[];
         setChatMessages((prev) => reconcileChatLines(prev, Array.isArray(next) ? next : []));
       });
-
       source.addEventListener("state", (event) => {
-        onFrame(JSON.parse((event as MessageEvent).data) as TimerFrame);
+        const next = JSON.parse((event as MessageEvent).data) as TimerFrame;
+        countdown.adopt(next, "realtime");
+        setFrame(next);
       });
       source.addEventListener("goal", (event) => {
         setGoal(JSON.parse((event as MessageEvent).data) as GoalSnapshot | null);
       });
       source.addEventListener("events", (event) => {
-        setEvents(adoptServerEvents(JSON.parse((event as MessageEvent).data) as OverlayEvent[]));
+        const server = JSON.parse((event as MessageEvent).data) as OverlayEvent[];
+        setEvents((current) => mergeServerEvents(adoptServerEvents(server), current));
       });
       source.addEventListener("spotlight", (event) => {
         const payload = JSON.parse((event as MessageEvent).data) as {
@@ -222,80 +279,51 @@ export function useWidgetStream(publicToken: string | null) {
       source.onerror = () => {
         source?.close();
         source = null;
+        const lost = link.lost();
         if (cancelled) return;
-        attempts += 1;
-        setStatus(attempts >= 4 ? "error" : sawLive.current ? "reconnecting" : "connecting");
-        const delay = Math.min(15_000, 1000 * 2 ** Math.min(attempts, 4));
-        retry = setTimeout(connect, delay);
+        setStatus(sawLive.current ? "reconnecting" : "connecting");
+        if (lost.startFallback) startFallback();
+        if (!lost.schedule) return;
+        if (retry) clearTimeout(retry);
+        retry = setTimeout(() => {
+          retry = null;
+          link.retryDue();
+          connect();
+        }, lost.delay);
       };
     };
 
     connect();
+    boot = setTimeout(() => {
+      if (!cancelled && link.bootTimedOut()) startFallback();
+    }, SSE_BOOT_MS);
 
     return () => {
       cancelled = true;
       if (retry) clearTimeout(retry);
+      if (boot) clearTimeout(boot);
+      stopFallback();
+      flight?.abort();
       source?.close();
+      link.closed();
+      pullRef.current = null;
     };
   }, [publicToken, countdown.adopt]);
 
-  const poll = useCallback(async () => {
-    if (!publicToken) return;
-    try {
-      const response = await fetch(`/api/public/overlay/${publicToken}/live`, {
-        cache: "no-store",
-      });
-      if (response.status === 404) {
-        setStatus("error");
-        return;
-      }
-      if (!response.ok) {
-        setStatus((current) => (current === "live" ? "reconnecting" : current));
-        return;
-      }
-      const payload = (await response.json()) as Snapshot;
-      setWidget(payload.widget);
-      setGoal(payload.goal);
-      setEvents(adoptServerEvents(payload.events ?? []));
-      setSpin(payload.spin);
-      setSpotlight(payload.spotlight ?? null);
-      setStreamEvents(payload.streamEvents ?? null);
-      setPollRuntime(payload.poll ?? null);
-      setPredictionRuntime(payload.prediction ?? null);
-      setTappers(payload.tappers ?? []);
-      setTapGoal(payload.tapGoal?.taps ?? 0);
-      if (payload.chat) setChat(payload.chat);
-      if (Array.isArray(payload.chatMessages)) {
-        setChatMessages((prev) => reconcileChatLines(prev, payload.chatMessages ?? []));
-      }
-      if (payload.frame) {
-        countdown.adopt(payload.frame, "sync");
-        setFrame(payload.frame);
-      }
-      sawLive.current = true;
-      setStatus("live");
-    } catch {
-      setStatus((current) => (current === "live" ? "reconnecting" : current));
-    }
-  }, [publicToken, countdown.adopt]);
-
-  useEffect(() => {
-    if (!publicToken) return;
-    void poll();
-    const id = setInterval(() => void poll(), 2000);
-    return () => clearInterval(id);
-  }, [publicToken, poll]);
-
   useWidgetRealtime(widget?.id ?? null, (message) => {
     if (message.event === "alert") {
-      const preview = previewFromAlert(message.payload);
-      if (preview) {
-        previewTests.current = [
-          preview,
-          ...previewTests.current.filter((event) => event.id !== preview.id),
-        ].slice(0, 8);
-        setEvents((current) => [preview, ...current.filter((event) => event.id !== preview.id)]);
+      const next = eventFromBroadcast(message.payload);
+      if (next) {
+        if (next.isTest) {
+          previewTests.current = [
+            next,
+            ...previewTests.current.filter((event) => event.id !== next.id),
+          ].slice(0, 8);
+        }
+        setEvents((current) => mergeAlert(current, next));
       }
+      if (needsDirectRead(message.payload)) pullRef.current?.("refresh");
+      return;
     }
     if (message.event === "chat") {
       const payload = message.payload as Partial<ChatMessage> & Record<string, unknown>;
@@ -323,7 +351,7 @@ export function useWidgetStream(publicToken: string | null) {
       );
       return;
     }
-    void poll();
+    pullRef.current?.("refresh");
   });
 
   const shownFrame =
