@@ -140,7 +140,7 @@ export async function deliverKickChat(input: {
   const attempt = kickChatAttempts(content, input.replyToMessageId)[0];
   if (!attempt) return skipped("empty");
   const fetchImpl = input.fetchImpl ?? kickFetch;
-  const signal = AbortSignal.timeout(4_000);
+  const signal = AbortSignal.timeout(2_500);
   input.onChatStart?.();
   let response: KickChatResponse;
   try {

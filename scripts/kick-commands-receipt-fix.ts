@@ -1,10 +1,12 @@
 ﻿import assert from "node:assert/strict";
 
 import {
+  claimKickCommandOrPlan,
   createMemoryReceiptBoard,
   finalizeKickReceiptAfterCommand,
   markReplyPending,
   markReplyResult,
+  runClaimedKickExecute,
   runIdempotentKickCommand,
   withKickReceipt,
   type ReceiptSession,
@@ -266,6 +268,46 @@ for (const status of [401, 403, 429, 500]) {
   const hit = matchDefaultCommand("!commands", commands, "KICK");
   assert.ok(hit);
   assert.equal(hit!.command.enabled, false);
+}
+
+
+
+// Claim-then-finish (webhook waitUntil path): claim returns before execute; finish after.
+{
+  const board = createMemoryReceiptBoard();
+  const eventId = "evt-defer-claim";
+  const session: ReceiptSession = { board, userId: "user-a", providerEventId: eventId };
+  const claimed = await claimKickCommandOrPlan({
+    board,
+    userId: "user-a",
+    providerEventId: eventId,
+    broadcasterUserId: "64185437",
+    now,
+  });
+  assert.equal(claimed.action, "execute");
+  assert.equal(claimed.claimed, true);
+  assert.equal((await board.read("user-a", eventId))?.state, "webhook_received");
+  let ran = false;
+  await runClaimedKickExecute({
+    board,
+    userId: "user-a",
+    providerEventId: eventId,
+    now: now + 1,
+    execute: () =>
+      withKickReceipt(session, async () => {
+        ran = true;
+        const sent = await sendKickChatMessage("user-a", "64185437", "commands list", null, {
+          receiptSession: session,
+          loadToken: async () => "channel-token",
+          fetchImpl: mockFetch(200),
+        });
+        assert.equal(sent, true);
+      }),
+  });
+  assert.equal(ran, true);
+  const row = await board.read("user-a", eventId);
+  assert.equal(row?.state, "reply_delivery_succeeded");
+  assert.ok(row?.replyText);
 }
 
 console.log("kick-commands-receipt-fix: ok");
