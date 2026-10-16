@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 
 import { PublicChannelShell } from "@/components/public/PublicChannelShell";
 import { useLanguage } from "@/lib/i18n";
-import { loadPublicCommandsPage, type PublicCommandsPage } from "@/lib/publicChannel.functions";
+import { loadPublicCommandsPage } from "@/lib/publicChannel.functions";
 import { PUBLIC_BUILTIN_COMMANDS } from "@/lib/publicCommands";
 
 import pageStyles from "./commands.page.module.css";
@@ -42,6 +42,13 @@ const styles = pageStyles as {
 };
 
 export const Route = createFileRoute("/commands/$slug")({
+  loader: async ({ params }) => {
+    try {
+      return await loadPublicCommandsPage({ data: { slug: params.slug } });
+    } catch {
+      return { found: false as const };
+    }
+  },
   head: ({ params }) => ({
     meta: [
       { title: `CylixStudio — ${params.slug}` },
@@ -71,10 +78,8 @@ function columnCount(width: number) {
 }
 
 function PublicCommandsRoute() {
-  const { slug } = Route.useParams();
+  const data = Route.useLoaderData();
   const { t, lang } = useLanguage();
-  const [data, setData] = useState<PublicCommandsPage | null>(null);
-  const [missing, setMissing] = useState(false);
   const [tab, setTab] = useState<Tab>("custom");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -82,23 +87,7 @@ function PublicCommandsRoute() {
   const [rows, setRows] = useState(MAX_ROWS);
   const gridRef = useRef<HTMLUListElement>(null);
 
-  useEffect(() => {
-    let stopped = false;
-    setData(null);
-    setMissing(false);
-    void loadPublicCommandsPage({ data: { slug } })
-      .then((next) => {
-        if (!stopped) setData(next);
-      })
-      .catch(() => {
-        if (!stopped) setMissing(true);
-      });
-    return () => {
-      stopped = true;
-    };
-  }, [slug]);
-
-  const found = data?.found === true;
+  const found = data.found === true;
   const tabs: { id: Tab; label: string }[] = [
     { id: "custom", label: "الأوامر المخصصة" },
     { id: "timers", label: "الرسائل المؤقتة" },
@@ -208,8 +197,8 @@ function PublicCommandsRoute() {
         showIntro
         title={t("commands.public.title")}
         heading={t("commands.public.title")}
-        missing={missing || data?.found === false}
-        loading={!data && !missing}
+        missing
+        loading={false}
         missingLabel={t("commands.public.missing")}
         loadingLabel={t("commands.public.loading")}
       >

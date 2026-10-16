@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { resolveSbcCertificateUrl } from "@/lib/sbcSeal.functions";
+import {
+  readSealLinkCache,
+  sealLinkCacheKey,
+  writeSealLinkCache,
+} from "@/lib/sbcSealCache";
 import { cn } from "@/lib/utils";
 
 const SBC_SEAL_SCRIPT = "https://eauthenticate.saudibusiness.gov.sa/EAuthSealApi/seal.js";
@@ -8,6 +13,7 @@ const SBC_TOKEN = "NzNyMEZtczVDeE04SzI4WHN4bmpodz09";
 
 type SaudiBusinessSealProps = {
   className?: string;
+  userId?: string;
 };
 
 function isCertificateUrl(value: string): boolean {
@@ -67,15 +73,50 @@ function findSealFrame(): HTMLIFrameElement | null {
  * can run, but it is not shown. The custom link stays hidden until the
  * certificate page URL (not the seal frame) is known.
  */
-export function SaudiBusinessSeal({ className }: SaudiBusinessSealProps) {
+const memorySealLinks = new Map<string, string>();
+
+function cachedCertificateHref(userId: string): string | null {
+  if (!userId) return null;
+  let stored: string | null = null;
+  try {
+    stored = sessionStorage.getItem(sealLinkCacheKey(userId));
+  } catch {
+    stored = null;
+  }
+  const raw = memorySealLinks.get(userId) ?? stored;
+  const href = readSealLinkCache(raw, userId, Date.now());
+  if (!href && memorySealLinks.has(userId)) memorySealLinks.delete(userId);
+  return href;
+}
+
+function rememberCertificateHref(userId: string, href: string): void {
+  const raw = writeSealLinkCache(href, userId, Date.now());
+  if (!raw || !userId) return;
+  memorySealLinks.set(userId, raw);
+  try {
+    sessionStorage.setItem(sealLinkCacheKey(userId), raw);
+  } catch {
+    /* private mode */
+  }
+}
+
+export function SaudiBusinessSeal({ className, userId = "" }: SaudiBusinessSealProps) {
   const [sealHref, setSealHref] = useState<string | null>(null);
 
   useEffect(() => {
+    const cached = cachedCertificateHref(userId);
+    setSealHref(cached);
+    if (cached) return;
+
     let cancelled = false;
     let lookupStarted = false;
 
     const publish = (href: string | null) => {
-      if (!cancelled && href) setSealHref(href);
+      if (!cancelled && href) {
+        rememberCertificateHref(userId, href);
+        const visible = cachedCertificateHref(userId);
+        if (visible) setSealHref(visible);
+      }
     };
 
     const apply = () => {
@@ -120,7 +161,7 @@ export function SaudiBusinessSeal({ className }: SaudiBusinessSealProps) {
       const script = document.createElement("script");
       script.src = SBC_SEAL_SCRIPT;
       script.async = true;
-      script.dataset.sbcSealScript = "1";
+      script.dataset["sbcSealScript"] = "1";
       document.body.appendChild(script);
     }
 
@@ -128,7 +169,7 @@ export function SaudiBusinessSeal({ className }: SaudiBusinessSealProps) {
       cancelled = true;
       observer.disconnect();
     };
-  }, []);
+  }, [userId]);
 
   return (
     <footer

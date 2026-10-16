@@ -717,7 +717,7 @@ function HomePage() {
         </>
       )}
 
-      <SaudiBusinessSeal />
+      <SaudiBusinessSeal userId={actorId} />
 
 
       {pendingDelete ? (

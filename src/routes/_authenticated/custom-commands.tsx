@@ -100,6 +100,8 @@ import {
   type DefaultCommand,
   type DefaultCommandInput,
 } from "@/lib/defaultCommands";
+import { withCommandEnabled } from "@/lib/commandEnabled";
+import { acceptCommandToggle, confirmCommandToggle } from "@/lib/commandToggle";
 import {
   listDefaultCommands,
   setDefaultCommandEnabled,
@@ -546,14 +548,31 @@ function CustomCommandsPage() {
     },
   });
 
+  const toggleLock = useRef(false);
   const defaultEnabledMutation = useMutation({
-    mutationFn: async ({ id, enabled }: { id: DefaultCommand["id"]; enabled: boolean }) => {
-      if (!isDefaultCommandId(id)) return null;
-      if (test) return setTestDefaultCommandEnabled(id, enabled, lang);
+    mutationFn: async ({ id, enabled }: { id: DefaultCommand["id"]; enabled: boolean; baseline: DefaultCommand[] }) => {
+      if (!isDefaultCommandId(id)) return { ok: false as const, error: "unknown_command" };
+      if (test) {
+        setTestDefaultCommandEnabled(id, enabled, lang);
+        return { ok: true as const };
+      }
       return persistDefaultEnabled({ data: { id, enabled } });
     },
-    onSuccess: () => void invalidateDefaults(),
-    onError: (error: Error) => toast.error(error.message || c.errSave),
+    onSuccess: (result, variables) => {
+      const settled = confirmCommandToggle(variables.baseline, variables.id, variables.enabled, result);
+      queryClient.setQueryData<DefaultCommand[]>(["default-commands", user.id, lang], settled.commands);
+      if (!settled.success) {
+        const message = result && typeof result === "object" && "error" in result && result.error ? result.error : c.errSave;
+        toast.error(message);
+      }
+    },
+    onError: (error: Error, variables) => {
+      queryClient.setQueryData<DefaultCommand[]>(["default-commands", user.id, lang], variables.baseline);
+      toast.error(error.message || c.errSave);
+    },
+    onSettled: () => {
+      toggleLock.current = false;
+    },
   });
 
   const openCreate = () => {
@@ -632,7 +651,18 @@ function CustomCommandsPage() {
               minRole: command.minRole,
             });
           }}
-          onToggle={(id, enabled) => defaultEnabledMutation.mutate({ id, enabled })}
+          onToggle={(id, enabled) => {
+            if (!acceptCommandToggle(toggleLock.current || defaultEnabledMutation.isPending)) return;
+            const baseline =
+              queryClient.getQueryData<DefaultCommand[]>(["default-commands", user.id, lang]) ?? [];
+            const snapshot = baseline.map((command) => ({ ...command }));
+            toggleLock.current = true;
+            queryClient.setQueryData<DefaultCommand[]>(
+              ["default-commands", user.id, lang],
+              withCommandEnabled(snapshot, id, enabled),
+            );
+            defaultEnabledMutation.mutate({ id, enabled, baseline: snapshot });
+          }}
         />
       ) : pageTab === "alerts" ? (
         <ChatTextAlertsPanel userId={user.id} />
