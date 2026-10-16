@@ -371,16 +371,16 @@ export function resetKickEventMemory(): void {
   seenEvents.clear();
 }
 
-const CYLIX_BOT_USERNAME = "cylixbot";
-
-/** True when this chat line was sent by @CylixBot, so commands must not run again. */
+/**
+ * True when the sender is the official Developer app bot user id.
+ * The display name @CylixBot is not enough: that name is also an ordinary user.
+ */
 export function isCylixBotChatAuthor(
-  username: string,
+  _username: string,
   senderUserId: string | null,
   botUserId?: string | null,
 ): boolean {
-  const name = username.trim().replace(/^@+/, "").toLowerCase();
-  if (name === CYLIX_BOT_USERNAME) return true;
   const configured = botUserId?.trim() ?? "";
-  return Boolean(configured && senderUserId && senderUserId === configured);
+  const sender = senderUserId?.trim() ?? "";
+  return Boolean(configured && sender && sender === configured);
 }

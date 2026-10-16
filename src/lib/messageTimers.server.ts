@@ -149,7 +149,7 @@ async function passForUser(userId: string, rows: TimerRow[], nowMs: number): Pro
     liveFor: () => live,
     slots: slotStore(userId, slots),
     send: async ({ channelId, message }) =>
-      sendKickChatMessage(userId, channelId, message, null, { userOnly: true }),
+      sendKickChatMessage(userId, channelId, message),
   });
 }
 

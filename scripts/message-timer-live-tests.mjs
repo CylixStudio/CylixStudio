@@ -534,8 +534,8 @@ await check("timer send stays on the user channel", async () => {
   });
   assert.equal(failed.ok, false);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].type, "user");
-  assert.equal(calls[0].broadcaster_user_id, 100);
+  assert.equal(calls[0].type, "bot");
+  assert.equal(calls[0].broadcaster_user_id, undefined);
 
   const commandCalls = [];
   await deliverKickChat({
@@ -547,9 +547,9 @@ await check("timer send stays on the user channel", async () => {
       return { ok: false, status: 403, text: async () => "{\"message\":\"no\"}" };
     },
   });
-  assert.equal(commandCalls.length, 2);
-  assert.equal(commandCalls[0].type, "user");
-  assert.equal(commandCalls[1].type, "bot");
+  assert.equal(commandCalls.length, 1);
+  assert.equal(commandCalls[0].type, "bot");
+  assert.equal(commandCalls[0].broadcaster_user_id, undefined);
 });
 
 await check("rotation covers every channel inside the subrequest budget", async () => {

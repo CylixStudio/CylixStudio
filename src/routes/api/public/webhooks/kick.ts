@@ -14,6 +14,7 @@ import {
   type KickPayload,
   type KickWebhookOutcome,
 } from "@/lib/kickWebhookParse";
+import { bindKickReplyTrace, createKickReplyTrace, logKickReplyTrace } from "@/lib/kickReplyTiming";
 
 function pickString(obj: unknown, ...path: string[]): string | null {
   let cur: unknown = obj;
@@ -61,7 +62,10 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
         }),
       POST: async ({ request }) => {
         const { verifyKickSignature } = await import("@/lib/webhooks/verify.server");
+        const trace = createKickReplyTrace(request.headers.get("kick-event-message-id") ?? "none");
+        trace.mark("webhook_received");
 
+        return bindKickReplyTrace(trace, async () => {
         try {
           const publicKeyPem = process.env["KICK_WEBHOOK_PUBLIC_KEY"];
           const hmacSecret = process.env["KICK_WEBHOOK_SECRET"];
@@ -94,6 +98,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             logOutcome({ messageId, outcome: "failed", reason: verification.reason, eventType: headerType });
             return jsonResponse({ error: "invalid_signature", reason: verification.reason }, 403);
           }
+          trace.mark("signature_verified");
 
           if (kickEventAlreadyHandled(messageId)) {
             logOutcome({ messageId, outcome: "duplicate", eventType: headerType });
@@ -172,7 +177,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
 
           if (isKickChatEvent(type, chat)) {
             const { broadcasterId, text, username, senderId, senderUserId, identityBadges } = chat;
-            if (isCylixBotChatAuthor(username, senderUserId, process.env["KICK_BOT_PLATFORM_USER_ID"])) {
+            if (isCylixBotChatAuthor(username, senderUserId, process.env["KICK_APP_BOT_USER_ID"])) {
               rememberKickEvent(messageId);
               logOutcome({ messageId, outcome: "intentionally_ignored", reason: "bot_author", eventType: type });
               return jsonResponse({ status: "ignored", reason: "bot_author" });
@@ -197,6 +202,10 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
               return jsonResponse({ status: "ignored", reason: "kick_connection_not_found" });
             }
             const userId = resolved.userId;
+            trace.mark("channel_resolved");
+            const giveawayGate = text.trim()
+              ? giveawayTextMightApply(supabaseAdmin, userId, text)
+              : Promise.resolve(false);
 
             if (text.trim()) {
               const { publishOverlayChat } = await import("@/lib/overlayChat.server");
@@ -228,42 +237,92 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
               noteRecentChatter(userId, username);
             }
 
-            const { deferRequestWork } = await import("@/lib/requestContext.server");
             let catalog: Awaited<ReturnType<typeof loadDirectCommandCatalog>> = null;
             if (!chatTextNeedsHandlers(text) && text.trim()) {
               catalog = await loadDirectCommandCatalog(supabaseAdmin, userId);
             }
             const needsHandlers = await chatLineNeedsCommandModules(text, catalog);
-
-            if (needsHandlers) {
-              const { matchMarkCommand } = await import("@/lib/markPoints");
-              const markMatch = matchMarkCommand(text);
-              if (markMatch) {
-                const { handleMarkCommand } = await import("@/lib/markPoints.server");
-                deferRequestWork(
-                  request,
-                  handleMarkCommand({
-                    userId,
-                    broadcasterUserId: broadcasterId,
-                    platform: "KICK",
-                    text,
-                    sender: { username, platformId: senderId, identityBadges },
-                  })
-                    .then(() => {
-                      rememberKickEvent(messageId);
-                      logOutcome({ messageId, outcome: "accepted", reason: markMatch.kind, eventType: type });
-                    })
-                    .catch((error) => console.error("[kick-webhook] mark command failed", error)),
-                );
-                return jsonResponse({ status: "accepted", command: markMatch.kind });
-              }
-            }
+            trace.mark("db_done");
 
             let commandResult: { status: string; reason?: string; command?: string } = {
               status: "ignored",
               reason: text.trim() ? "not_a_command" : "empty_text",
             };
-            if (text && needsHandlers) {
+            const giveawayMatches = await giveawayGate;
+            if ((needsHandlers || giveawayMatches) && !messageId) {
+              logOutcome({ messageId, outcome: "failed", reason: "missing_event_id", eventType: type });
+              return jsonResponse({ status: "failed", reason: "missing_event_id" }, 503);
+            }
+            if ((needsHandlers || giveawayMatches) && messageId) {
+              const { createSupabaseReceiptBoard } = await import("@/lib/kickCommandReceipt.server");
+              const { decideAppBotIdentity, runIdempotentKickCommand, withKickReceipt } = await import(
+                "@/lib/kickCommandReceipt"
+              );
+              const board = createSupabaseReceiptBoard();
+              const chatMessageId = viewerChatMessageId(body);
+              if (needsHandlers && chatMessageId) {
+                const outbound = await board.findOutbound(userId, chatMessageId);
+                const learned = await board.learnedBotUserId();
+                const identity = decideAppBotIdentity({
+                  senderUserId,
+                  configuredBotUserId: process.env["KICK_APP_BOT_USER_ID"] ?? null,
+                  learnedBotUserId: learned,
+                  incomingChatMessageId: chatMessageId,
+                  outboundChatMessageId: outbound?.kickMessageId ?? null,
+                });
+                if (identity.ignore) {
+                  if (identity.learnSenderId) await board.learnBotUser(identity.learnSenderId, chatMessageId);
+                  rememberKickEvent(messageId);
+                  logOutcome({ messageId, outcome: "intentionally_ignored", reason: "bot_author", eventType: type });
+                  return jsonResponse({ status: "ignored", reason: "bot_author" });
+                }
+              }
+              let markHandled = false;
+              try {
+                const plan = await runIdempotentKickCommand({
+                  board,
+                  userId,
+                  providerEventId: messageId,
+                  broadcasterUserId: broadcasterId,
+                  now: Date.now(),
+                  deliverStored: async (replyText) => {
+                    const { sendOfficialKickBot } = await import("@/lib/kickChatDeliver");
+                    const { getKickAccessToken } = await import("@/lib/platformTokens.server");
+                    const result = await sendOfficialKickBot({
+                      userId,
+                      broadcasterUserId: broadcasterId,
+                      content: replyText,
+                      loadToken: (id, forceRefresh) =>
+                        getKickAccessToken(id, { requireScopes: ["chat:write"], forceRefresh }),
+                    });
+                    return result.outcome === "skipped" ? "rejected" : result.outcome;
+                  },
+                  execute: () =>
+                    withKickReceipt({ board, userId, providerEventId: messageId }, async () => {
+            if (needsHandlers) {
+              const { matchMarkCommand } = await import("@/lib/markPoints");
+              const markMatch = matchMarkCommand(text);
+              if (markMatch) {
+                markHandled = true;
+                trace.mark("command_matched");
+                const { handleMarkCommand } = await import("@/lib/markPoints.server");
+                try {
+                  commandResult = await handleMarkCommand({
+                    userId,
+                    broadcasterUserId: broadcasterId,
+                    platform: "KICK",
+                    text,
+                    sender: { username, platformId: senderId, identityBadges },
+                  });
+                } catch (error) {
+                  console.error("[kick-webhook] mark command failed", error);
+                  commandResult = { status: "error", reason: "command_threw" };
+                }
+                trace.mark("command_executed");
+              }
+            }
+            if (text && needsHandlers && !markHandled) {
+              trace.mark("command_matched");
               try {
                 const { requestPublicOrigin } = await import("@/lib/commandsUrl");
                 const origin = requestPublicOrigin(request);
@@ -334,24 +393,50 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                 console.error("[kick-webhook] chat command failed", error);
                 commandResult = { status: "error", reason: "command_threw" };
               }
+              trace.mark("command_executed");
             }
 
-            deferRequestWork(
-              request,
-              (async () => {
-                const { captureGiveawayEntry, confirmGiveawayPresence } = await import("@/lib/giveaway.server");
-                const isTest =
-                  (body as { isTest?: unknown }).isTest === true ||
-                  (body as { is_test?: unknown }).is_test === true;
-                await confirmGiveawayPresence(supabaseAdmin, userId, { username, text, isTest });
-                await captureGiveawayEntry(supabaseAdmin, userId, {
-                  platform: "KICK",
-                  username,
-                  text,
-                  isSubscriber: identityBadges.some((badge) => /sub|founder|og|vip/i.test(badge)),
+            if (giveawayMatches) {
+              const { captureGiveawayEntry, confirmGiveawayPresence } = await import("@/lib/giveaway.server");
+              const isTest =
+                (body as { isTest?: unknown }).isTest === true ||
+                (body as { is_test?: unknown }).is_test === true;
+              await confirmGiveawayPresence(supabaseAdmin, userId, { username, text, isTest });
+              await captureGiveawayEntry(supabaseAdmin, userId, {
+                platform: "KICK",
+                username,
+                text,
+                isSubscriber: identityBadges.some((badge) => /sub|founder|og|vip/i.test(badge)),
+              });
+            }
+                    }),
                 });
-              })().catch((error) => console.error("[kick-webhook] giveaway entry failed", error)),
-            );
+                if (plan.action === "busy") {
+                  logOutcome({ messageId, outcome: "failed", reason: "receipt_busy", eventType: type });
+                  return jsonResponse({ status: "failed", reason: "receipt_busy" }, 503);
+                }
+                if (plan.action === "ack") {
+                  commandResult = { status: "ignored", reason: plan.reason, command: "duplicate" };
+                } else if (plan.action === "retry_delivery") {
+                  commandResult = plan.delivered
+                    ? { status: "replied", reason: "delivery_retried" }
+                    : { status: "error", reason: "send_failed" };
+                }
+              } catch (error) {
+                const missing = error instanceof Error && error.message === "kick_command_receipts_missing";
+                console.error("[kick-webhook] command receipt failed", missing ? "migration_required" : "receipt_failed");
+                logOutcome({
+                  messageId,
+                  outcome: "failed",
+                  reason: missing ? "migration_required" : "receipt_failed",
+                  eventType: type,
+                });
+                return jsonResponse(
+                  { status: "failed", reason: missing ? "migration_required" : "receipt_failed" },
+                  503,
+                );
+              }
+            }
 
             let media: { ok: boolean; reason?: string } = { ok: false, reason: "no_media_link" };
             if (text && /https?:\/\/|spotify:track:/i.test(text)) {
@@ -365,9 +450,13 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             }
 
             if (commandResult.status === "error") {
-              rememberKickEvent(messageId);
+              const sendFailed = commandResult.reason === "send_failed";
+              if (!sendFailed) rememberKickEvent(messageId);
               logOutcome({ messageId, outcome: "failed", reason: commandResult.reason, eventType: type });
-              return jsonResponse({ status: "failed", reason: commandResult.reason, command: commandResult });
+              return jsonResponse(
+                { status: "failed", reason: commandResult.reason, command: commandResult },
+                sendFailed ? 503 : 500,
+              );
             }
 
             rememberKickEvent(messageId);
@@ -431,7 +520,10 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
         } catch (error) {
           console.error("[kick-webhook] unhandled failure", error);
           return jsonResponse({ error: "webhook_failed" }, 500);
+        } finally {
+          logKickReplyTrace(trace);
         }
+        });
       },
     },
   },
@@ -504,6 +596,35 @@ async function loadDirectCommandCatalog(
   };
   directCatalogCache.set(userId, { catalog, at: Date.now() });
   return catalog;
+}
+
+const giveawayGateCache = new Map<string, { keyword: string; open: boolean; at: number }>();
+
+/** Exact giveaway keyword only. Ordinary chat does not import giveaway.server. */
+async function giveawayTextMightApply(
+  admin: typeof import("@/lib/supabase/client.server").supabaseAdmin,
+  userId: string,
+  text: string,
+): Promise<boolean> {
+  const cached = giveawayGateCache.get(userId);
+  let keyword = "";
+  let open = false;
+  if (cached && Date.now() - cached.at < CONNECTION_TTL_MS) {
+    keyword = cached.keyword;
+    open = cached.open;
+  } else {
+    const { data, error } = await admin
+      .from("giveaway_settings")
+      .select("keyword, is_open")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) return true;
+    keyword = data?.keyword ?? "";
+    open = Boolean(data?.is_open);
+    giveawayGateCache.set(userId, { keyword, open, at: Date.now() });
+  }
+  const key = (keyword.trim() || (open ? "+1" : "")).toLowerCase();
+  return Boolean(key) && text.trim().toLowerCase() === key;
 }
 
 async function findKickConnection(

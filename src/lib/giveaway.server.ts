@@ -229,11 +229,12 @@ export async function confirmGiveawayPresence(
 
   try {
     const { sendKickChatMessage } = await import("@/lib/kickChat.server");
-    await sendKickChatMessage(
+    const sent = await sendKickChatMessage(
       userId,
       "",
       `✅ @${pending.username} أكّد الحضور بكلمة السحب. مبروك!`,
     );
+    if (!sent) console.error("[giveaway] confirm reply was not accepted");
   } catch (error) {
     console.error("[giveaway] confirm reply failed", error);
   }

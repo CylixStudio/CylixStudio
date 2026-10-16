@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { catalogDefaultCommands, matchDefaultCommand } from "@/lib/defaultCommands";
-import { deliverKickChat, kickChatAttempts, selectCylixBotToken } from "@/lib/kickChatDeliver";
+import { deliverKickChat, kickChatAttempts, selectChannelChatToken } from "@/lib/kickChatDeliver";
 import {
   chatLineNeedsCommandModules,
   chatTextNeedsHandlers,
@@ -97,20 +97,20 @@ const question = { ...custom, id: "c4", name: "question", prefix: "?" as const }
 assert.equal(await chatLineNeedsCommandModules("?question", { defaultPrefix: "!", commands: [question] }), true);
 assert.equal(await chatLineNeedsCommandModules("#name", { defaultPrefix: "!", commands: [{ ...custom, name: "name", prefix: "#" }] }), true);
 
-const attempts = kickChatAttempts("42", "hi", null);
+const attempts = kickChatAttempts("hi", null);
 assert.equal(attempts.length, 1);
-assert.equal(attempts[0]?.type, "user");
-assert.equal(attempts[0]?.payload["broadcaster_user_id"], 42);
-assert.equal(selectCylixBotToken(null, "channel-owner-token"), null);
-assert.equal(selectCylixBotToken("cylixbot-token", "channel-owner-token"), "cylixbot-token");
-assert.equal(isCylixBotChatAuthor("CylixBot", "9", null), true);
-assert.equal(isCylixBotChatAuthor("@cylixbot", null, null), true);
+assert.equal(attempts[0]?.type, "bot");
+assert.equal(attempts[0]?.payload["broadcaster_user_id"], undefined);
+assert.equal(selectChannelChatToken(null), null);
+assert.equal(selectChannelChatToken("channel-token"), "channel-token");
+assert.equal(isCylixBotChatAuthor("CylixBot", "9", null), false);
+assert.equal(isCylixBotChatAuthor("@cylixbot", null, "9"), false);
 assert.equal(isCylixBotChatAuthor("CreovixStudio", "9", "9"), true);
 assert.equal(isCylixBotChatAuthor("viewer", "7", "9"), false);
 
 const calls: string[] = [];
 const expired = await deliverKickChat({
-  token: selectCylixBotToken(null, "channel-owner-token"),
+  token: selectChannelChatToken(null),
   broadcasterUserId: "42",
   content: "hi",
   fetchImpl: async () => {
@@ -128,15 +128,15 @@ const sent = await deliverKickChat({
   broadcasterUserId: "42",
   content: "hi",
   fetchImpl: async (_url, init) => {
-    const payload = JSON.parse(init.body) as { type: string; broadcaster_user_id: number };
+    const payload = JSON.parse(init.body) as { type: string; broadcaster_user_id?: number };
     sentTypes.push(payload.type);
     sentAuth.push(init.headers["Authorization"] ?? "");
-    assert.equal(payload.broadcaster_user_id, 42);
-    assert.equal(payload.type, "user");
+    assert.equal(payload.broadcaster_user_id, undefined);
+    assert.equal(payload.type, "bot");
     return { ok: true, status: 200, text: async () => "{\"data\":{\"is_sent\":true}}" };
   },
 });
-assert.deepEqual(sentTypes, ["user"]);
+assert.deepEqual(sentTypes, ["bot"]);
 assert.equal(sentAuth[0], "Bearer cylixbot-token");
 assert.equal(sent.ok, true);
 
@@ -156,7 +156,7 @@ const forbidden = await deliverKickChat({
   },
 });
 assert.equal(forbidden.ok, false);
-assert.equal(forbidden.reason, "user_403");
+assert.equal(forbidden.reason, "bot_forbidden");
 assert.equal(forbiddenCalls, 1);
 
 let unauthorizedCalls = 0;
@@ -170,7 +170,7 @@ const unauthorized = await deliverKickChat({
   },
 });
 assert.equal(unauthorized.ok, false);
-assert.equal(unauthorized.reason, "user_401");
+assert.equal(unauthorized.reason, "bot_401");
 assert.equal(unauthorizedCalls, 1);
 
 resetKickEventMemory();

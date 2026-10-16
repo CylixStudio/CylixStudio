@@ -1,43 +1,71 @@
-import { deliverKickChat, redactKickError, selectCylixBotToken } from "@/lib/kickChatDeliver";
-import { getCylixBotChatToken } from "@/lib/platformTokens.server";
+import { activeKickReceipt, markReplyPending, markReplyResult } from "@/lib/kickCommandReceipt";
+import { redactKickError, sendOfficialKickBot, type KickChatFetch } from "@/lib/kickChatDeliver";
+import { markActiveKickReply } from "@/lib/kickReplyTiming";
+import { getKickAccessToken } from "@/lib/platformTokens.server";
 
 /**
- * Posts as @CylixBot into the partner channel (`type: "user"` + that channel's broadcaster id).
- * The studio user's Kick token is not read. A missing or rejected CylixBot token does not post.
+ * Posts as the CylixBot Developer app bot into the partner channel attached
+ * to that channel's user access token (`type: "bot"`, `chat:write`).
+ * Does not read KICK_BOT_ACCESS_TOKEN and does not fall back to `type: "user"`.
  */
 export async function sendKickChatMessage(
-  _userId: string,
+  userId: string,
   broadcasterUserId: string,
   content: string,
   replyToMessageId?: string | null,
-  options?: { userOnly?: boolean },
+  options?: {
+    /** Accepted so older callers compile. It does not change the bot payload. */
+    userOnly?: boolean;
+    loadToken?: (userId: string, forceRefresh: boolean) => Promise<string | null>;
+    fetchImpl?: KickChatFetch;
+  },
 ): Promise<boolean> {
-  const token = selectCylixBotToken(await getCylixBotChatToken(), null);
-  if (!token) {
-    console.warn("[chat-bot] kick send skipped — CylixBot token missing", {
-      broadcasterUserId,
-      hint: "Set KICK_BOT_ACCESS_TOKEN or KICK_BOT_PLATFORM_USER_ID",
-    });
-    return false;
+  const loadToken =
+    options?.loadToken ??
+    ((id: string, forceRefresh: boolean) =>
+      getKickAccessToken(id, { requireScopes: ["chat:write"], forceRefresh }));
+  const session = activeKickReceipt();
+  const now = Date.now();
+  if (session) {
+    const armed = await markReplyPending(session.board, session.userId, session.providerEventId, content, now);
+    if (!armed) return false;
   }
   try {
-    const result = await deliverKickChat({
-      token,
+    const sent = await sendOfficialKickBot({
+      userId,
       broadcasterUserId,
       content,
       replyToMessageId,
       userOnly: options?.userOnly,
+      loadToken,
+      fetchImpl: options?.fetchImpl,
+      onChatStart: () => markActiveKickReply("chat_request_started"),
+      onChatResponse: () => markActiveKickReply("chat_response_received"),
     });
-    if (!result.ok) return false;
+    if (session) {
+      await markReplyResult(
+        session.board,
+        session.userId,
+        session.providerEventId,
+        sent.outcome === "skipped" ? "rejected" : sent.outcome,
+        Date.now(),
+        sent.kickMessageId,
+        sent.ok ? null : sent.reason,
+      );
+    }
+    if (!sent.ok) return false;
     console.log("[chat-bot] kick chat response sent", {
-      broadcasterId: Number(broadcasterUserId),
-      mode: result.reason,
+      broadcasterId: Number(broadcasterUserId) || null,
+      mode: "bot",
       chars: [...content.normalize("NFC").trim()].length,
     });
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : "send_failed";
     console.error("[chat-bot] kick chat send threw", redactKickError(message));
+    if (session) {
+      await markReplyResult(session.board, session.userId, session.providerEventId, "ambiguous", Date.now(), null, "send_threw");
+    }
     return false;
   }
 }

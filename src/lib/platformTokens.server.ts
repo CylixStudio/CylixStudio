@@ -1,5 +1,7 @@
-import { redactKickError } from "@/lib/kickChatDeliver";
+import { kickTokenAllowsChatWrite, redactKickError } from "@/lib/kickChatDeliver";
+import { scopesFromIntrospection, storedChatWrite } from "@/lib/kickCommandReceipt";
 import { readOAuthEnv } from "@/lib/oauth.server";
+import { singleFlight } from "@/lib/singleFlight";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
@@ -90,34 +92,88 @@ async function refreshKickUserToken(
   }
 }
 
-function scopesAllowChat(scopes: string[]): boolean {
-  return scopes.length === 0 || scopes.includes("chat:write");
+async function introspectKickScopes(accessToken: string): Promise<string[] | null> {
+  try {
+    const response = await fetch("https://id.kick.com/oauth/token/introspect", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+    });
+    if (!response.ok) {
+      console.warn("[tokens] Kick introspection failed", response.status);
+      return null;
+    }
+    const body = (await response.json()) as { data?: { active?: boolean; scope?: string }; scope?: string };
+    const scope = body.data?.scope ?? body.scope;
+    if (body.data?.active === false) return null;
+    return scopesFromIntrospection(scope);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "introspect_failed";
+    console.error("[tokens] Kick introspection error", redactKickError(message));
+    return null;
+  }
 }
+
+const kickRefreshInflight = new Map<string, Promise<RefreshedKickToken | null>>();
 
 /**
  * Returns a usable Kick user access token, refreshing when near expiry.
- * Returns null if disconnected or refresh fails when the token is expired.
+ * Returns null if disconnected, chat:write is required but absent, or refresh fails.
  */
 export async function getKickAccessToken(
   userId: string,
-  opts?: { requireScopes?: string[] },
+  opts?: { requireScopes?: string[]; forceRefresh?: boolean },
 ): Promise<string | null> {
   const data = await loadConnection(userId, "KICK");
   if (!data?.access_token) return null;
 
-  const scopes = data.scopes ?? [];
-  if (opts?.requireScopes?.length && scopes.length) {
-    const missing = opts.requireScopes.filter((scope) => !scopes.includes(scope));
-    if (missing.length) {
+  let scopes = data.scopes ?? [];
+  if (opts?.requireScopes?.includes("chat:write")) {
+    const recorded = storedChatWrite(scopes);
+    if (recorded === "absent") {
+      console.warn("[tokens] Kick grant has no chat:write", {
+        userId,
+        hint: "Reconnect Kick in CylixStudio settings. Do not create a new Kick app.",
+      });
+      return null;
+    }
+    if (recorded === "unrecorded") {
+      const discovered = await introspectKickScopes(data.access_token);
+      if (!discovered) {
+        console.warn("[tokens] Kick scopes are unrecorded and introspection failed", {
+          userId,
+          hint: "Reconnect Kick in CylixStudio settings.",
+        });
+        return null;
+      }
+      scopes = discovered;
+      await supabaseAdmin.from("platform_connections").update({ scopes }).eq("id", data.id);
+      if (!kickTokenAllowsChatWrite(scopes)) {
+        console.warn("[tokens] Kick introspection omitted chat:write", {
+          userId,
+          hint: "Reconnect Kick in CylixStudio settings.",
+        });
+        return null;
+      }
+    }
+  }
+  if (opts?.requireScopes?.length) {
+    const missing = opts.requireScopes.filter((scope) => scope !== "chat:write" && !scopes.includes(scope));
+    if (missing.length && scopes.length) {
       console.warn("[tokens] Kick connection missing scopes", { userId, missing });
       return null;
     }
   }
 
-  if (stillFresh(data.token_expires_at)) return data.access_token;
+  if (!opts?.forceRefresh && stillFresh(data.token_expires_at)) return data.access_token;
   if (!data.refresh_token) return null;
-  const refreshed = await refreshKickUserToken(data.refresh_token, scopes, data.token_expires_at);
+  const refreshed = await singleFlight(data.id, kickRefreshInflight, () =>
+    refreshKickUserToken(data.refresh_token!, scopes, data.token_expires_at),
+  );
   if (!refreshed) return null;
+  if (opts?.requireScopes?.includes("chat:write") && !kickTokenAllowsChatWrite(refreshed.scopes)) {
+    console.warn("[tokens] Kick refresh dropped chat:write", { userId });
+    return null;
+  }
   await supabaseAdmin
     .from("platform_connections")
     .update({
@@ -127,76 +183,6 @@ export async function getKickAccessToken(
       scopes: refreshed.scopes,
     })
     .eq("id", data.id);
-  return refreshed.accessToken;
-}
-
-type BotMemory = { accessToken: string; refreshToken: string | null; expiresAt: string | null; scopes: string[] };
-let cylixBotMemory: BotMemory | null = null;
-
-/**
- * Token for @CylixBot only.
- * Env `KICK_BOT_ACCESS_TOKEN` (optional `KICK_BOT_REFRESH_TOKEN`, `KICK_BOT_EXPIRES_AT`)
- * or an existing Kick connection whose `platform_user_id` is `KICK_BOT_PLATFORM_USER_ID`.
- * Never returns a channel-owner token. Refresh stays on this token.
- */
-export async function getCylixBotChatToken(): Promise<string | null> {
-  const envAccess = process.env["KICK_BOT_ACCESS_TOKEN"]?.trim() ?? "";
-  if (envAccess) {
-    const current = cylixBotMemory ?? {
-      accessToken: envAccess,
-      refreshToken: process.env["KICK_BOT_REFRESH_TOKEN"]?.trim() || null,
-      expiresAt: process.env["KICK_BOT_EXPIRES_AT"]?.trim() || null,
-      scopes: ["chat:write"],
-    };
-    cylixBotMemory = current;
-    if (stillFresh(current.expiresAt)) return current.accessToken;
-    if (!current.refreshToken) return null;
-    const refreshed = await refreshKickUserToken(current.refreshToken, current.scopes, current.expiresAt);
-    if (!refreshed) return null;
-    cylixBotMemory = {
-      accessToken: refreshed.accessToken,
-      refreshToken: refreshed.refreshToken,
-      expiresAt: refreshed.expiresAt,
-      scopes: refreshed.scopes,
-    };
-    return refreshed.accessToken;
-  }
-
-  const botUserId = process.env["KICK_BOT_PLATFORM_USER_ID"]?.trim() ?? "";
-  if (!botUserId) return null;
-  const expectedName = (process.env["KICK_BOT_USERNAME"]?.trim() || "CylixBot").toLowerCase();
-  const { data, error } = await supabaseAdmin
-    .from("platform_connections")
-    .select("id, access_token, refresh_token, token_expires_at, scopes, username")
-    .eq("platform", "KICK")
-    .eq("platform_user_id", botUserId)
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-  if (error || !data?.[0]?.access_token) return null;
-  const row = data[0];
-  if (row.username && row.username.trim().toLowerCase() !== expectedName) {
-    console.warn("[chat-bot] CylixBot connection username mismatch");
-    return null;
-  }
-  const scopes = row.scopes ?? [];
-  if (!scopesAllowChat(scopes)) {
-    console.warn("[chat-bot] CylixBot connection missing chat:write");
-    return null;
-  }
-  if (stillFresh(row.token_expires_at)) return row.access_token;
-  if (!row.refresh_token) return null;
-  const refreshed = await refreshKickUserToken(row.refresh_token, scopes, row.token_expires_at);
-  if (!refreshed) return null;
-  await supabaseAdmin
-    .from("platform_connections")
-    .update({
-      access_token: refreshed.accessToken,
-      refresh_token: refreshed.refreshToken,
-      token_expires_at: refreshed.expiresAt,
-      scopes: refreshed.scopes,
-    })
-    .eq("id", row.id);
   return refreshed.accessToken;
 }
 
