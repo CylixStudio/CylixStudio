@@ -1,4 +1,5 @@
 import { commandTrigger } from "@/lib/customCommands";
+import { channelFromUsernameMatches } from "@/lib/publicChannelMatch";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,31})$/;
@@ -107,17 +108,17 @@ export async function commandsPublicKeyForUser(userId: string): Promise<string |
   return publishedSlugForUser(userId);
 }
 
-async function findUserIdByPlatformUsername(key: string): Promise<string | null> {
+async function findUsernameMatches(key: string): Promise<ConnectionIdentity[]> {
   const { data } = await supabaseAdmin
     .from("platform_connections")
-    .select("user_id, platform, username")
+    .select("user_id, platform, username, metadata")
     .eq("is_active", true)
     .ilike("username", escapeLike(key));
   const matches = (data ?? []).filter(
     (row) => Boolean(row.user_id) && row.username?.trim().toLowerCase() === key,
   );
   matches.sort((a, b) => platformRank(a.platform) - platformRank(b.platform));
-  return matches[0]?.user_id ?? null;
+  return matches;
 }
 
 /** Resolve /commands/{key} by connected platform username, then a published link-in-bio slug. */
@@ -125,7 +126,11 @@ export async function loadCommandsChannel(raw: string): Promise<PublicChannel | 
   const key = normalizeCommandsKey(raw);
   if (!key) return null;
 
-  const byUsername = await findUserIdByPlatformUsername(key);
+  const matches = await findUsernameMatches(key);
+  const direct = channelFromUsernameMatches(key, matches);
+  if (direct) return direct;
+
+  const byUsername = matches[0]?.user_id ?? null;
   const published = byUsername ? null : await loadPublishedChannel(key);
   const userId = byUsername ?? published?.userId ?? null;
   if (!userId) return null;
