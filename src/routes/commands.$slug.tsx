@@ -162,13 +162,23 @@ function PublicCommandsRoute() {
       const page = grid.closest("main");
       const pager = page?.querySelector("nav");
       if (!page || !pager) return;
-      const cardH = Number.parseFloat(getComputedStyle(grid).getPropertyValue("--card-h")) || 120;
+      const renderedCard = grid.querySelector("li")?.getBoundingClientRect().height ?? 0;
+      const cardH = renderedCard || Number.parseFloat(getComputedStyle(grid).getPropertyValue("--card-h")) || 170;
       const rowGap = Number.parseFloat(getComputedStyle(grid).rowGap) || 0;
       const wrap = grid.parentElement;
       const wrapGap = wrap ? Number.parseFloat(getComputedStyle(wrap).rowGap) || 0 : 0;
-      const padBottom = wrap ? Number.parseFloat(getComputedStyle(wrap).paddingBottom) || 0 : 0;
-      const gridTop = grid.getBoundingClientRect().top;
-      const available = window.innerHeight - gridTop - pager.getBoundingClientRect().height - wrapGap - padBottom;
+      const wrapStyle = wrap ? getComputedStyle(wrap) : null;
+      const pad =
+        (wrapStyle ? Number.parseFloat(wrapStyle.paddingTop) || 0 : 0) +
+        (wrapStyle ? Number.parseFloat(wrapStyle.paddingBottom) || 0 : 0);
+      let chrome = pad;
+      if (wrap) {
+        for (const child of wrap.children) {
+          if (child !== grid) chrome += child.getBoundingClientRect().height;
+        }
+        chrome += wrapGap * Math.max(0, wrap.children.length - 1);
+      }
+      const available = window.innerHeight - chrome;
       const fits = (count: number) => count * cardH + Math.max(0, count - 1) * rowGap <= available + 1;
       const next = fits(3) ? 3 : fits(2) ? 2 : 1;
       setRows(next);
