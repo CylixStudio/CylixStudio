@@ -255,9 +255,13 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             }
             if ((needsHandlers || giveawayMatches) && messageId) {
               const { createSupabaseReceiptBoard } = await import("@/lib/kickCommandReceipt.server");
-              const { decideAppBotIdentity, runIdempotentKickCommand, withKickReceipt } = await import(
-                "@/lib/kickCommandReceipt"
-              );
+              const {
+                decideAppBotIdentity,
+                finalizeKickReceiptAfterCommand,
+                logKickReceiptStage,
+                runIdempotentKickCommand,
+                withKickReceipt,
+              } = await import("@/lib/kickCommandReceipt");
               const board = createSupabaseReceiptBoard();
               const chatMessageId = viewerChatMessageId(body);
               if (needsHandlers && chatMessageId) {
@@ -278,6 +282,8 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                 }
               }
               let markHandled = false;
+              const receiptSession = { board, userId, providerEventId: messageId };
+              logKickReceiptStage(messageId, "webhook_received", { needsHandlers, giveaway: giveawayMatches });
               try {
                 const plan = await runIdempotentKickCommand({
                   board,
@@ -288,6 +294,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   deliverStored: async (replyText) => {
                     const { sendOfficialKickBot } = await import("@/lib/kickChatDeliver");
                     const { getKickAccessToken } = await import("@/lib/platformTokens.server");
+                    logKickReceiptStage(messageId, "reply_delivery_started", { retry: true });
                     const result = await sendOfficialKickBot({
                       userId,
                       broadcasterUserId: broadcasterId,
@@ -295,10 +302,18 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                       loadToken: (id, forceRefresh) =>
                         getKickAccessToken(id, { requireScopes: ["chat:write"], forceRefresh }),
                     });
+                    logKickReceiptStage(messageId, "kick_api_response", {
+                      ok: result.ok,
+                      status: result.status,
+                      reason: result.reason,
+                      outcome: result.outcome,
+                      retry: true,
+                    });
                     return result.outcome === "skipped" ? "rejected" : result.outcome;
                   },
                   execute: () =>
-                    withKickReceipt({ board, userId, providerEventId: messageId }, async () => {
+                    withKickReceipt(receiptSession, async () => {
+                      logKickReceiptStage(messageId, "command_execution_started", {});
             if (needsHandlers) {
               const { matchMarkCommand } = await import("@/lib/markPoints");
               const markMatch = matchMarkCommand(text);
@@ -336,6 +351,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                     sender: username,
                     senderPlatformId: senderUserId,
                     identityBadges,
+                    receiptSession,
                   });
                 } else if (/^!?(?:shop|store|متجر)$/i.test(text.trim())) {
                   const { handleShopDirectoryCommand } = await import("@/lib/shopDirectory.server");
@@ -368,6 +384,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   });
                 } else {
                   const { handleDefaultChatCommand } = await import("@/lib/defaultCommands.server");
+                  logKickReceiptStage(messageId, "command_matched", { kind: "default_or_custom" });
                   const defaultResult = await handleDefaultChatCommand({
                     userId,
                     broadcasterUserId: broadcasterId,
@@ -376,6 +393,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                     sender: { username, identityBadges, senderPlatformId: senderUserId },
                     origin,
                     replyToMessageId: viewerChatMessageId(body),
+                    receiptSession,
                   });
                   commandResult = defaultResult;
                   if (defaultResult.status === "ignored" && defaultResult.reason === "no_match") {
@@ -386,6 +404,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                       platform: "KICK",
                       text,
                       sender: { username, identityBadges },
+                      receiptSession,
                     });
                   }
                 }
@@ -421,6 +440,19 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
                   commandResult = plan.delivered
                     ? { status: "replied", reason: "delivery_retried" }
                     : { status: "error", reason: "send_failed" };
+                } else if (plan.action === "execute" && needsHandlers) {
+                  logKickReceiptStage(messageId, "command_execution_completed", {
+                    status: commandResult.status,
+                    reason: commandResult.reason ?? null,
+                  });
+                  await finalizeKickReceiptAfterCommand({
+                    board,
+                    userId,
+                    providerEventId: messageId,
+                    now: Date.now(),
+                    commandStatus: commandResult.status,
+                    commandReason: commandResult.reason ?? null,
+                  });
                 }
               } catch (error) {
                 const missing = error instanceof Error && error.message === "kick_command_receipts_missing";
@@ -452,7 +484,7 @@ export const Route = createFileRoute("/api/public/webhooks/kick")({
             if (commandResult.status === "error") {
               const sendFailed = commandResult.reason === "send_failed";
               if (!sendFailed) rememberKickEvent(messageId);
-              logOutcome({ messageId, outcome: "failed", reason: commandResult.reason, eventType: type });
+              logOutcome({ messageId, outcome: "failed", ...(commandResult.reason ? { reason: commandResult.reason } : {}), eventType: type });
               return jsonResponse(
                 { status: "failed", reason: commandResult.reason, command: commandResult },
                 sendFailed ? 503 : 500,

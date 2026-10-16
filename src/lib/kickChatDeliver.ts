@@ -157,15 +157,16 @@ export async function deliverKickChat(input: {
   } catch (error) {
     input.onChatResponse?.();
     const name = error instanceof Error ? error.name : "";
-    const ambiguous = name === "TimeoutError" || name === "AbortError";
+    const timedOut = name === "TimeoutError" || name === "AbortError";
     const message = error instanceof Error ? error.message : "send_failed";
     console.error("[chat-bot] kick chat send threw", redactKickError(message));
+    // Any throw after Kick may have accepted the message — treat as ambiguous (no auto-resend).
     return {
       ok: false,
       status: null,
-      reason: ambiguous ? "ambiguous_timeout" : "send_threw",
+      reason: timedOut ? "ambiguous_timeout" : "send_threw",
       retryAfterMs: null,
-      outcome: ambiguous ? "ambiguous" : "rejected",
+      outcome: "ambiguous",
       kickMessageId: null,
     };
   }

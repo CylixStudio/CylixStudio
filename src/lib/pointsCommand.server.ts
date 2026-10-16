@@ -1,6 +1,7 @@
 import { COMMAND_PERMISSION_DENIED, isCommandMinRole, type CommandMinRole } from "@/lib/commandAccess";
 import { catalogDefaultCommand } from "@/lib/defaultCommands";
 import { sendKickChatMessage } from "@/lib/kickChat.server";
+import type { ReceiptSession } from "@/lib/kickCommandReceipt";
 import { isPointsCommandAttempt, parsePointsCommand, pointsCommandPermitted } from "@/lib/pointsCommand";
 import { recentChatterNames } from "@/lib/recentChatters";
 import { supabaseAdmin } from "@/lib/supabase/client.server";
@@ -44,6 +45,7 @@ export async function handlePointsCommand(input: {
   sender: string;
   senderPlatformId?: string | null;
   identityBadges?: readonly string[];
+  receiptSession?: ReceiptSession | null;
 }): Promise<{ status: string; reason?: string; command?: string }> {
   const action = parsePointsCommand(input.text);
   if (!action) {
@@ -68,7 +70,7 @@ export async function handlePointsCommand(input: {
       addMinRole: add.minRole,
     })
   ) {
-    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, POINTS_DENIED);
+    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, POINTS_DENIED, null, { ...(input.receiptSession !== undefined ? { receiptSession: input.receiptSession } : {}) });
     if (!sent) return { status: "error", reason: "not_permitted", command: "!points" };
     return { status: "replied", reason: "not_permitted", command: "!points" };
   }
@@ -137,7 +139,7 @@ export async function handlePointsCommand(input: {
     }
   }
 
-  const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply);
+  const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply, null, { ...(input.receiptSession !== undefined ? { receiptSession: input.receiptSession } : {}) });
   if (!sent) return { status: "error", reason: "send_failed", command: "!points" };
   return { status: "replied", command: "!points" };
 }

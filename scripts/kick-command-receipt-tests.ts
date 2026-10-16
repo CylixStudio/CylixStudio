@@ -238,4 +238,34 @@ const stale = planKickReceipt(
 );
 assert.equal(stale.action, "ack");
 
-console.log(JSON.stringify({ ok: true, effects, sends, concurrentEffects, ambiguousSends }));
+const crashBoard = createMemoryReceiptBoard();
+let crashEffects = 0;
+await assert.rejects(() =>
+  run(crashBoard, "evt-crash", "channel-a", async () => {
+    crashEffects += 1;
+    throw new Error("points_write_failed");
+  }, async () => "sent"),
+);
+const crashRetry = await run(crashBoard, "evt-crash", "channel-a", async () => {
+  crashEffects += 1;
+}, async () => "sent");
+assert.equal(crashRetry.action, "busy");
+assert.equal(crashRetry.ran, false);
+assert.equal(crashEffects, 1);
+assert.equal((await crashBoard.read("channel-a", "evt-crash"))?.state, "webhook_received");
+
+let thrownSends = 0;
+const thrown = await sendOfficialKickBot({
+  userId: "channel-a",
+  broadcasterUserId: "42",
+  content: "hi",
+  loadToken: async () => "channel-token",
+  fetchImpl: async () => {
+    thrownSends += 1;
+    throw new Error("socket hang up");
+  },
+});
+assert.equal(thrown.outcome, "ambiguous");
+assert.equal(thrownSends, 1);
+
+console.log(JSON.stringify({ ok: true, effects, sends, concurrentEffects, ambiguousSends, crashEffects, thrownSends }));

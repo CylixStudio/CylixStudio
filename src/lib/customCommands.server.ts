@@ -1,4 +1,5 @@
 import { sendKickChatMessage } from "@/lib/kickChat.server";
+import type { ReceiptSession } from "@/lib/kickCommandReceipt";
 import { resolveCommandTemplate } from "@/lib/commandTemplate.server";
 import {
   commandTrigger,
@@ -95,6 +96,7 @@ export async function handleCustomChatCommand(input: {
   platform: ChatCommandPlatform;
   text: string;
   sender: ChatSender;
+  receiptSession?: ReceiptSession | null;
 }): Promise<{ status: string; reason?: string; command?: string }> {
   const { defaultPrefix, commands } = await loadCommands(input.userId);
   const text = normalizeChatText(input.text);
@@ -135,7 +137,7 @@ export async function handleCustomChatCommand(input: {
   if (!reply) return { status: "ignored", reason: "empty_reply", command: trigger };
 
   if (input.platform === "KICK") {
-    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply);
+    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply, null, { ...(input.receiptSession !== undefined ? { receiptSession: input.receiptSession } : {}) });
     if (!sent) {
       console.warn("[custom-commands] kick send_failed", {
         userId: input.userId,

@@ -1,4 +1,10 @@
-import { activeKickReceipt, markReplyPending, markReplyResult } from "@/lib/kickCommandReceipt";
+import {
+  activeKickReceipt,
+  logKickReceiptStage,
+  markReplyPending,
+  markReplyResult,
+  type ReceiptSession,
+} from "@/lib/kickCommandReceipt";
 import { redactKickError, sendOfficialKickBot, type KickChatFetch } from "@/lib/kickChatDeliver";
 import { markActiveKickReply } from "@/lib/kickReplyTiming";
 import { getKickAccessToken } from "@/lib/platformTokens.server";
@@ -18,29 +24,52 @@ export async function sendKickChatMessage(
     userOnly?: boolean;
     loadToken?: (userId: string, forceRefresh: boolean) => Promise<string | null>;
     fetchImpl?: KickChatFetch;
+    /** Explicit receipt binding. Prefer this over ALS alone on Workers. */
+    receiptSession?: ReceiptSession | null | undefined;
   },
 ): Promise<boolean> {
   const loadToken =
     options?.loadToken ??
     ((id: string, forceRefresh: boolean) =>
       getKickAccessToken(id, { requireScopes: ["chat:write"], forceRefresh }));
-  const session = activeKickReceipt();
+  const session = options?.receiptSession ?? activeKickReceipt();
+  const correlationId = session?.providerEventId ?? "none";
+  const body = content.normalize("NFC").trim().slice(0, 480);
+  if (!body) {
+    logKickReceiptStage(correlationId, "reply_generated", { empty: true });
+    return false;
+  }
+  logKickReceiptStage(correlationId, "reply_generated", { chars: [...body].length });
   const now = Date.now();
+  if (!session) {
+    logKickReceiptStage(correlationId, "reply_session_missing", { willSend: true });
+  }
   if (session) {
-    const armed = await markReplyPending(session.board, session.userId, session.providerEventId, content, now);
-    if (!armed) return false;
+    const armed = await markReplyPending(session.board, session.userId, session.providerEventId, body, now);
+    if (!armed) {
+      logKickReceiptStage(correlationId, "reply_delivery_started", { armed: false });
+      return false;
+    }
+    logKickReceiptStage(correlationId, "reply_delivery_started", { armed: true });
   }
   try {
     const sent = await sendOfficialKickBot({
       userId,
       broadcasterUserId,
-      content,
-      replyToMessageId,
-      userOnly: options?.userOnly,
+      content: body,
       loadToken,
-      fetchImpl: options?.fetchImpl,
       onChatStart: () => markActiveKickReply("chat_request_started"),
       onChatResponse: () => markActiveKickReply("chat_response_received"),
+      ...(replyToMessageId != null ? { replyToMessageId } : {}),
+      ...(options?.userOnly !== undefined ? { userOnly: options.userOnly } : {}),
+      ...(options?.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    });
+    logKickReceiptStage(correlationId, "kick_api_response", {
+      ok: sent.ok,
+      status: sent.status,
+      reason: sent.reason,
+      outcome: sent.outcome,
+      hasKickMessageId: Boolean(sent.kickMessageId),
     });
     if (session) {
       await markReplyResult(
@@ -52,12 +81,15 @@ export async function sendKickChatMessage(
         sent.kickMessageId,
         sent.ok ? null : sent.reason,
       );
+      logKickReceiptStage(correlationId, "reply_delivery_finalized", {
+        outcome: sent.outcome === "skipped" ? "rejected" : sent.outcome,
+      });
     }
     if (!sent.ok) return false;
     console.log("[chat-bot] kick chat response sent", {
       broadcasterId: Number(broadcasterUserId) || null,
       mode: "bot",
-      chars: [...content.normalize("NFC").trim()].length,
+      chars: [...body].length,
     });
     return true;
   } catch (error) {
@@ -65,6 +97,7 @@ export async function sendKickChatMessage(
     console.error("[chat-bot] kick chat send threw", redactKickError(message));
     if (session) {
       await markReplyResult(session.board, session.userId, session.providerEventId, "ambiguous", Date.now(), null, "send_threw");
+      logKickReceiptStage(correlationId, "reply_delivery_finalized", { outcome: "ambiguous" });
     }
     return false;
   }

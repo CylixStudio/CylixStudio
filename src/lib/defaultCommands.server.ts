@@ -1,4 +1,5 @@
 import { sendKickChatMessage } from "@/lib/kickChat.server";
+import type { ReceiptSession } from "@/lib/kickCommandReceipt";
 import { resolveCommandTemplate } from "@/lib/commandTemplate.server";
 import { type ChatCommandPlatform } from "@/lib/customCommands";
 import { COMMAND_PERMISSION_DENIED, isCommandMinRole, senderMayRun } from "@/lib/commandAccess";
@@ -104,6 +105,7 @@ export async function handleDefaultChatCommand(input: {
   sender: ChatSender;
   origin?: string;
   replyToMessageId?: string | null;
+  receiptSession?: ReceiptSession | null;
 }): Promise<{ status: string; reason?: string; command?: string }> {
   const commands = await loadDefaultCommands(input.userId);
   const matched = matchDefaultCommand(input.text, commands, input.platform);
@@ -126,7 +128,7 @@ export async function handleDefaultChatCommand(input: {
   });
   if (!allowed) {
     if (input.platform === "KICK" && command.enabled) {
-      await sendKickChatMessage(input.userId, input.broadcasterUserId, COMMAND_PERMISSION_DENIED);
+      await sendKickChatMessage(input.userId, input.broadcasterUserId, COMMAND_PERMISSION_DENIED, null, { ...(input.receiptSession !== undefined ? { receiptSession: input.receiptSession } : {}) });
     }
     return { status: "ignored", reason: "not_permitted", command: command.trigger };
   }
@@ -166,6 +168,7 @@ export async function handleDefaultChatCommand(input: {
         input.broadcasterUserId,
         reply,
         input.replyToMessageId,
+        { ...(input.receiptSession !== undefined ? { receiptSession: input.receiptSession } : {}) },
       );
       if (!sent) return { status: "error", reason: "send_failed", command: "!commands" };
     }
@@ -212,7 +215,7 @@ export async function handleDefaultChatCommand(input: {
   if (!reply) return { status: "ignored", reason: "empty_reply" };
 
   if (input.platform === "KICK") {
-    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply);
+    const sent = await sendKickChatMessage(input.userId, input.broadcasterUserId, reply, null, { ...(input.receiptSession !== undefined ? { receiptSession: input.receiptSession } : {}) });
     if (!sent) return { status: "error", reason: "send_failed", command: command.trigger };
   }
 

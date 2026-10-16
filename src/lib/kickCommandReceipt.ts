@@ -28,6 +28,123 @@ export type ReceiptPlan =
   | { action: "ack"; reason: "succeeded" | "ambiguous" | "pending" | "executed_without_reply" | "execution_unknown" }
   | { action: "busy" };
 
+
+export type KickReceiptStage =
+  | "webhook_received"
+  | "command_matched"
+  | "command_execution_started"
+  | "command_execution_completed"
+  | "reply_generated"
+  | "reply_delivery_started"
+  | "kick_api_response"
+  | "reply_delivery_finalized"
+  | "reply_session_missing"
+  | "receipt_finalized_silent"
+  | "receipt_finalized_untracked";
+
+/** Safe structured stage log. Never pass message bodies, tokens, or Authorization. */
+export function logKickReceiptStage(
+  correlationId: string,
+  stage: KickReceiptStage,
+  extra?: Record<string, string | number | boolean | null | undefined>,
+): void {
+  const safe: Record<string, string | number | boolean | null> = {
+    tag: "kick-receipt",
+    correlationId: correlationId.slice(0, 64),
+    stage,
+  };
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (value === undefined) continue;
+      if (/token|authorization|secret|password|refresh|bearer|content|body|reply/i.test(key)) continue;
+      safe[key] = value;
+    }
+  }
+  console.log(JSON.stringify(safe));
+}
+
+export function isReplyTerminalState(state: KickReceiptState): boolean {
+  return (
+    state === "reply_delivery_succeeded" ||
+    state === "reply_delivery_failed" ||
+    state === "reply_delivery_ambiguous" ||
+    state === "reply_delivery_pending"
+  );
+}
+
+/**
+ * After command handlers return, close a receipt that never armed a reply.
+ * Silent ignores keep command_execution_completed with an explicit failure_reason.
+ * Expected replies that never updated the receipt get a failed/ambiguous terminal state.
+ */
+export async function finalizeKickReceiptAfterCommand(input: {
+  board: ReceiptBoard;
+  userId: string;
+  providerEventId: string;
+  now: number;
+  commandStatus: string;
+  commandReason?: string | null;
+}): Promise<"unchanged" | "silent" | "untracked_reply" | "untracked_failure"> {
+  const current = await input.board.read(input.userId, input.providerEventId);
+  if (!current) return "unchanged";
+  if (isReplyTerminalState(current.state) && current.replyText) return "unchanged";
+  if (current.state === "reply_delivery_pending") return "unchanged";
+
+  const reason = (input.commandReason ?? "").trim() || input.commandStatus;
+  const silentReasons = new Set([
+    "cooldown",
+    "reserved",
+    "disabled",
+    "unpublished",
+    "no_match",
+    "not_a_command",
+    "empty_text",
+    "not_permitted",
+  ]);
+  const silent = input.commandStatus === "ignored" && silentReasons.has(reason);
+
+  if (silent || input.commandStatus === "ignored") {
+    const from = current.state === "webhook_received" ? "webhook_received" : "command_execution_completed";
+    if (current.state !== "webhook_received" && current.state !== "command_execution_completed") return "unchanged";
+    await input.board.compareAndSet(input.userId, input.providerEventId, from, {
+      state: "command_execution_completed",
+      failureReason: `silent:${reason || "ignored"}`,
+      now: input.now,
+    });
+    logKickReceiptStage(input.providerEventId, "receipt_finalized_silent", { reason: reason || "ignored" });
+    return "silent";
+  }
+
+  if (input.commandStatus === "replied") {
+    const from = current.state === "webhook_received" ? "webhook_received" : "command_execution_completed";
+    if (current.state !== "webhook_received" && current.state !== "command_execution_completed") return "unchanged";
+    await input.board.compareAndSet(input.userId, input.providerEventId, from, {
+      state: "reply_delivery_ambiguous",
+      failureReason: "reply_untracked_after_handler",
+      now: input.now,
+    });
+    logKickReceiptStage(input.providerEventId, "receipt_finalized_untracked", { commandStatus: "replied" });
+    return "untracked_reply";
+  }
+
+  if (input.commandStatus === "error") {
+    const from = current.state === "webhook_received" ? "webhook_received" : "command_execution_completed";
+    if (current.state !== "webhook_received" && current.state !== "command_execution_completed") return "unchanged";
+    await input.board.compareAndSet(input.userId, input.providerEventId, from, {
+      state: "reply_delivery_failed",
+      failureReason: reason || "command_error",
+      now: input.now,
+    });
+    logKickReceiptStage(input.providerEventId, "receipt_finalized_untracked", {
+      commandStatus: "error",
+      reason: reason || "command_error",
+    });
+    return "untracked_failure";
+  }
+
+  return "unchanged";
+}
+
 const BUSY_MS = 20_000;
 
 /** What a second isolate should do with a durable receipt. */
@@ -180,7 +297,13 @@ export async function markReplyPending(
   const current = await board.read(userId, providerEventId);
   if (!current) return false;
   if (current.state === "reply_delivery_pending") return true;
-  if (current.state !== "command_execution_completed" && current.state !== "reply_delivery_failed") return false;
+  if (
+    current.state !== "webhook_received" &&
+    current.state !== "command_execution_completed" &&
+    current.state !== "reply_delivery_failed"
+  ) {
+    return false;
+  }
   const next = await board.compareAndSet(userId, providerEventId, current.state, {
     state: "reply_delivery_pending",
     replyText,
@@ -229,14 +352,22 @@ export async function runIdempotentKickCommand(input: {
     now: input.now,
   });
   if (claimed) {
-    const started = await input.board.compareAndSet(
-      input.userId,
-      input.providerEventId,
-      "webhook_received",
-      { state: "command_execution_completed", now: input.now },
-    );
-    if (!started) return { action: "busy", ran: false, delivered: false };
+    // The insert is the lock. Points, shop, giveaway, and mark writes are separate
+    // PostgREST calls, so this is at-most-once rather than one database transaction.
+    // Completion is recorded only after execute returns. A throw leaves
+    // webhook_received: a retry inside the busy window does not execute, and a
+    // later retry acks execution_unknown instead of repeating the write.
     await input.execute();
+    const after = await input.board.read(input.userId, input.providerEventId);
+    if (after?.state === "webhook_received") {
+      const finished = await input.board.compareAndSet(
+        input.userId,
+        input.providerEventId,
+        "webhook_received",
+        { state: "command_execution_completed", now: input.now },
+      );
+      if (!finished) return { action: "busy", ran: true, delivered: false };
+    }
     return { action: "execute", ran: true, delivered: false };
   }
   const current = await input.board.read(input.userId, input.providerEventId);
@@ -263,7 +394,7 @@ export async function runIdempotentKickCommand(input: {
   return { action: "retry_delivery", replyText: plan.replyText, ran: false, delivered: outcome === "sent" };
 }
 
-type ReceiptSession = { board: ReceiptBoard; userId: string; providerEventId: string };
+export type ReceiptSession = { board: ReceiptBoard; userId: string; providerEventId: string };
 const receiptSessions = new AsyncLocalStorage<ReceiptSession>();
 
 export function withKickReceipt<T>(session: ReceiptSession, run: () => Promise<T>): Promise<T> {
