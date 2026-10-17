@@ -1,3 +1,4 @@
+import { DOCS_AR } from "@/lib/i18n.docs";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 
 import { EN } from "@/lib/i18n.en";
@@ -10,11 +11,17 @@ export const DEFAULT_LOCALE: Lang = "ar";
 export const LANG_STORAGE_KEY = "creovix.lang";
 
 const DICT = {
+  ...DOCS_AR,
+  "nav.sections.home": "الرئيسية",
+  "nav.sections.streamTools": "أدوات البث",
+  "nav.sections.management": "الإدارة",
+  "nav.sections.account": "الحساب",
   "nav.subscription": "الاشتراك",
   "nav.home": "الرئيسية",
   "nav.analytics": "التحليلات",
   "nav.schedule": "الجدول",
   "nav.settings": "الإعدادات",
+  "nav.docs": "التوثيق",
   "nav.search": "بحث في الأدوات",
   "nav.notifications": "الإشعارات",
   "nav.signOut": "تسجيل الخروج",
@@ -23,10 +30,13 @@ const DICT = {
   "nav.chatCommands": "أوامر الشات",
   "nav.linkInBio": "رابط البايو",
   "nav.counter": "عداد المتابعين (مباشر)",
+  "nav.alerts": "التنبيهات",
   "nav.giveaway": "السحب",
   "nav.markPoints": "العلامات المرجعية",
   "nav.collapseSidebar": "طي الشريط الجانبي",
   "nav.expandSidebar": "توسيع الشريط الجانبي",
+  "nav.alerts.earlyAccess": "وصول مبكر",
+  "nav.alerts.locked": "التنبيهات متاحة حاليًا ضمن الوصول المبكر للمسؤولين فقط.",
   "home.title": "أدوات بث صُمّمت لستريمك.",
   "home.subtitle": "كل ما تحتاجه لبناء ستريمك وتخصيصه والتحكم به.",
   "home.searchPlaceholder": "ابحث عن أداة...",

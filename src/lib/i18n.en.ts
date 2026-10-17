@@ -1,5 +1,14 @@
+import { DOCS_EN } from "@/lib/i18n.docs";
+
 export const EN = {
+  ...DOCS_EN,
+  "nav.sections.home": "Home",
+  "nav.sections.streamTools": "Stream Tools",
+  "nav.sections.management": "Management",
+  "nav.sections.account": "Account",
   "nav.subscription": "Subscription",
+  "nav.docs": "Documentation",
+  "nav.alerts": "Alerts",
   "nav.home": "Home",
   "nav.analytics": "Analytics",
   "nav.schedule": "Schedule",
@@ -16,6 +25,9 @@ export const EN = {
   "nav.markPoints": "Mark points",
   "nav.collapseSidebar": "Collapse sidebar",
   "nav.expandSidebar": "Expand sidebar",
+  "nav.alerts.earlyAccess": "Early Access",
+  "nav.alerts.locked":
+    "Alerts are currently available to administrators only during Early Access.",
   "home.title": "Streaming tools, built for your stream.",
   "home.subtitle": "Everything you need to build, customize, and control your stream.",
   "home.searchPlaceholder": "Search for a tool...",

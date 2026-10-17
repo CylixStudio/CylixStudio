@@ -11,11 +11,13 @@ import {
   ChevronsLeft,
   CreditCard,
   Crown,
+  Bell,
   Hash,
   Home,
   LogOut,
   MessageSquareCode,
   Link2,
+  BookOpen,
   Settings,
 } from "lucide-react";
 
@@ -32,6 +34,7 @@ import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import type { Subathon } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
+import { viewerIsAdmin } from "@/lib/adminAccess.functions";
 
 type AppShellProps = {
   children: ReactNode;
@@ -49,21 +52,54 @@ const EXPANDED_W = "16.5rem";
 const COLLAPSED_W = "4.75rem";
 
 /** Live sidebar destinations only — unfinished tools stay off the nav until ready. */
-const NAV = [
-  { to: "/subscription" as const, icon: CreditCard, labelKey: "nav.subscription" },
-  { to: "/dashboard" as const, icon: Home, labelKey: "nav.home" },
-  { to: "/analytics" as const, icon: BarChart3, labelKey: "nav.analytics" },
-  { to: "/activity-feed" as const, icon: Activity, labelKey: "nav.activity" },
-  { to: "/custom-commands" as const, icon: MessageSquareCode, labelKey: "nav.chatCommands" },
-  { to: "/link-in-bio" as const, icon: Link2, labelKey: "nav.linkInBio" },
-  { to: "/live-counter" as const, icon: Hash, labelKey: "nav.counter" },
-  { to: "/schedule" as const, icon: CalendarDays, labelKey: "nav.schedule" },
-  { to: "/mark-points" as const, icon: Bookmark, labelKey: "nav.markPoints" },
-  { to: "/loyalty" as const, icon: Crown, labelKey: "nav.tools.loyalty" },
-] as const satisfies ReadonlyArray<{
+type NavItem = {
   to: string;
   icon: typeof Home;
   labelKey: TranslationKey;
+  adminOnly?: boolean;
+  earlyAccess?: boolean;
+};
+
+const NAV_SECTIONS = [
+  {
+    id: "home",
+    headerKey: "nav.sections.home",
+    items: [
+      { to: "/dashboard" as const, icon: Home, labelKey: "nav.home" },
+    ],
+  },
+  {
+    id: "streamTools",
+    headerKey: "nav.sections.streamTools",
+    items: [
+      { to: "/custom-commands" as const, icon: MessageSquareCode, labelKey: "nav.chatCommands" },
+      { to: "/alerts" as const, icon: Bell, labelKey: "nav.alerts", adminOnly: true, earlyAccess: true },
+      { to: "/live-counter" as const, icon: Hash, labelKey: "nav.counter" },
+      { to: "/loyalty" as const, icon: Crown, labelKey: "nav.tools.loyalty" },
+      { to: "/mark-points" as const, icon: Bookmark, labelKey: "nav.markPoints" },
+    ],
+  },
+  {
+    id: "management",
+    headerKey: "nav.sections.management",
+    items: [
+      { to: "/activity-feed" as const, icon: Activity, labelKey: "nav.activity" },
+      { to: "/analytics" as const, icon: BarChart3, labelKey: "nav.analytics" },
+      { to: "/schedule" as const, icon: CalendarDays, labelKey: "nav.schedule" },
+      { to: "/link-in-bio" as const, icon: Link2, labelKey: "nav.linkInBio" },
+    ],
+  },
+  {
+    id: "account",
+    headerKey: "nav.sections.account",
+    items: [
+      { to: "/subscription" as const, icon: CreditCard, labelKey: "nav.subscription" },
+    ],
+  },
+] as const satisfies ReadonlyArray<{
+  id: string;
+  headerKey: TranslationKey;
+  items: ReadonlyArray<NavItem>;
 }>;
 
 const menuSurface = "absolute z-50 min-w-44 rounded-xl border p-1.5";
@@ -132,6 +168,13 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
   const versionLabel = studioVersion.data?.trim() || FALLBACK_STUDIO_VERSION;
   const { t, dir } = useLanguage();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const adminQuery = useQuery({
+    queryKey: ["viewer-is-admin", user?.id],
+    queryFn: () => viewerIsAdmin(),
+    enabled: Boolean(user?.id) && !isTestMode() && isSupabaseConfigured(),
+    staleTime: 60_000,
+  });
+  const isAdmin = Boolean(adminQuery.data?.admin);
 
   const [collapsed, setCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -287,19 +330,73 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
           ) : null}
 
           <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3">
-            {NAV.map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.to;
-              const label = t(item.labelKey);
-              return (
-                <IconTip key={item.to} label={label} collapsed={collapsed}>
-                  <Link to={item.to} className={navBtn(active)} aria-current={active ? "page" : undefined}>
-                    <Icon className="size-4 shrink-0" aria-hidden />
-                    {collapsed ? null : <span className="truncate">{label}</span>}
-                  </Link>
-                </IconTip>
-              );
-            })}
+            {NAV_SECTIONS.map((section) => (
+              <div key={section.id} className={cn("flex flex-col", collapsed ? "gap-1" : "gap-1.5")}>
+                {collapsed ? null : (
+                  <div className="px-2 pt-2 first:pt-0">
+                    <span className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      {t(section.headerKey)}
+                    </span>
+                  </div>
+                )}
+                <div className={cn("flex flex-col", collapsed ? "gap-0.5" : "gap-1")}>
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const isAlertsItem = item.to === "/alerts";
+                    const lockedAlerts = Boolean(isAlertsItem && !isAdmin);
+                    const active =
+                      item.to === "/alerts"
+                        ? pathname === "/alerts" || pathname.startsWith("/alerts/")
+                        : pathname === item.to;
+                    const label = t(item.labelKey);
+                    const displayLabel = lockedAlerts
+                      ? t("nav.alerts.locked")
+                      : isAlertsItem && item.earlyAccess
+                        ? `${label} • ${t("nav.alerts.earlyAccess")}`
+                        : label;
+                    const inner = (
+                      <>
+                        <Icon className={cn("size-4 shrink-0", lockedAlerts && "opacity-60")} aria-hidden />
+                        {collapsed ? null : (
+                          <span className="truncate">
+                            {label}
+                            {isAlertsItem && item.earlyAccess ? (
+                              <span className="ms-1 text-[0.65rem] text-muted-foreground">
+                                • {t("nav.alerts.earlyAccess")}
+                              </span>
+                            ) : null}
+                          </span>
+                        )}
+                      </>
+                    );
+                    if (lockedAlerts) {
+                      return (
+                        <IconTip key={item.to} label={displayLabel} collapsed={collapsed}>
+                          <span
+                            aria-disabled="true"
+                            title={displayLabel}
+                            className={cn(
+                              "relative flex w-full cursor-not-allowed items-center rounded-xl border border-transparent text-[0.82rem] text-muted-foreground opacity-60",
+                              collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
+                            )}
+                          >
+                            {inner}
+                          </span>
+                        </IconTip>
+                      );
+                    }
+                    return (
+                      <IconTip key={item.to} label={displayLabel} collapsed={collapsed}>
+                        <Link to={item.to} className={navBtn(active)} aria-current={active ? "page" : undefined}>
+                          {inner}
+                        </Link>
+                      </IconTip>
+                    );
+                  })}
+                </div>
+                <div className={cn("border-t border-white/10", collapsed ? "mt-0.5" : "mt-1")} aria-hidden />
+              </div>
+            ))}
           </nav>
 
           <div className="mt-auto space-y-2 border-t border-white/10 px-2 py-3">
@@ -413,6 +510,19 @@ export function AppShell({ children, title, subtitle, actions, user, profile }: 
                   >
                     <Settings className="size-4 shrink-0" aria-hidden />
                     <span className="min-w-0 flex-1 text-start">{t("nav.settings")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    dir={dir}
+                    onClick={() => {
+                      setProfileOpen(false);
+                      navigate({ to: "/docs" });
+                    }}
+                    className={`${menuItem} flex-row text-muted-foreground hover:bg-[oklch(1_0_0/0.06)] hover:text-foreground`}
+                  >
+                    <BookOpen className="size-4 shrink-0" aria-hidden />
+                    <span className="min-w-0 flex-1 text-start">{t("nav.docs")}</span>
                   </button>
                   <div className="my-1 border-t border-[rgba(255,255,255,0.08)]" />
                   <button
