@@ -17,6 +17,7 @@ import { Route as ModQueueRouteImport } from './routes/mod-queue'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedActivityFeedRouteImport } from './routes/_authenticated/activity-feed'
+import { Route as AuthenticatedAlertsRouteImport } from './routes/_authenticated/alerts'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedCustomCommandsRouteImport } from './routes/_authenticated/custom-commands'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -43,11 +44,19 @@ import { Route as OverlayTiktokTapGoalRouteImport } from './routes/overlay.tikto
 import { Route as OverlayTiktokTappersRouteImport } from './routes/overlay.tiktok-tappers'
 import { Route as StoreSlugRouteImport } from './routes/store.$slug'
 import { Route as USlugRouteImport } from './routes/u.$slug'
+import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts.index'
 import { Route as AuthenticatedToolsToolRouteImport } from './routes/_authenticated/tools.$tool'
 import { Route as AuthenticatedWidgetsIndexRouteImport } from './routes/_authenticated/widgets.index'
 import { Route as AuthenticatedWidgetsWidgetIdRouteImport } from './routes/_authenticated/widgets.$widgetId'
+import { Route as ApiAlertsIndexRouteImport } from './routes/api/alerts/index'
+import { Route as ApiAlertsAccessRouteImport } from './routes/api/alerts/access'
+import { Route as ApiAlertsControlRouteImport } from './routes/api/alerts/control'
+import { Route as ApiAlertsMediaRouteImport } from './routes/api/alerts/media'
+import { Route as ApiAlertsSimulateRouteImport } from './routes/api/alerts/simulate'
+import { Route as ApiAlertsTestRouteImport } from './routes/api/alerts/test'
 import { Route as ApiLiveCounterLookupRouteImport } from './routes/api/live-counter/lookup'
 import { Route as MarksTokenMarkIdRouteImport } from './routes/marks.$token.$markId'
+import { Route as OverlayAlertsTokenRouteImport } from './routes/overlay.alerts.$token'
 import { Route as AuthenticatedSubathonsIdControlRouteImport } from './routes/_authenticated/subathons.$id.control'
 import { Route as AuthenticatedSubathonsIdOverlayRouteImport } from './routes/_authenticated/subathons.$id.overlay'
 import { Route as AuthenticatedSubathonsIdRulesRouteImport } from './routes/_authenticated/subathons.$id.rules'
@@ -55,6 +64,7 @@ import { Route as AuthenticatedWidgetsWidgetIdIndexRouteImport } from './routes/
 import { Route as AuthenticatedWidgetsWidgetIdControlRouteImport } from './routes/_authenticated/widgets.$widgetId.control'
 import { Route as AuthenticatedWidgetsWidgetIdGoalRouteImport } from './routes/_authenticated/widgets.$widgetId.goal'
 import { Route as AuthenticatedWidgetsWidgetIdRulesRouteImport } from './routes/_authenticated/widgets.$widgetId.rules'
+import { Route as ApiAlertsMediaIdRouteImport } from './routes/api/alerts/media/$id'
 import { Route as ApiAuthProviderCallbackRouteImport } from './routes/api/auth/$provider/callback'
 import { Route as ApiAuthProviderStartRouteImport } from './routes/api/auth/$provider/start'
 import { Route as ApiAuthCallbackTiktokRouteImport } from './routes/api/auth/callback/tiktok'
@@ -66,6 +76,7 @@ import { Route as ApiPublicWebhooksStreamelementsRouteImport } from './routes/ap
 import { Route as ApiPublicWebhooksStreamlabsRouteImport } from './routes/api/public/webhooks/streamlabs'
 import { Route as ApiPublicWebhooksStreampayRouteImport } from './routes/api/public/webhooks/streampay'
 import { Route as ApiPublicWebhooksTwitchRouteImport } from './routes/api/public/webhooks/twitch'
+import { Route as ApiPublicAlertsTokenActionRouteImport } from './routes/api/public/alerts/$token/$action'
 import { Route as ApiPublicAuthProviderCallbackRouteImport } from './routes/api/public/auth/$provider/callback'
 import { Route as ApiPublicAuthProviderStartRouteImport } from './routes/api/public/auth/$provider/start'
 import { Route as ApiPublicGiveawayTokenLiveRouteImport } from './routes/api/public/giveaway/$token/live'
@@ -125,6 +136,11 @@ const AuthenticatedActivityFeedRoute =
     path: '/activity-feed',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAlertsRoute = AuthenticatedAlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -259,6 +275,12 @@ const USlugRoute = USlugRouteImport.update({
   path: '/u/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAlertsIndexRoute =
+  AuthenticatedAlertsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAlertsRoute,
+  } as any)
 const AuthenticatedToolsToolRoute = AuthenticatedToolsToolRouteImport.update({
   id: '/tools/$tool',
   path: '/tools/$tool',
@@ -276,6 +298,36 @@ const AuthenticatedWidgetsWidgetIdRoute =
     path: '/widgets/$widgetId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiAlertsIndexRoute = ApiAlertsIndexRouteImport.update({
+  id: '/api/alerts/',
+  path: '/api/alerts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAlertsAccessRoute = ApiAlertsAccessRouteImport.update({
+  id: '/api/alerts/access',
+  path: '/api/alerts/access',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAlertsControlRoute = ApiAlertsControlRouteImport.update({
+  id: '/api/alerts/control',
+  path: '/api/alerts/control',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAlertsMediaRoute = ApiAlertsMediaRouteImport.update({
+  id: '/api/alerts/media',
+  path: '/api/alerts/media',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAlertsSimulateRoute = ApiAlertsSimulateRouteImport.update({
+  id: '/api/alerts/simulate',
+  path: '/api/alerts/simulate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAlertsTestRoute = ApiAlertsTestRouteImport.update({
+  id: '/api/alerts/test',
+  path: '/api/alerts/test',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiLiveCounterLookupRoute = ApiLiveCounterLookupRouteImport.update({
   id: '/api/live-counter/lookup',
   path: '/api/live-counter/lookup',
@@ -285,6 +337,11 @@ const MarksTokenMarkIdRoute = MarksTokenMarkIdRouteImport.update({
   id: '/$markId',
   path: '/$markId',
   getParentRoute: () => MarksTokenRoute,
+} as any)
+const OverlayAlertsTokenRoute = OverlayAlertsTokenRouteImport.update({
+  id: '/overlay/alerts/$token',
+  path: '/overlay/alerts/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSubathonsIdControlRoute =
   AuthenticatedSubathonsIdControlRouteImport.update({
@@ -328,6 +385,11 @@ const AuthenticatedWidgetsWidgetIdRulesRoute =
     path: '/rules',
     getParentRoute: () => AuthenticatedWidgetsWidgetIdRoute,
   } as any)
+const ApiAlertsMediaIdRoute = ApiAlertsMediaIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiAlertsMediaRoute,
+} as any)
 const ApiAuthProviderCallbackRoute = ApiAuthProviderCallbackRouteImport.update({
   id: '/api/auth/$provider/callback',
   path: '/api/auth/$provider/callback',
@@ -388,6 +450,12 @@ const ApiPublicWebhooksTwitchRoute = ApiPublicWebhooksTwitchRouteImport.update({
   path: '/api/public/webhooks/twitch',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAlertsTokenActionRoute =
+  ApiPublicAlertsTokenActionRouteImport.update({
+    id: '/api/public/alerts/$token/$action',
+    path: '/api/public/alerts/$token/$action',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicAuthProviderCallbackRoute =
   ApiPublicAuthProviderCallbackRouteImport.update({
     id: '/api/public/auth/$provider/callback',
@@ -503,6 +571,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/activity-feed': typeof AuthenticatedActivityFeedRoute
+  '/alerts': typeof AuthenticatedAlertsRouteWithChildren
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/custom-commands': typeof AuthenticatedCustomCommandsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -531,15 +600,24 @@ export interface FileRoutesByFullPath {
   '/u/$slug': typeof USlugRoute
   '/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
+  '/api/alerts/access': typeof ApiAlertsAccessRoute
+  '/api/alerts/control': typeof ApiAlertsControlRoute
+  '/api/alerts/media': typeof ApiAlertsMediaRouteWithChildren
+  '/api/alerts/simulate': typeof ApiAlertsSimulateRoute
+  '/api/alerts/test': typeof ApiAlertsTestRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
+  '/overlay/alerts/$token': typeof OverlayAlertsTokenRoute
+  '/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/widgets/': typeof AuthenticatedWidgetsIndexRoute
+  '/api/alerts/': typeof ApiAlertsIndexRoute
   '/subathons/$id/control': typeof AuthenticatedSubathonsIdControlRoute
   '/subathons/$id/overlay': typeof AuthenticatedSubathonsIdOverlayRoute
   '/subathons/$id/rules': typeof AuthenticatedSubathonsIdRulesRoute
   '/widgets/$widgetId/control': typeof AuthenticatedWidgetsWidgetIdControlRoute
   '/widgets/$widgetId/goal': typeof AuthenticatedWidgetsWidgetIdGoalRoute
   '/widgets/$widgetId/rules': typeof AuthenticatedWidgetsWidgetIdRulesRoute
+  '/api/alerts/media/$id': typeof ApiAlertsMediaIdRoute
   '/api/auth/$provider/callback': typeof ApiAuthProviderCallbackRoute
   '/api/auth/$provider/start': typeof ApiAuthProviderStartRoute
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
@@ -552,6 +630,7 @@ export interface FileRoutesByFullPath {
   '/api/public/webhooks/streampay': typeof ApiPublicWebhooksStreampayRoute
   '/api/public/webhooks/twitch': typeof ApiPublicWebhooksTwitchRoute
   '/widgets/$widgetId/': typeof AuthenticatedWidgetsWidgetIdIndexRoute
+  '/api/public/alerts/$token/$action': typeof ApiPublicAlertsTokenActionRoute
   '/api/public/auth/$provider/callback': typeof ApiPublicAuthProviderCallbackRoute
   '/api/public/auth/$provider/start': typeof ApiPublicAuthProviderStartRoute
   '/api/public/giveaway/$token/live': typeof ApiPublicGiveawayTokenLiveRoute
@@ -606,15 +685,24 @@ export interface FileRoutesByTo {
   '/store/$slug': typeof StoreSlugRoute
   '/u/$slug': typeof USlugRoute
   '/tools/$tool': typeof AuthenticatedToolsToolRoute
+  '/api/alerts/access': typeof ApiAlertsAccessRoute
+  '/api/alerts/control': typeof ApiAlertsControlRoute
+  '/api/alerts/media': typeof ApiAlertsMediaRouteWithChildren
+  '/api/alerts/simulate': typeof ApiAlertsSimulateRoute
+  '/api/alerts/test': typeof ApiAlertsTestRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
+  '/overlay/alerts/$token': typeof OverlayAlertsTokenRoute
+  '/alerts': typeof AuthenticatedAlertsIndexRoute
   '/widgets': typeof AuthenticatedWidgetsIndexRoute
+  '/api/alerts': typeof ApiAlertsIndexRoute
   '/subathons/$id/control': typeof AuthenticatedSubathonsIdControlRoute
   '/subathons/$id/overlay': typeof AuthenticatedSubathonsIdOverlayRoute
   '/subathons/$id/rules': typeof AuthenticatedSubathonsIdRulesRoute
   '/widgets/$widgetId/control': typeof AuthenticatedWidgetsWidgetIdControlRoute
   '/widgets/$widgetId/goal': typeof AuthenticatedWidgetsWidgetIdGoalRoute
   '/widgets/$widgetId/rules': typeof AuthenticatedWidgetsWidgetIdRulesRoute
+  '/api/alerts/media/$id': typeof ApiAlertsMediaIdRoute
   '/api/auth/$provider/callback': typeof ApiAuthProviderCallbackRoute
   '/api/auth/$provider/start': typeof ApiAuthProviderStartRoute
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
@@ -627,6 +715,7 @@ export interface FileRoutesByTo {
   '/api/public/webhooks/streampay': typeof ApiPublicWebhooksStreampayRoute
   '/api/public/webhooks/twitch': typeof ApiPublicWebhooksTwitchRoute
   '/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdIndexRoute
+  '/api/public/alerts/$token/$action': typeof ApiPublicAlertsTokenActionRoute
   '/api/public/auth/$provider/callback': typeof ApiPublicAuthProviderCallbackRoute
   '/api/public/auth/$provider/start': typeof ApiPublicAuthProviderStartRoute
   '/api/public/giveaway/$token/live': typeof ApiPublicGiveawayTokenLiveRoute
@@ -656,6 +745,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/_authenticated/activity-feed': typeof AuthenticatedActivityFeedRoute
+  '/_authenticated/alerts': typeof AuthenticatedAlertsRouteWithChildren
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/custom-commands': typeof AuthenticatedCustomCommandsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -684,15 +774,24 @@ export interface FileRoutesById {
   '/u/$slug': typeof USlugRoute
   '/_authenticated/tools/$tool': typeof AuthenticatedToolsToolRoute
   '/_authenticated/widgets/$widgetId': typeof AuthenticatedWidgetsWidgetIdRouteWithChildren
+  '/api/alerts/access': typeof ApiAlertsAccessRoute
+  '/api/alerts/control': typeof ApiAlertsControlRoute
+  '/api/alerts/media': typeof ApiAlertsMediaRouteWithChildren
+  '/api/alerts/simulate': typeof ApiAlertsSimulateRoute
+  '/api/alerts/test': typeof ApiAlertsTestRoute
   '/api/live-counter/lookup': typeof ApiLiveCounterLookupRoute
   '/marks/$token/$markId': typeof MarksTokenMarkIdRoute
+  '/overlay/alerts/$token': typeof OverlayAlertsTokenRoute
+  '/_authenticated/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/_authenticated/widgets/': typeof AuthenticatedWidgetsIndexRoute
+  '/api/alerts/': typeof ApiAlertsIndexRoute
   '/_authenticated/subathons/$id/control': typeof AuthenticatedSubathonsIdControlRoute
   '/_authenticated/subathons/$id/overlay': typeof AuthenticatedSubathonsIdOverlayRoute
   '/_authenticated/subathons/$id/rules': typeof AuthenticatedSubathonsIdRulesRoute
   '/_authenticated/widgets/$widgetId/control': typeof AuthenticatedWidgetsWidgetIdControlRoute
   '/_authenticated/widgets/$widgetId/goal': typeof AuthenticatedWidgetsWidgetIdGoalRoute
   '/_authenticated/widgets/$widgetId/rules': typeof AuthenticatedWidgetsWidgetIdRulesRoute
+  '/api/alerts/media/$id': typeof ApiAlertsMediaIdRoute
   '/api/auth/$provider/callback': typeof ApiAuthProviderCallbackRoute
   '/api/auth/$provider/start': typeof ApiAuthProviderStartRoute
   '/api/auth/callback/tiktok': typeof ApiAuthCallbackTiktokRoute
@@ -705,6 +804,7 @@ export interface FileRoutesById {
   '/api/public/webhooks/streampay': typeof ApiPublicWebhooksStreampayRoute
   '/api/public/webhooks/twitch': typeof ApiPublicWebhooksTwitchRoute
   '/_authenticated/widgets/$widgetId/': typeof AuthenticatedWidgetsWidgetIdIndexRoute
+  '/api/public/alerts/$token/$action': typeof ApiPublicAlertsTokenActionRoute
   '/api/public/auth/$provider/callback': typeof ApiPublicAuthProviderCallbackRoute
   '/api/public/auth/$provider/start': typeof ApiPublicAuthProviderStartRoute
   '/api/public/giveaway/$token/live': typeof ApiPublicGiveawayTokenLiveRoute
@@ -734,6 +834,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/activity-feed'
+    | '/alerts'
     | '/analytics'
     | '/custom-commands'
     | '/dashboard'
@@ -762,15 +863,24 @@ export interface FileRouteTypes {
     | '/u/$slug'
     | '/tools/$tool'
     | '/widgets/$widgetId'
+    | '/api/alerts/access'
+    | '/api/alerts/control'
+    | '/api/alerts/media'
+    | '/api/alerts/simulate'
+    | '/api/alerts/test'
     | '/api/live-counter/lookup'
     | '/marks/$token/$markId'
+    | '/overlay/alerts/$token'
+    | '/alerts/'
     | '/widgets/'
+    | '/api/alerts/'
     | '/subathons/$id/control'
     | '/subathons/$id/overlay'
     | '/subathons/$id/rules'
     | '/widgets/$widgetId/control'
     | '/widgets/$widgetId/goal'
     | '/widgets/$widgetId/rules'
+    | '/api/alerts/media/$id'
     | '/api/auth/$provider/callback'
     | '/api/auth/$provider/start'
     | '/api/auth/callback/tiktok'
@@ -783,6 +893,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/streampay'
     | '/api/public/webhooks/twitch'
     | '/widgets/$widgetId/'
+    | '/api/public/alerts/$token/$action'
     | '/api/public/auth/$provider/callback'
     | '/api/public/auth/$provider/start'
     | '/api/public/giveaway/$token/live'
@@ -837,15 +948,24 @@ export interface FileRouteTypes {
     | '/store/$slug'
     | '/u/$slug'
     | '/tools/$tool'
+    | '/api/alerts/access'
+    | '/api/alerts/control'
+    | '/api/alerts/media'
+    | '/api/alerts/simulate'
+    | '/api/alerts/test'
     | '/api/live-counter/lookup'
     | '/marks/$token/$markId'
+    | '/overlay/alerts/$token'
+    | '/alerts'
     | '/widgets'
+    | '/api/alerts'
     | '/subathons/$id/control'
     | '/subathons/$id/overlay'
     | '/subathons/$id/rules'
     | '/widgets/$widgetId/control'
     | '/widgets/$widgetId/goal'
     | '/widgets/$widgetId/rules'
+    | '/api/alerts/media/$id'
     | '/api/auth/$provider/callback'
     | '/api/auth/$provider/start'
     | '/api/auth/callback/tiktok'
@@ -858,6 +978,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/streampay'
     | '/api/public/webhooks/twitch'
     | '/widgets/$widgetId'
+    | '/api/public/alerts/$token/$action'
     | '/api/public/auth/$provider/callback'
     | '/api/public/auth/$provider/start'
     | '/api/public/giveaway/$token/live'
@@ -886,6 +1007,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/_authenticated/activity-feed'
+    | '/_authenticated/alerts'
     | '/_authenticated/analytics'
     | '/_authenticated/custom-commands'
     | '/_authenticated/dashboard'
@@ -914,15 +1036,24 @@ export interface FileRouteTypes {
     | '/u/$slug'
     | '/_authenticated/tools/$tool'
     | '/_authenticated/widgets/$widgetId'
+    | '/api/alerts/access'
+    | '/api/alerts/control'
+    | '/api/alerts/media'
+    | '/api/alerts/simulate'
+    | '/api/alerts/test'
     | '/api/live-counter/lookup'
     | '/marks/$token/$markId'
+    | '/overlay/alerts/$token'
+    | '/_authenticated/alerts/'
     | '/_authenticated/widgets/'
+    | '/api/alerts/'
     | '/_authenticated/subathons/$id/control'
     | '/_authenticated/subathons/$id/overlay'
     | '/_authenticated/subathons/$id/rules'
     | '/_authenticated/widgets/$widgetId/control'
     | '/_authenticated/widgets/$widgetId/goal'
     | '/_authenticated/widgets/$widgetId/rules'
+    | '/api/alerts/media/$id'
     | '/api/auth/$provider/callback'
     | '/api/auth/$provider/start'
     | '/api/auth/callback/tiktok'
@@ -935,6 +1066,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/streampay'
     | '/api/public/webhooks/twitch'
     | '/_authenticated/widgets/$widgetId/'
+    | '/api/public/alerts/$token/$action'
     | '/api/public/auth/$provider/callback'
     | '/api/public/auth/$provider/start'
     | '/api/public/giveaway/$token/live'
@@ -976,7 +1108,14 @@ export interface RootRouteChildren {
   OverlayTiktokTappersRoute: typeof OverlayTiktokTappersRoute
   StoreSlugRoute: typeof StoreSlugRoute
   USlugRoute: typeof USlugRoute
+  ApiAlertsAccessRoute: typeof ApiAlertsAccessRoute
+  ApiAlertsControlRoute: typeof ApiAlertsControlRoute
+  ApiAlertsMediaRoute: typeof ApiAlertsMediaRouteWithChildren
+  ApiAlertsSimulateRoute: typeof ApiAlertsSimulateRoute
+  ApiAlertsTestRoute: typeof ApiAlertsTestRoute
   ApiLiveCounterLookupRoute: typeof ApiLiveCounterLookupRoute
+  OverlayAlertsTokenRoute: typeof OverlayAlertsTokenRoute
+  ApiAlertsIndexRoute: typeof ApiAlertsIndexRoute
   ApiAuthProviderCallbackRoute: typeof ApiAuthProviderCallbackRoute
   ApiAuthProviderStartRoute: typeof ApiAuthProviderStartRoute
   ApiAuthCallbackTiktokRoute: typeof ApiAuthCallbackTiktokRoute
@@ -988,6 +1127,7 @@ export interface RootRouteChildren {
   ApiPublicWebhooksStreamlabsRoute: typeof ApiPublicWebhooksStreamlabsRoute
   ApiPublicWebhooksStreampayRoute: typeof ApiPublicWebhooksStreampayRoute
   ApiPublicWebhooksTwitchRoute: typeof ApiPublicWebhooksTwitchRoute
+  ApiPublicAlertsTokenActionRoute: typeof ApiPublicAlertsTokenActionRoute
   ApiPublicAuthProviderCallbackRoute: typeof ApiPublicAuthProviderCallbackRoute
   ApiPublicAuthProviderStartRoute: typeof ApiPublicAuthProviderStartRoute
   ApiPublicGiveawayTokenLiveRoute: typeof ApiPublicGiveawayTokenLiveRoute
@@ -1064,6 +1204,13 @@ declare module '@tanstack/react-router' {
       path: '/activity-feed'
       fullPath: '/activity-feed'
       preLoaderRoute: typeof AuthenticatedActivityFeedRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/alerts': {
+      id: '/_authenticated/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AuthenticatedAlertsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/analytics': {
@@ -1248,6 +1395,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof USlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/alerts/': {
+      id: '/_authenticated/alerts/'
+      path: '/'
+      fullPath: '/alerts/'
+      preLoaderRoute: typeof AuthenticatedAlertsIndexRouteImport
+      parentRoute: typeof AuthenticatedAlertsRoute
+    }
     '/_authenticated/tools/$tool': {
       id: '/_authenticated/tools/$tool'
       path: '/tools/$tool'
@@ -1269,6 +1423,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWidgetsWidgetIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/alerts/': {
+      id: '/api/alerts/'
+      path: '/api/alerts'
+      fullPath: '/api/alerts/'
+      preLoaderRoute: typeof ApiAlertsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/alerts/access': {
+      id: '/api/alerts/access'
+      path: '/api/alerts/access'
+      fullPath: '/api/alerts/access'
+      preLoaderRoute: typeof ApiAlertsAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/alerts/control': {
+      id: '/api/alerts/control'
+      path: '/api/alerts/control'
+      fullPath: '/api/alerts/control'
+      preLoaderRoute: typeof ApiAlertsControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/alerts/media': {
+      id: '/api/alerts/media'
+      path: '/api/alerts/media'
+      fullPath: '/api/alerts/media'
+      preLoaderRoute: typeof ApiAlertsMediaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/alerts/simulate': {
+      id: '/api/alerts/simulate'
+      path: '/api/alerts/simulate'
+      fullPath: '/api/alerts/simulate'
+      preLoaderRoute: typeof ApiAlertsSimulateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/alerts/test': {
+      id: '/api/alerts/test'
+      path: '/api/alerts/test'
+      fullPath: '/api/alerts/test'
+      preLoaderRoute: typeof ApiAlertsTestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/live-counter/lookup': {
       id: '/api/live-counter/lookup'
       path: '/api/live-counter/lookup'
@@ -1282,6 +1478,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/marks/$token/$markId'
       preLoaderRoute: typeof MarksTokenMarkIdRouteImport
       parentRoute: typeof MarksTokenRoute
+    }
+    '/overlay/alerts/$token': {
+      id: '/overlay/alerts/$token'
+      path: '/overlay/alerts/$token'
+      fullPath: '/overlay/alerts/$token'
+      preLoaderRoute: typeof OverlayAlertsTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/subathons/$id/control': {
       id: '/_authenticated/subathons/$id/control'
@@ -1331,6 +1534,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/widgets/$widgetId/rules'
       preLoaderRoute: typeof AuthenticatedWidgetsWidgetIdRulesRouteImport
       parentRoute: typeof AuthenticatedWidgetsWidgetIdRoute
+    }
+    '/api/alerts/media/$id': {
+      id: '/api/alerts/media/$id'
+      path: '/$id'
+      fullPath: '/api/alerts/media/$id'
+      preLoaderRoute: typeof ApiAlertsMediaIdRouteImport
+      parentRoute: typeof ApiAlertsMediaRoute
     }
     '/api/auth/$provider/callback': {
       id: '/api/auth/$provider/callback'
@@ -1407,6 +1617,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/webhooks/twitch'
       fullPath: '/api/public/webhooks/twitch'
       preLoaderRoute: typeof ApiPublicWebhooksTwitchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/alerts/$token/$action': {
+      id: '/api/public/alerts/$token/$action'
+      path: '/api/public/alerts/$token/$action'
+      fullPath: '/api/public/alerts/$token/$action'
+      preLoaderRoute: typeof ApiPublicAlertsTokenActionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/auth/$provider/callback': {
@@ -1538,6 +1755,17 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedAlertsRouteChildren {
+  AuthenticatedAlertsIndexRoute: typeof AuthenticatedAlertsIndexRoute
+}
+
+const AuthenticatedAlertsRouteChildren: AuthenticatedAlertsRouteChildren = {
+  AuthenticatedAlertsIndexRoute: AuthenticatedAlertsIndexRoute,
+}
+
+const AuthenticatedAlertsRouteWithChildren =
+  AuthenticatedAlertsRoute._addFileChildren(AuthenticatedAlertsRouteChildren)
+
 interface AuthenticatedWidgetsWidgetIdRouteChildren {
   AuthenticatedWidgetsWidgetIdControlRoute: typeof AuthenticatedWidgetsWidgetIdControlRoute
   AuthenticatedWidgetsWidgetIdGoalRoute: typeof AuthenticatedWidgetsWidgetIdGoalRoute
@@ -1564,6 +1792,7 @@ const AuthenticatedWidgetsWidgetIdRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedActivityFeedRoute: typeof AuthenticatedActivityFeedRoute
+  AuthenticatedAlertsRoute: typeof AuthenticatedAlertsRouteWithChildren
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedCustomCommandsRoute: typeof AuthenticatedCustomCommandsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -1587,6 +1816,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedActivityFeedRoute: AuthenticatedActivityFeedRoute,
+  AuthenticatedAlertsRoute: AuthenticatedAlertsRouteWithChildren,
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedCustomCommandsRoute: AuthenticatedCustomCommandsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
@@ -1624,6 +1854,18 @@ const MarksTokenRouteWithChildren = MarksTokenRoute._addFileChildren(
   MarksTokenRouteChildren,
 )
 
+interface ApiAlertsMediaRouteChildren {
+  ApiAlertsMediaIdRoute: typeof ApiAlertsMediaIdRoute
+}
+
+const ApiAlertsMediaRouteChildren: ApiAlertsMediaRouteChildren = {
+  ApiAlertsMediaIdRoute: ApiAlertsMediaIdRoute,
+}
+
+const ApiAlertsMediaRouteWithChildren = ApiAlertsMediaRoute._addFileChildren(
+  ApiAlertsMediaRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -1645,7 +1887,14 @@ const rootRouteChildren: RootRouteChildren = {
   OverlayTiktokTappersRoute: OverlayTiktokTappersRoute,
   StoreSlugRoute: StoreSlugRoute,
   USlugRoute: USlugRoute,
+  ApiAlertsAccessRoute: ApiAlertsAccessRoute,
+  ApiAlertsControlRoute: ApiAlertsControlRoute,
+  ApiAlertsMediaRoute: ApiAlertsMediaRouteWithChildren,
+  ApiAlertsSimulateRoute: ApiAlertsSimulateRoute,
+  ApiAlertsTestRoute: ApiAlertsTestRoute,
   ApiLiveCounterLookupRoute: ApiLiveCounterLookupRoute,
+  OverlayAlertsTokenRoute: OverlayAlertsTokenRoute,
+  ApiAlertsIndexRoute: ApiAlertsIndexRoute,
   ApiAuthProviderCallbackRoute: ApiAuthProviderCallbackRoute,
   ApiAuthProviderStartRoute: ApiAuthProviderStartRoute,
   ApiAuthCallbackTiktokRoute: ApiAuthCallbackTiktokRoute,
@@ -1657,6 +1906,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicWebhooksStreamlabsRoute: ApiPublicWebhooksStreamlabsRoute,
   ApiPublicWebhooksStreampayRoute: ApiPublicWebhooksStreampayRoute,
   ApiPublicWebhooksTwitchRoute: ApiPublicWebhooksTwitchRoute,
+  ApiPublicAlertsTokenActionRoute: ApiPublicAlertsTokenActionRoute,
   ApiPublicAuthProviderCallbackRoute: ApiPublicAuthProviderCallbackRoute,
   ApiPublicAuthProviderStartRoute: ApiPublicAuthProviderStartRoute,
   ApiPublicGiveawayTokenLiveRoute: ApiPublicGiveawayTokenLiveRoute,

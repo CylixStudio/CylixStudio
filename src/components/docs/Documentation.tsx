@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Copy, ExternalLink, Search, X } from "lucide-react";
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
+import { DOCS_AR, DOCS_EN } from "@/lib/i18n.docs";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 
 export type DocItem = { id: string; title: string; keywords: string; group?: string };
@@ -29,17 +30,41 @@ const DOC_STRUCTURE: { id: string; titleKey: TranslationKey; group: DocGroup; ke
 
 const DOC_IDS = DOC_STRUCTURE.map((x) => x.id);
 
+const SECTION_PREFIX: Record<string, string[]> = {
+  intro: ["docs.intro."],
+  connect: ["docs.connect."],
+  "default-commands": ["docs.defaultCommands.", "docs.purpose."],
+  "custom-commands": ["docs.customCommands."],
+  points: ["docs.points."],
+  variables: ["docs.variables.", "docs.var."],
+  alerts: ["docs.alerts."],
+  widgets: ["docs.widgets."],
+  subathon: ["docs.subathon."],
+  "mark-points": ["docs.markPoints.", "docs.mark."],
+  timers: ["docs.timers."],
+  account: ["docs.account."],
+  faq: ["docs.faq."],
+};
+
 /** Normalize for search: lower-case and drop trigger/brace punctuation so that
  *  "!points" or "{username}" match "points" / "{{sender.username}}". */
 function normalizeForSearch(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
+function catalogText(lang: "ar" | "en", prefixes: string[]): string {
+  const catalog = lang === "en" ? DOCS_EN : DOCS_AR;
+  return Object.entries(catalog)
+    .filter(([key]) => prefixes.some((prefix) => key.startsWith(prefix)))
+    .map(([, value]) => value)
+    .join(" ");
+}
+
 export function docItemsFor(lang: "ar" | "en", t: (key: TranslationKey) => string): DocItem[] {
   return DOC_STRUCTURE.map((x) => ({
     id: x.id,
     title: t(x.titleKey),
-    keywords: x.keywords,
+    keywords: `${x.keywords} ${catalogText(lang, SECTION_PREFIX[x.id] ?? [])}`,
     ...(x.group ? { group: x.group } : {}),
   }));
 }

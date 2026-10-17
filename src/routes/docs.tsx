@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { CodeExample, CommandTable, DocumentationLayout, DocumentationSection as Section, DocumentationSidebar, InfoNotice, useDocsNavigation, VariableTable } from "@/components/docs/Documentation";
 import { useLanguage } from "@/lib/i18n";
+import "@/styles.docs.css";
+import "@/styles.docs.override.css";
 
 export const Route = createFileRoute("/docs")({
   component: DocsPage,

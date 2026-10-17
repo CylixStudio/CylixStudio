@@ -171,7 +171,7 @@ export const DOCS_AR = {
   "docs.timers.step3": "فعّل المؤقت.",
   "docs.timers.codeLabel": "مثال رسالة",
   "docs.timers.code": "تابع جدول البث وروابطنا من لوحة CylixStudio ✦",
-  "docs.timers.notice": "الفاصل من دقيقة إلى 1440 دقيقة والرسالة حتى 480 حرفًا. في Demo، نبضة الاختبار لا تنشر في Kick.",
+  "docs.timers.notice": "الفاصل من دقيقة إلى 1440 دقيقة والرسالة حتى 480 حرفًا.",
 
   // ---- account ----
   "docs.account.title": "إعدادات الحساب والاشتراك",
@@ -358,7 +358,7 @@ export const DOCS_EN = {
   "docs.timers.step3": "Enable the timer.",
   "docs.timers.codeLabel": "Message example",
   "docs.timers.code": "Follow our stream schedule and links from the CylixStudio panel ✦",
-  "docs.timers.notice": "The interval is 1 to 1440 minutes and the message is up to 480 characters. In Demo, the test pulse doesn't post to Kick.",
+  "docs.timers.notice": "The interval is 1 to 1440 minutes and the message is up to 480 characters.",
 
   // ---- account ----
   "docs.account.title": "Account & subscription settings",

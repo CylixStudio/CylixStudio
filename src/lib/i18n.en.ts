@@ -1,6 +1,8 @@
 import { DOCS_EN } from "@/lib/i18n.docs";
+import { ALERTS_EN } from "@/lib/i18n.alerts";
 
 export const EN = {
+  ...ALERTS_EN,
   ...DOCS_EN,
   "nav.sections.home": "Home",
   "nav.sections.streamTools": "Stream Tools",

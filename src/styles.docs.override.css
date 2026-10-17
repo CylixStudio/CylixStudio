@@ -1,0 +1,9 @@
+.docs-shell { --docs-bg: #0a0a0a; background-color: #0a0a0a; }
+.docs-sidebar { background: #101010; }
+.docs-main { min-width: 0; }
+.docs-footer { margin-top: auto; padding-top: 20px; }
+.docs-footer .docs-dashboard-link { margin-bottom: 14px; }
+@media (max-width: 800px) {
+  .docs-shell[dir="ltr"] .docs-sidebar { transform: translateX(-105%); }
+  .docs-shell[dir="ltr"] .docs-sidebar.is-open { transform: translateX(0); }
+}

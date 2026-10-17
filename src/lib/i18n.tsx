@@ -1,4 +1,5 @@
 import { DOCS_AR } from "@/lib/i18n.docs";
+import { ALERTS_AR } from "@/lib/i18n.alerts";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 
 import { EN } from "@/lib/i18n.en";
@@ -11,6 +12,7 @@ export const DEFAULT_LOCALE: Lang = "ar";
 export const LANG_STORAGE_KEY = "creovix.lang";
 
 const DICT = {
+  ...ALERTS_AR,
   ...DOCS_AR,
   "nav.sections.home": "الرئيسية",
   "nav.sections.streamTools": "أدوات البث",
